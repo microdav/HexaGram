@@ -45,6 +45,10 @@ export function Leg({ mount }: LegProps) {
     femur: null,
     tibia: null,
   });
+  // Touch-tap pins an arc so it stays visible after the finger lifts. A second
+  // tap on the same sphere unpins it. Mouse hover is unaffected.
+  const pinnedJoints = useRef<Set<JointKey>>(new Set());
+  const lastPointerType = useRef<string>("mouse");
   const servoIdOf = (k: JointKey): number => servoIndex(mount.index, k);
 
   const onEnter = (k: JointKey) => {
@@ -59,11 +63,11 @@ export function Leg({ mount }: LegProps) {
 
   const onLeave = (k: JointKey) => {
     counts.current[k] = Math.max(0, counts.current[k] - 1);
-    if (counts.current[k] === 0) {
+    if (counts.current[k] === 0 && !pinnedJoints.current.has(k)) {
       const t = timers.current[k];
       if (t != null) window.clearTimeout(t);
       timers.current[k] = window.setTimeout(() => {
-        if (counts.current[k] === 0) {
+        if (counts.current[k] === 0 && !pinnedJoints.current.has(k)) {
           setArcShown(servoIdOf(k), false);
         }
         timers.current[k] = null;
@@ -71,14 +75,32 @@ export function Leg({ mount }: LegProps) {
     }
   };
 
+  const onTap = (k: JointKey) => {
+    const id = servoIdOf(k);
+    const t = timers.current[k];
+    if (pinnedJoints.current.has(k)) {
+      pinnedJoints.current.delete(k);
+      if (counts.current[k] === 0) {
+        if (t != null) { window.clearTimeout(t); timers.current[k] = null; }
+        setArcShown(id, false);
+      }
+    } else {
+      pinnedJoints.current.add(k);
+      if (t != null) { window.clearTimeout(t); timers.current[k] = null; }
+      setArcShown(id, true);
+    }
+  };
+
   useEffect(() => {
     const localTimers = timers.current;
+    const localPinned = pinnedJoints.current;
     const myServoIds = JOINT_KEYS.map((k) => servoIndex(mount.index, k));
     return () => {
       JOINT_KEYS.forEach((k) => {
         const t = localTimers[k];
         if (t != null) window.clearTimeout(t);
       });
+      localPinned.clear();
       // Best-effort cleanup so a remounted leg doesn't leave stale bits set.
       myServoIds.forEach((id) => setArcShown(id, false));
     };
@@ -117,6 +139,11 @@ export function Leg({ mount }: LegProps) {
           e.stopPropagation();
           onLeave("coxa");
         }}
+        onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (lastPointerType.current === "touch") onTap("coxa");
+        }}
       >
         <sphereGeometry args={[jointR, 16, 16]} />
         <meshStandardMaterial color={showCoxa ? JOINT_HOVER_COLOR : JOINT_COLOR} />
@@ -149,6 +176,11 @@ export function Leg({ mount }: LegProps) {
               e.stopPropagation();
               onLeave("femur");
             }}
+            onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (lastPointerType.current === "touch") onTap("femur");
+            }}
           >
             <sphereGeometry args={[jointR, 16, 16]} />
             <meshStandardMaterial color={showFemur ? JOINT_HOVER_COLOR : JOINT_COLOR} />
@@ -180,6 +212,11 @@ export function Leg({ mount }: LegProps) {
                 onPointerOut={(e) => {
                   e.stopPropagation();
                   onLeave("tibia");
+                }}
+                onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (lastPointerType.current === "touch") onTap("tibia");
                 }}
               >
                 <sphereGeometry args={[jointR, 16, 16]} />
