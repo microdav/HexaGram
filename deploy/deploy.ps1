@@ -67,8 +67,14 @@ Write-Ok "$distFiles fichiers, $([math]::Round($distSize/1KB,1)) KB" $sw.Elapsed
 Write-Step "Tar de dist\ -> $Tarball" 2 5
 $sw.Restart()
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
-# --force-local : empeche tar de parser "C:" comme un host distant
-tar --force-local -czf $Tarball -C $DistDir .
+# GNU tar a besoin de --force-local pour ne pas parser "C:" comme un host
+# distant ; bsdtar (Windows 10+) ne supporte pas ce flag et n'en a pas besoin.
+$tarVersion = (& tar --version 2>&1 | Select-Object -First 1)
+if ($tarVersion -match 'bsdtar') {
+    tar -czf $Tarball -C $DistDir .
+} else {
+    tar --force-local -czf $Tarball -C $DistDir .
+}
 if ($LASTEXITCODE -ne 0) { throw "tar a echoue." }
 $tarSize = (Get-Item $Tarball).Length
 Write-Ok "tarball $([math]::Round($tarSize/1KB,1)) KB" $sw.Elapsed
