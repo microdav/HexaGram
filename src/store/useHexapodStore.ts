@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod";
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
+import { useToastStore } from "./useToastStore";
 
 const PREFS_KEY = "hexagram.prefs";
 
@@ -204,8 +205,6 @@ useHexapodStore.subscribe((s) => {
   if (_prefsToastTimer) clearTimeout(_prefsToastTimer);
   _prefsToastTimer = setTimeout(() => {
     _prefsToastTimer = null;
-    import("./useToastStore").then(({ useToastStore }) => {
-      useToastStore.getState().show("Préférences enregistrées");
-    });
+    useToastStore.getState().show("Préférences enregistrées");
   }, 400);
 });
