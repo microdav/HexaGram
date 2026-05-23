@@ -3,6 +3,18 @@ import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 
+export interface RobotProfileData {
+  version: 1;
+  geometry: HexapodGeometry;
+  keyframes: Keyframe[];
+  prefs: {
+    mirrorEnabled: boolean;
+    gravityEnabled: boolean;
+    bodyTransparent: boolean;
+  };
+  servoCalibration?: Record<number, { minDeg: number; maxDeg: number; invert: boolean; zeroOffsetDeg: number }>;
+}
+
 interface HexapodState {
   geometry: HexapodGeometry;
   pose: Pose;
@@ -27,6 +39,8 @@ interface HexapodState {
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
   setArcShown: (servoId: number, shown: boolean) => void;
+  serializeProfile: () => RobotProfileData;
+  applyProfile: (data: unknown) => void;
 }
 
 const INITIAL_CAM_DIR: [number, number, number] = (() => {
@@ -117,6 +131,33 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       const next = shown ? s.arcShownMask | bit : s.arcShownMask & ~bit;
       return next === s.arcShownMask ? s : { arcShownMask: next };
     }),
+
+  serializeProfile: (): RobotProfileData => {
+    const s = get();
+    return {
+      version: 1,
+      geometry: s.geometry,
+      keyframes: s.keyframes,
+      prefs: {
+        mirrorEnabled: s.mirrorEnabled,
+        gravityEnabled: s.gravityEnabled,
+        bodyTransparent: s.bodyTransparent,
+      },
+    };
+  },
+
+  applyProfile: (data: unknown) => {
+    const d = data as RobotProfileData;
+    if (!d || d.version !== 1) return;
+    set({
+      geometry: d.geometry,
+      keyframes: d.keyframes,
+      mirrorEnabled: d.prefs.mirrorEnabled,
+      gravityEnabled: d.prefs.gravityEnabled,
+      bodyTransparent: d.prefs.bodyTransparent,
+      pose: defaultPose(),
+    });
+  },
 }));
 
 // Leg 0↔3, 1↔4, 2↔5 — exposed so UI can compute mirrored arcs/servos.

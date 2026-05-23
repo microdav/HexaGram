@@ -1,21 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Scene } from "./three/Scene";
 import { ServoPanel } from "./ui/ServoPanel";
 import { GeometryPanel } from "./ui/GeometryPanel";
 import { PoseList } from "./ui/PoseList";
 import { SimulationPanel } from "./ui/SimulationPanel";
 import { MirrorPanel } from "./ui/MirrorPanel";
+import { UserButton } from "./ui/UserButton";
+import { AuthModal } from "./ui/AuthModal";
+import { useAuthStore } from "./store/useAuthStore";
 
 export default function App() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
+  const { openModal, setOpenModal, bootstrap } = useAuthStore();
+
+  useEffect(() => { bootstrap(); }, []);
+
   return (
     <div className="app">
       <header className="topbar">
         <h1>HexaGram</h1>
         <span className="subtitle">POC — hexapode 18 DOF</span>
+        <UserButton />
       </header>
+      <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
 
       <main className={layoutClass}>
         <aside className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}>

@@ -1,0 +1,15 @@
+[Unit]
+Description=HexaGram API (Express + SQLite)
+After=network.target
+
+[Service]
+Type=simple
+User=freebox
+WorkingDirectory=/opt/hexagram/server
+EnvironmentFile=/opt/hexagram/server/.env
+ExecStart=/opt/node-v22.11.0-linux-arm64/bin/node --experimental-sqlite dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
