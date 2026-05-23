@@ -1,0 +1,113 @@
+import { useMemo } from "react";
+import { DoubleSide, Shape } from "three";
+import { computeLegMounts } from "../model/hexapod";
+import { useHexapodStore } from "../store/useHexapodStore";
+import { useBodyTransform } from "../store/useBodyTransform";
+import { ContactMarkers } from "./ContactMarkers";
+import { Leg } from "./Leg";
+
+const ARROW_COLOR = "#1a1a1a";
+
+function makeArrowShape(
+  totalLen: number,
+  shaftLen: number,
+  shaftWidth: number,
+  headWidth: number
+): Shape {
+  const xStart = -totalLen / 2;
+  const xShaftEnd = xStart + shaftLen;
+  const xTip = totalLen / 2;
+  const sw = shaftWidth / 2;
+  const hw = headWidth / 2;
+
+  const s = new Shape();
+  s.moveTo(xStart, +sw);
+  s.lineTo(xShaftEnd, +sw);
+  s.lineTo(xShaftEnd, +hw);
+  s.lineTo(xTip, 0);
+  s.lineTo(xShaftEnd, -hw);
+  s.lineTo(xShaftEnd, -sw);
+  s.lineTo(xStart, -sw);
+  s.lineTo(xStart, +sw);
+  return s;
+}
+
+interface ArrowProps {
+  chassisLength: number;
+  chassisHeight: number;
+  flipDown: boolean;
+}
+
+function FrontArrow({ chassisLength, chassisHeight, flipDown }: ArrowProps) {
+  const totalLen = chassisLength * 0.5;
+  const shaftLen = totalLen * 0.65;
+  const shape = useMemo(
+    () => makeArrowShape(totalLen, shaftLen, 0.014, 0.04),
+    [totalLen, shaftLen]
+  );
+
+  const y = flipDown ? -chassisHeight / 2 - 0.001 : chassisHeight / 2 + 0.001;
+  const rotX = flipDown ? -Math.PI / 2 : Math.PI / 2;
+
+  return (
+    <mesh position={[0, y, 0]} rotation={[rotX, 0, 0]}>
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial color={ARROW_COLOR} side={DoubleSide} />
+    </mesh>
+  );
+}
+
+export function Hexapod() {
+  const geometry = useHexapodStore((s) => s.geometry);
+  const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
+  const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
+  const transform = useBodyTransform();
+
+  return (
+    <>
+      <group
+        position={[transform.position.x, transform.position.y, transform.position.z]}
+        quaternion={[
+          transform.quaternion.x,
+          transform.quaternion.y,
+          transform.quaternion.z,
+          transform.quaternion.w,
+        ]}
+      >
+        {/* Chassis */}
+        <mesh castShadow receiveShadow>
+          <boxGeometry
+            args={[geometry.chassis.length, geometry.chassis.height, geometry.chassis.width]}
+          />
+          <meshStandardMaterial color="#f5c518" metalness={0.2} roughness={0.5} />
+        </mesh>
+
+        {/* Front face marker */}
+        <mesh position={[geometry.chassis.length / 2 + 0.001, 0, 0]}>
+          <boxGeometry
+            args={[0.004, geometry.chassis.height * 0.6, geometry.chassis.width * 0.6]}
+          />
+          <meshStandardMaterial color="#1a1a1a" />
+        </mesh>
+
+        {/* Front orientation arrows — flat decals on top and bottom faces */}
+        <FrontArrow
+          chassisLength={geometry.chassis.length}
+          chassisHeight={geometry.chassis.height}
+          flipDown={false}
+        />
+        <FrontArrow
+          chassisLength={geometry.chassis.length}
+          chassisHeight={geometry.chassis.height}
+          flipDown={true}
+        />
+
+        {mounts.map((m) => (
+          <Leg key={m.index} mount={m} />
+        ))}
+      </group>
+
+      {gravityEnabled && <ContactMarkers contacts={transform.contacts} />}
+    </>
+  );
+}
