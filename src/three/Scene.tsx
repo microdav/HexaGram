@@ -38,6 +38,7 @@ export function Scene() {
   // Untyped: drei's OrbitControls ref shape is OrbitControlsImpl from three-stdlib;
   // we only need .reset() so we keep it loose.
   const controlsRef = useRef<{ reset: () => void } | null>(null);
+  const arcInteracting = useHexapodStore((s) => s.arcShownMask !== 0);
 
   const onHome = () => controlsRef.current?.reset();
 
@@ -80,6 +81,7 @@ export function Scene() {
         <OrbitControls
           ref={controlsRef as never}
           makeDefault
+          enabled={!arcInteracting}
           enableDamping
           dampingFactor={0.1}
           minDistance={0.15}

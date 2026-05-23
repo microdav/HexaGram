@@ -12,6 +12,8 @@ interface HexapodState {
   mirrorEnabled: boolean;
   cameraDirection: [number, number, number];
   compassLocked: boolean;
+  /** Bitmask of servo IDs whose arc is directly hovered (one bit per servo, 0-17). */
+  arcShownMask: number;
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
@@ -24,11 +26,7 @@ interface HexapodState {
   setMirrorEnabled: (enabled: boolean) => void;
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
-}
-
-// Leg 0↔3, 1↔4, 2↔5 (gauche ↔ droite, même position avant/milieu/arrière)
-function mirrorLegIndex(leg: number): number {
-  return leg < 3 ? leg + 3 : leg - 3;
+  setArcShown: (servoId: number, shown: boolean) => void;
 }
 
 const INITIAL_CAM_DIR: [number, number, number] = (() => {
@@ -46,6 +44,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   mirrorEnabled: false,
   cameraDirection: INITIAL_CAM_DIR,
   compassLocked: false,
+  arcShownMask: 0,
 
   setServoAngle: (id, deg) =>
     set((state) => {
@@ -55,7 +54,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       next[id] = clampAngle(deg, def.minDeg, def.maxDeg);
 
       if (state.mirrorEnabled) {
-        const mirrorLeg = mirrorLegIndex(def.legIndex);
+        const mirrorLeg = mirrorLegOf(def.legIndex);
         const mirrorId = servoIndex(mirrorLeg, def.joint);
         const mirrorDef = SERVOS[mirrorId];
         // Coxa = rotation Y (verticale) → négation pour symétrie gauche/droite.
@@ -110,4 +109,17 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   setCameraDirection: (dir) => set({ cameraDirection: dir }),
 
   toggleCompassLocked: () => set((s) => ({ compassLocked: !s.compassLocked })),
+
+  setArcShown: (servoId, shown) =>
+    set((s) => {
+      if (servoId < 0 || servoId > 31) return s;
+      const bit = 1 << servoId;
+      const next = shown ? s.arcShownMask | bit : s.arcShownMask & ~bit;
+      return next === s.arcShownMask ? s : { arcShownMask: next };
+    }),
 }));
+
+// Leg 0↔3, 1↔4, 2↔5 — exposed so UI can compute mirrored arcs/servos.
+export function mirrorLegOf(leg: number): number {
+  return leg < 3 ? leg + 3 : leg - 3;
+}

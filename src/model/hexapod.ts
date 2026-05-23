@@ -47,10 +47,12 @@ export function computeLegMounts(geom: HexapodGeometry): LegMount[] {
 export function buildServos(): ServoDef[] {
   const servos: ServoDef[] = [];
   let id = 0;
+  // Plage de 180° par servo (±90°) — correspond à la course standard d'un servo
+  // hobby, et donne un arc 3D parfaitement symétrique pour chaque articulation.
   for (let leg = 0; leg < 6; leg++) {
-    servos.push({ id: id++, legIndex: leg, joint: "coxa", minDeg: -45, maxDeg: 45, defaultDeg: 0 });
-    servos.push({ id: id++, legIndex: leg, joint: "femur", minDeg: -60, maxDeg: 60, defaultDeg: -20 });
-    servos.push({ id: id++, legIndex: leg, joint: "tibia", minDeg: -120, maxDeg: 0, defaultDeg: -60 });
+    servos.push({ id: id++, legIndex: leg, joint: "coxa", minDeg: -90, maxDeg: 90, defaultDeg: 0 });
+    servos.push({ id: id++, legIndex: leg, joint: "femur", minDeg: -90, maxDeg: 90, defaultDeg: -20 });
+    servos.push({ id: id++, legIndex: leg, joint: "tibia", minDeg: -90, maxDeg: 90, defaultDeg: -60 });
   }
   return servos;
 }
