@@ -142,13 +142,9 @@ html, body, #root {
 .overlay-compass {
   grid-area: cps;
   position: relative;
-  padding: 8px;
-  background: rgba(74, 79, 90, 0.85);
-  border: 1px solid #6b7280;
+  border: 1px solid #374151;
   border-radius: 8px;
   pointer-events: none;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
   box-sizing: border-box;
 }
 

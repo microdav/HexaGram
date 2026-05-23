@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { DoubleSide, Shape, Vector3 } from "three";
+import { DoubleSide, ExtrudeGeometry, Shape, Vector3 } from "three";
 import { useBodyTransform } from "../store/useBodyTransform";
 import { useHexapodStore } from "../store/useHexapodStore";
 
@@ -8,7 +8,7 @@ const AXIS_X_COLOR = "#e74c3c"; // red
 const AXIS_Y_COLOR = "#27ae60"; // green
 const AXIS_Z_COLOR = "#3498db"; // blue
 
-const COMPASS_CAM_DISTANCE = 4.5;
+const COMPASS_CAM_DISTANCE = 8.0;
 
 function CompassCameraDriver() {
   const dir = useHexapodStore((s) => s.cameraDirection);
@@ -27,15 +27,17 @@ function CompassCameraDriver() {
   return null;
 }
 
+const ARROW_DEPTH = 0.16;
+
 function ChassisArrow() {
   const transform = useBodyTransform();
 
-  const shape = useMemo(() => {
+  const geometry = useMemo(() => {
     const s = new Shape();
-    const totalLen = 1.4;
-    const shaftLen = 1.0;
-    const sw = 0.07;
-    const hw = 0.22;
+    const totalLen = 1.72;
+    const shaftLen = 1.22;
+    const sw = 0.09;
+    const hw = 0.27;
     const xStart = -totalLen / 2;
     const xShaftEnd = xStart + shaftLen;
     const xTip = totalLen / 2;
@@ -48,16 +50,32 @@ function ChassisArrow() {
     s.lineTo(xShaftEnd, -sw);
     s.lineTo(xStart, -sw);
     s.lineTo(xStart, +sw);
-    return s;
+
+    const geo = new ExtrudeGeometry(s, {
+      depth: ARROW_DEPTH,
+      bevelEnabled: true,
+      bevelThickness: 0.05,
+      bevelSize: 0.04,
+      bevelSegments: 4,
+    });
+    // center the slab around Z=0 so after rotation it sits at Y=0
+    geo.translate(0, 0, -ARROW_DEPTH / 2);
+    return geo;
   }, []);
 
   const q = transform.quaternion;
 
   return (
     <group quaternion={[q.x, q.y, q.z, q.w]}>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <shapeGeometry args={[shape]} />
-        <meshBasicMaterial color="#f5c518" side={DoubleSide} />
+      <mesh rotation={[Math.PI / 2, 0, 0]} geometry={geometry}>
+        <meshStandardMaterial
+          color="#f5c518"
+          emissive="#c87800"
+          emissiveIntensity={0.6}
+          metalness={0.15}
+          roughness={0.4}
+          side={DoubleSide}
+        />
       </mesh>
     </group>
   );
@@ -67,7 +85,9 @@ function CompassScene() {
   return (
     <>
       <CompassCameraDriver />
-      <ambientLight intensity={1} />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[4, 6, 4]} intensity={1.0} />
+      <directionalLight position={[-3, 2, -3]} intensity={0.2} color="#99bbff" />
 
       {/* Volume sphere — wireframe meridians/parallels suggest the 3D shape */}
       <mesh>
@@ -150,7 +170,7 @@ export function Compass() {
 
       <div className="overlay-compass">
         <Canvas
-          camera={{ position: [4.5, 1.0, 4.5], fov: 28 }}
+          camera={{ position: [8, 2, 8], fov: 28 }}
           dpr={[1, 2]}
           gl={{ alpha: true }}
         >
