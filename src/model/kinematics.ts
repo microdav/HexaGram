@@ -37,50 +37,63 @@ export interface BodyTransform {
   quaternion: Quaternion;
   /** Foot tips touching the ground (within threshold), in world coordinates. */
   contacts: LegContact[];
+  /** CoG world position (after transform applied). */
+  cogWorld: Vector3;
+  /** Convex hull of contact tips, in world xz (clockwise or CCW from hull algorithm). */
+  supportPolygon: { x: number; z: number }[];
+  /** True if CoG vertical projection is strictly inside support polygon. */
+  cogInside: boolean;
 }
 
 const CONTACT_THRESHOLD = 0.005;
+const SUPPORT_TOL = 0.0015;
+const LEVEL_EPS = 5e-4;
+const MAX_ITER = 20;
 
-/**
- * Compute the rigid-body transform (rotation + translation) to apply to the hexapod
- * so it rests properly on the ground at y=0.
- *
- * - gravityEnabled=false: simple lift — lowest point (foot tip or chassis bottom)
- *   slides up to y=0 without rotation.
- * - gravityEnabled=true: fit a plane through the 6 foot tips and rotate the body
- *   so that plane becomes horizontal. Lifted legs naturally cause the body to tilt
- *   toward the unsupported side.
- */
-export function computeBodyTransform(
-  pose: Pose,
-  geometry: HexapodGeometry,
-  mounts: LegMount[],
-  gravityEnabled: boolean
-): BodyTransform {
-  const tipsBody = mounts.map((m) => computeFootTip(m, pose, geometry));
+interface SimState {
+  q: Quaternion;
+  t: Vector3;
+}
 
-  if (!gravityEnabled) {
-    const chassisBottomY = -geometry.chassis.height / 2;
-    let lowest = chassisBottomY;
-    for (const p of tipsBody) if (p.y < lowest) lowest = p.y;
-    return {
-      position: new Vector3(0, -lowest, 0),
-      quaternion: new Quaternion(),
-      contacts: [] as LegContact[],
-    };
+function transformPoint(p: Vector3, q: Quaternion, t: Vector3): Vector3 {
+  return p.clone().applyQuaternion(q).add(t);
+}
+
+function applyBodyRotation(state: SimState, dq: Quaternion): void {
+  state.q.premultiply(dq);
+}
+
+function applyEdgeRotation(
+  state: SimState,
+  pivot: Vector3,
+  axis: Vector3,
+  angle: number
+): void {
+  const dq = new Quaternion().setFromAxisAngle(axis, angle);
+  const newT = state.t.clone().sub(pivot).applyQuaternion(dq).add(pivot);
+  state.q.premultiply(dq);
+  state.t.copy(newT);
+}
+
+function fitPlaneNormal(points: Vector3[]): Vector3 {
+  if (points.length === 3) {
+    const v1 = points[1].clone().sub(points[0]);
+    const v2 = points[2].clone().sub(points[0]);
+    const n = new Vector3().crossVectors(v1, v2);
+    if (n.lengthSq() < 1e-12) return new Vector3(0, 1, 0);
+    n.normalize();
+    if (n.y < 0) n.negate();
+    return n;
   }
-
-  // Least-squares plane y = a*x + b*z + c through the 6 foot tips
   let sx = 0, sz = 0, sy = 0;
   let sxx = 0, sxz = 0, szz = 0;
   let sxy = 0, syz = 0;
-  const N = tipsBody.length;
-  for (const p of tipsBody) {
+  for (const p of points) {
     sx += p.x; sz += p.z; sy += p.y;
     sxx += p.x * p.x; sxz += p.x * p.z; szz += p.z * p.z;
     sxy += p.x * p.y; syz += p.z * p.y;
   }
-
+  const N = points.length;
   const M = new Matrix3().set(sxx, sxz, sx, sxz, szz, sz, sx, sz, N);
   let a = 0, b = 0;
   const det = M.determinant();
@@ -90,31 +103,326 @@ export function computeBodyTransform(
     a = rhs.x;
     b = rhs.y;
   }
+  const n = new Vector3(-a, 1, -b);
+  n.normalize();
+  return n;
+}
 
-  // Plane normal in body frame (points "up" relative to plane): (-a, 1, -b)
-  const normal = new Vector3(-a, 1, -b).normalize();
-  const q = new Quaternion().setFromUnitVectors(normal, new Vector3(0, 1, 0));
+interface HullPoint {
+  x: number;
+  z: number;
+  idx: number;
+}
 
-  // Apply rotation to tips, then lift so the lowest sits at y=0
-  const tipsRotated = tipsBody.map((p) => p.clone().applyQuaternion(q));
-  let minY = Infinity;
-  for (const p of tipsRotated) if (p.y < minY) minY = p.y;
-  const lift = -minY;
+/** Andrew's monotone chain — returns CCW polygon in the xz plane. */
+function convexHull2D(points: HullPoint[]): HullPoint[] {
+  if (points.length <= 2) return [...points];
+  const pts = [...points].sort((p, q) => p.x - q.x || p.z - q.z);
+  const cross = (O: HullPoint, A: HullPoint, B: HullPoint) =>
+    (A.x - O.x) * (B.z - O.z) - (A.z - O.z) * (B.x - O.x);
+
+  const lower: HullPoint[] = [];
+  for (const p of pts) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+    ) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: HullPoint[] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+    ) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function pointInPolygonXZ(
+  point: { x: number; z: number },
+  polygon: { x: number; z: number }[]
+): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, zi = polygon[i].z;
+    const xj = polygon[j].x, zj = polygon[j].z;
+    const dz = zj - zi || 1e-12;
+    const intersect =
+      ((zi > point.z) !== (zj > point.z)) &&
+      point.x < ((xj - xi) * (point.z - zi)) / dz + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * For a CCW polygon, find the exterior edge that the point is on the outside of
+ * with the largest outward signed distance — the body tips over this edge.
+ */
+function findTippingEdge(
+  point: { x: number; z: number },
+  polygon: HullPoint[]
+): { A: HullPoint; B: HullPoint } | null {
+  let best: { A: HullPoint; B: HullPoint } | null = null;
+  let bestOutward = -Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const A = polygon[i];
+    const B = polygon[(i + 1) % polygon.length];
+    const dx = B.x - A.x;
+    const dz = B.z - A.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-12) continue;
+    // CCW polygon → outward normal = (dz, -dx)/len
+    const nx = dz / len;
+    const nz = -dx / len;
+    const outward = nx * (point.x - A.x) + nz * (point.z - A.z);
+    if (outward > 1e-9 && outward > bestOutward) {
+      bestOutward = outward;
+      best = { A, B };
+    }
+  }
+  return best;
+}
+
+/**
+ * Smallest strictly-positive θ such that A·cos θ + B·sin θ = −C.
+ * Returns null when no solution exists.
+ */
+function solveTrigEvent(A: number, B: number, C: number): number | null {
+  const R = Math.hypot(A, B);
+  if (R < 1e-12) return null;
+  const target = -C / R;
+  if (target < -1 - 1e-9 || target > 1 + 1e-9) return null;
+  const clamped = Math.max(-1, Math.min(1, target));
+  const phi = Math.atan2(B, A);
+  const ac = Math.acos(clamped);
+  const norm = (x: number) => {
+    let v = x % (2 * Math.PI);
+    if (v < 0) v += 2 * Math.PI;
+    return v;
+  };
+  const candidates = [norm(phi + ac), norm(phi - ac)].filter((t) => t > 1e-5);
+  if (candidates.length === 0) return null;
+  return Math.min(...candidates);
+}
+
+/**
+ * Compute the rigid-body transform under static physics:
+ *  - foot tips at lowest level form the support polygon
+ *  - if CoG projects inside polygon → body rests on that polygon, leveled
+ *  - if CoG projects outside → body tips around the closest exterior edge
+ *    until either another foot touches the ground or CoG reaches the edge
+ */
+export function computeBodyTransform(
+  pose: Pose,
+  geometry: HexapodGeometry,
+  mounts: LegMount[],
+  gravityEnabled: boolean
+): BodyTransform {
+  const tipsBody = mounts.map((m) => computeFootTip(m, pose, geometry));
+  const cogBody = new Vector3(geometry.cog.x, geometry.cog.y, geometry.cog.z);
+
+  if (!gravityEnabled) {
+    const chassisBottomY = -geometry.chassis.height / 2;
+    let lowest = chassisBottomY;
+    for (const p of tipsBody) if (p.y < lowest) lowest = p.y;
+    const t = new Vector3(0, -lowest, 0);
+    return {
+      position: t,
+      quaternion: new Quaternion(),
+      contacts: [],
+      cogWorld: cogBody.clone().add(t),
+      supportPolygon: [],
+      cogInside: false,
+    };
+  }
+
+  const state: SimState = { q: new Quaternion(), t: new Vector3() };
+  let contactIndices: number[] = [];
+  let stableOnEdge = false;
+
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    const tipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+    const cogW = transformPoint(cogBody, state.q, state.t);
+
+    let minY = Infinity;
+    for (const p of tipsW) if (p.y < minY) minY = p.y;
+
+    let supportIdx = tipsW
+      .map((p, i) => (p.y < minY + SUPPORT_TOL ? i : -1))
+      .filter((i) => i >= 0);
+
+    if (supportIdx.length < 2) {
+      // Force the next-lowest tip into support, level the implied triangle.
+      const sorted = tipsW
+        .map((p, i) => ({ y: p.y, i }))
+        .sort((a, b) => a.y - b.y);
+      const tri = [sorted[0].i, sorted[1].i, sorted[2].i];
+      const normal = fitPlaneNormal(tri.map((i) => tipsW[i]));
+      const up = new Vector3(0, 1, 0);
+      const angle = Math.acos(Math.max(-1, Math.min(1, normal.dot(up))));
+      if (angle > LEVEL_EPS) {
+        applyBodyRotation(state, new Quaternion().setFromUnitVectors(normal, up));
+        continue;
+      }
+      supportIdx = tri;
+    }
+
+    if (supportIdx.length >= 3) {
+      const planeTips = supportIdx.map((i) => tipsW[i]);
+      const normal = fitPlaneNormal(planeTips);
+      const up = new Vector3(0, 1, 0);
+      const angle = Math.acos(Math.max(-1, Math.min(1, normal.dot(up))));
+
+      if (angle > LEVEL_EPS) {
+        applyBodyRotation(state, new Quaternion().setFromUnitVectors(normal, up));
+        continue;
+      }
+
+      const hullPts: HullPoint[] = supportIdx.map((i) => ({
+        x: tipsW[i].x,
+        z: tipsW[i].z,
+        idx: i,
+      }));
+      const hull = convexHull2D(hullPts);
+      const cogXZ = { x: cogW.x, z: cogW.z };
+
+      if (pointInPolygonXZ(cogXZ, hull)) {
+        contactIndices = hull.map((h) => h.idx);
+        state.t.y += -minY;
+        break;
+      }
+
+      const edge = findTippingEdge(cogXZ, hull);
+      if (!edge) {
+        contactIndices = hull.map((h) => h.idx);
+        state.t.y += -minY;
+        break;
+      }
+      supportIdx = [edge.A.idx, edge.B.idx];
+    }
+
+    if (supportIdx.length === 2) {
+      const a = tipsW[supportIdx[0]];
+      const b = tipsW[supportIdx[1]];
+      const axis = new Vector3().subVectors(b, a);
+      if (axis.lengthSq() < 1e-12) break;
+      axis.normalize();
+
+      const cogRel = cogW.clone().sub(a);
+      // Orient axis so +θ is the gravity direction (decreases cog.y).
+      const omega = new Vector3().crossVectors(axis, cogRel);
+      if (omega.y > 0) axis.negate();
+
+      // Tip-touch events: smallest θ where another tip reaches the support
+      // y-level (the edge tips a and b stay at y=a.y throughout the rotation
+      // since they lie on the rotation axis — they're not yet lifted to y=0).
+      let touchAngle = Infinity;
+      for (let i = 0; i < tipsW.length; i++) {
+        if (i === supportIdx[0] || i === supportIdx[1]) continue;
+        const rel = tipsW[i].clone().sub(a);
+        const para = axis.clone().multiplyScalar(rel.dot(axis));
+        const perp = rel.clone().sub(para);
+        const cross = new Vector3().crossVectors(axis, perp);
+        const A = perp.y;
+        const B = cross.y;
+        const C = para.y;
+        const ang = solveTrigEvent(A, B, C);
+        if (ang !== null && ang < touchAngle) touchAngle = ang;
+      }
+
+      // CoG-balance event: smallest θ where CoG xz projection reaches the AB line.
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const lenXZ = Math.hypot(dx, dz);
+      let cogStopAngle = Infinity;
+      if (lenXZ > 1e-9) {
+        let nx = dz / lenXZ;
+        let nz = -dx / lenXZ;
+        const currOut = nx * (cogW.x - a.x) + nz * (cogW.z - a.z);
+        if (currOut < 0) { nx = -nx; nz = -nz; }
+        const rel = cogW.clone().sub(a);
+        const para = axis.clone().multiplyScalar(rel.dot(axis));
+        const perp = rel.clone().sub(para);
+        const cross = new Vector3().crossVectors(axis, perp);
+        const Av = nx * perp.x + nz * perp.z;
+        const Bv = nx * cross.x + nz * cross.z;
+        const Cv = nx * para.x + nz * para.z;
+        const ang = solveTrigEvent(Av, Bv, Cv);
+        if (ang !== null) cogStopAngle = ang;
+      }
+
+      const applyAngle = Math.min(touchAngle, cogStopAngle);
+      if (!isFinite(applyAngle) || applyAngle < 1e-5) {
+        contactIndices = supportIdx;
+        state.t.y += -Math.min(a.y, b.y);
+        stableOnEdge = true;
+        break;
+      }
+
+      applyEdgeRotation(state, a, axis, applyAngle);
+
+      if (touchAngle <= cogStopAngle) {
+        // Another tip joins next iter.
+        continue;
+      }
+
+      // CoG now balanced exactly over the edge.
+      const finalTipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+      let newMinY = Infinity;
+      for (const p of finalTipsW) if (p.y < newMinY) newMinY = p.y;
+      state.t.y += -newMinY;
+      contactIndices = supportIdx;
+      stableOnEdge = true;
+      break;
+    }
+  }
+
+  const finalTipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+  const cogWorld = transformPoint(cogBody, state.q, state.t);
 
   const contacts: LegContact[] = [];
-  tipsRotated.forEach((p, i) => {
-    const worldY = p.y + lift;
-    if (worldY < CONTACT_THRESHOLD) {
+  const polyPts: HullPoint[] = [];
+  finalTipsW.forEach((p, i) => {
+    if (p.y < CONTACT_THRESHOLD) {
       contacts.push({
         legIndex: mounts[i].index,
-        position: new Vector3(p.x, worldY, p.z),
+        position: new Vector3(p.x, p.y, p.z),
       });
+      polyPts.push({ x: p.x, z: p.z, idx: i });
     }
   });
 
+  let supportPolygon: { x: number; z: number }[] = [];
+  let cogInside = false;
+  if (polyPts.length >= 3) {
+    const hull = convexHull2D(polyPts);
+    supportPolygon = hull.map((h) => ({ x: h.x, z: h.z }));
+    cogInside =
+      !stableOnEdge && pointInPolygonXZ({ x: cogWorld.x, z: cogWorld.z }, supportPolygon);
+  } else if (polyPts.length === 2) {
+    supportPolygon = polyPts.map((h) => ({ x: h.x, z: h.z }));
+    cogInside = false;
+  }
+
+  // Avoid unused warning while keeping the variable for potential future use.
+  void contactIndices;
+
   return {
-    position: new Vector3(0, lift, 0),
-    quaternion: q,
+    position: state.t.clone(),
+    quaternion: state.q.clone(),
     contacts,
+    cogWorld,
+    supportPolygon,
+    cogInside,
   };
 }

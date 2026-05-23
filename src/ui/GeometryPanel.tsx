@@ -67,6 +67,54 @@ export function GeometryPanel() {
           onChange={(v) => setGeometry({ segments: { ...geometry.segments, tibia: v } })}
         />
       </div>
+      <div className="geom-section">
+        <div className="leg-title">Centre de gravité (offset)</div>
+        <CogSlider
+          label="X (avant/arrière)"
+          value={geometry.cog.x}
+          range={geometry.chassis.length / 2}
+          onChange={(v) => setGeometry({ cog: { ...geometry.cog, x: v } })}
+        />
+        <CogSlider
+          label="Y (haut/bas)"
+          value={geometry.cog.y}
+          range={geometry.chassis.height}
+          onChange={(v) => setGeometry({ cog: { ...geometry.cog, y: v } })}
+        />
+        <CogSlider
+          label="Z (droite/gauche)"
+          value={geometry.cog.z}
+          range={geometry.chassis.width / 2}
+          onChange={(v) => setGeometry({ cog: { ...geometry.cog, z: v } })}
+        />
+      </div>
     </div>
+  );
+}
+
+function CogSlider({
+  label,
+  value,
+  range,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  range: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="geom-row">
+      <span>{label}</span>
+      <input
+        type="range"
+        min={-range}
+        max={range}
+        step={0.001}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <span className="unit">{(value * 100).toFixed(1)} cm</span>
+    </label>
   );
 }

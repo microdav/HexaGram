@@ -8,6 +8,7 @@ interface HexapodState {
   pose: Pose;
   keyframes: Keyframe[];
   gravityEnabled: boolean;
+  bodyTransparent: boolean;
   mirrorEnabled: boolean;
   cameraDirection: [number, number, number];
   compassLocked: boolean;
@@ -19,6 +20,7 @@ interface HexapodState {
   deleteKeyframe: (id: string) => void;
   exportKeyframesJson: () => string;
   setGravityEnabled: (enabled: boolean) => void;
+  setBodyTransparent: (enabled: boolean) => void;
   setMirrorEnabled: (enabled: boolean) => void;
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
@@ -40,6 +42,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   pose: defaultPose(),
   keyframes: [],
   gravityEnabled: true,
+  bodyTransparent: true,
   mirrorEnabled: false,
   cameraDirection: INITIAL_CAM_DIR,
   compassLocked: false,
@@ -71,6 +74,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       geometry: {
         chassis: { ...state.geometry.chassis, ...(partial.chassis ?? {}) },
         segments: { ...state.geometry.segments, ...(partial.segments ?? {}) },
+        cog: { ...state.geometry.cog, ...(partial.cog ?? {}) },
       },
     })),
 
@@ -98,6 +102,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   exportKeyframesJson: () => JSON.stringify(get().keyframes, null, 2),
 
   setGravityEnabled: (enabled) => set({ gravityEnabled: enabled }),
+
+  setBodyTransparent: (enabled) => set({ bodyTransparent: enabled }),
 
   setMirrorEnabled: (enabled) => set({ mirrorEnabled: enabled }),
 

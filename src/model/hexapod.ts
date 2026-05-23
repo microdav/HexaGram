@@ -3,6 +3,8 @@ import type { ServoDef } from "./servo";
 export interface HexapodGeometry {
   chassis: { length: number; width: number; height: number };
   segments: { coxa: number; femur: number; tibia: number };
+  /** Center of gravity offset relative to chassis center (body frame). */
+  cog: { x: number; y: number; z: number };
 }
 
 export interface LegMount {
@@ -15,6 +17,7 @@ export interface LegMount {
 export const DEFAULT_GEOMETRY: HexapodGeometry = {
   chassis: { length: 0.34, width: 0.18, height: 0.065 },
   segments: { coxa: 0.05, femur: 0.08, tibia: 0.115 },
+  cog: { x: 0, y: 0, z: 0 },
 };
 
 export const LEG_NAMES = [

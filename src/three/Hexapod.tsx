@@ -60,6 +60,7 @@ function FrontArrow({ chassisLength, chassisHeight, flipDown }: ArrowProps) {
 export function Hexapod() {
   const geometry = useHexapodStore((s) => s.geometry);
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
+  const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
   const transform = useBodyTransform();
 
@@ -79,7 +80,13 @@ export function Hexapod() {
           <boxGeometry
             args={[geometry.chassis.length, geometry.chassis.height, geometry.chassis.width]}
           />
-          <meshStandardMaterial color="#f5c518" metalness={0.2} roughness={0.5} />
+          <meshStandardMaterial
+            color="#f5c518"
+            metalness={0.2}
+            roughness={0.5}
+            transparent={bodyTransparent}
+            opacity={bodyTransparent ? 0.45 : 1}
+          />
         </mesh>
 
         {/* Front face marker */}
@@ -102,12 +109,25 @@ export function Hexapod() {
           flipDown={true}
         />
 
+        {/* Center of gravity marker — red sphere in chassis body frame */}
+        <mesh position={[geometry.cog.x, geometry.cog.y, geometry.cog.z]}>
+          <sphereGeometry args={[0.012, 16, 12]} />
+          <meshStandardMaterial color="#dc2626" emissive="#7f1d1d" emissiveIntensity={0.4} />
+        </mesh>
+
         {mounts.map((m) => (
           <Leg key={m.index} mount={m} />
         ))}
       </group>
 
-      {gravityEnabled && <ContactMarkers contacts={transform.contacts} />}
+      {gravityEnabled && (
+        <ContactMarkers
+          contacts={transform.contacts}
+          cogWorld={transform.cogWorld}
+          supportPolygon={transform.supportPolygon}
+          cogInside={transform.cogInside}
+        />
+      )}
     </>
   );
 }

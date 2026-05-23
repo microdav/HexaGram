@@ -362,6 +362,19 @@ html, body, #root {
   color: var(--text-dim);
 }
 
+.copy-state-btn {
+  margin-top: 10px;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.copy-state-btn:hover { background: var(--border); }
+
 .pose-list {
   list-style: none;
   margin: 0;

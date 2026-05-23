@@ -38,11 +38,14 @@ export function ServoPanel() {
             const isFemurLocked =
               s.joint === "femur" && gravityEnabled && contactLegSet.has(s.legIndex);
 
-            // Visual: full original range is kept so the thumb stays at its true angle.
-            // Locked zone is greyed via a gradient track. Lower values are rejected
-            // in onChange (controlled input → thumb cannot escape left).
+            // Visual locked zone: grey track from minDeg up to (value − 5°),
+            // so the thumb at `value` is shown 5° clear of the grey boundary.
+            // The slider's min/max attributes stay constant — only the gradient
+            // moves with the current value. onChange enforces the strict lock.
+            const LOCK_TOL_DEG = 5;
+            const lockedEndDeg = Math.max(s.minDeg, value - LOCK_TOL_DEG);
             const lockedPct = isFemurLocked
-              ? ((value - s.minDeg) / (s.maxDeg - s.minDeg)) * 100
+              ? ((lockedEndDeg - s.minDeg) / (s.maxDeg - s.minDeg)) * 100
               : 0;
             const trackStyle: CSSProperties | undefined = isFemurLocked
               ? ({
@@ -77,7 +80,7 @@ export function ServoPanel() {
                   value={value}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    if (isFemurLocked && v < value) return;
+                    if (isFemurLocked && v < lockedEndDeg) return;
                     setServoAngle(s.id, v);
                   }}
                 />
