@@ -941,6 +941,93 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* ── Bannière d'installation PWA ────────────────────────────────────── */
+@keyframes banner-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.install-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 12px 14px 12px 12px;
+  z-index: 9990;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  max-width: min(460px, 92vw);
+  animation: banner-in 0.3s ease;
+}
+
+.install-banner-logo {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.install-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.install-banner-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.install-banner-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.install-share-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.install-banner-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.install-banner-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 13px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.install-banner-close:hover {
+  color: var(--text);
+  background: var(--bg-panel-2);
+}
+
 /* ── Sélecteur disposition pattes ───────────────────────────────────── */
 .leg-layout-picker {
   display: flex;

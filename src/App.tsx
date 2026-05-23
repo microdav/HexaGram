@@ -9,6 +9,8 @@ import { UserButton } from "./ui/UserButton";
 import { AuthModal } from "./ui/AuthModal";
 import { ProfilePanel } from "./ui/ProfilePanel";
 import { Toast } from "./ui/Toast";
+import { HexaLogo } from "./ui/HexaLogo";
+import { InstallBanner } from "./ui/InstallBanner";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 
@@ -40,11 +42,13 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <HexaLogo size={30} />
         <h1>HexaGram</h1>
-        <span className="subtitle">POC — hexapode 18 DOF</span>
+        <span className="subtitle">hexapode 18 DOF</span>
         <UserButton />
       </header>
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
+      <InstallBanner />
       <Toast />
 
       <main className={layoutClass}>
