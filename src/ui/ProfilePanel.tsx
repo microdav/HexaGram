@@ -3,6 +3,7 @@ import { useProfilesStore } from "../store/useProfilesStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { useToastStore } from "../store/useToastStore";
 import { Modal } from "./Modal";
+import { ProfileSettingsModal } from "./ProfileSettingsModal";
 
 export function ProfilePanel() {
   const user = useAuthStore((s) => s.user);
@@ -15,6 +16,7 @@ export function ProfilePanel() {
   const showToast = useToastStore((s) => s.show);
 
   const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -76,7 +78,17 @@ export function ProfilePanel() {
         >
           {saving ? "…" : "Sauvegarder"}
         </button>
+        <button
+          type="button"
+          className="btn btn-icon btn-profile-gear"
+          title="Paramètres du profil"
+          onClick={() => setSettingsOpen(true)}
+        >
+          ⚙
+        </button>
       </div>
+
+      <ProfileSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <Modal open={saveModalOpen} onClose={() => setSaveModalOpen(false)}>
         <h3 className="modal-title">Nouveau profil robot</h3>

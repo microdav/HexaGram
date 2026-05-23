@@ -1,10 +1,14 @@
 import type { ServoDef } from "./servo";
 
+export type LegLayout = "star" | "linear";
+
 export interface HexapodGeometry {
   chassis: { length: number; width: number; height: number };
   segments: { coxa: number; femur: number; tibia: number };
   /** Center of gravity offset relative to chassis center (body frame). */
   cog: { x: number; y: number; z: number };
+  /** Disposition angulaire des coxa : étoile (angles variés) ou rectiligne (tous à ±90°). */
+  legLayout?: LegLayout;
 }
 
 export interface LegMount {
@@ -33,14 +37,15 @@ export function computeLegMounts(geom: HexapodGeometry): LegMount[] {
   const halfL = geom.chassis.length / 2;
   const halfW = geom.chassis.width / 2;
   const y = 0;
+  const linear = (geom.legLayout ?? "star") === "linear";
 
   return [
-    { index: 0, name: LEG_NAMES[0], position: [+halfL, y, -halfW], yawDeg: +45 },
-    { index: 1, name: LEG_NAMES[1], position: [0, y, -halfW], yawDeg: +90 },
-    { index: 2, name: LEG_NAMES[2], position: [-halfL, y, -halfW], yawDeg: +135 },
-    { index: 3, name: LEG_NAMES[3], position: [+halfL, y, +halfW], yawDeg: -45 },
-    { index: 4, name: LEG_NAMES[4], position: [0, y, +halfW], yawDeg: -90 },
-    { index: 5, name: LEG_NAMES[5], position: [-halfL, y, +halfW], yawDeg: -135 },
+    { index: 0, name: LEG_NAMES[0], position: [+halfL, y, -halfW], yawDeg: linear ? +90 : +45 },
+    { index: 1, name: LEG_NAMES[1], position: [0, y, -halfW],      yawDeg: +90 },
+    { index: 2, name: LEG_NAMES[2], position: [-halfL, y, -halfW], yawDeg: linear ? +90 : +135 },
+    { index: 3, name: LEG_NAMES[3], position: [+halfL, y, +halfW], yawDeg: linear ? -90 : -45 },
+    { index: 4, name: LEG_NAMES[4], position: [0, y, +halfW],      yawDeg: -90 },
+    { index: 5, name: LEG_NAMES[5], position: [-halfL, y, +halfW], yawDeg: linear ? -90 : -135 },
   ];
 }
 

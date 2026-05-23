@@ -12,8 +12,28 @@ function readPrefs(): { mirrorEnabled?: boolean; gravityEnabled?: boolean; bodyT
 
 const _prefs = readPrefs();
 
+export interface ServoCalibration {
+  zeroOffsetDeg: number;
+  hardMinDeg: number;
+  hardMaxDeg: number;
+  softMinDeg: number;
+  softMaxDeg: number;
+  invert: boolean;
+}
+
+export const DEFAULT_SERVO_CALIB: ServoCalibration = {
+  zeroOffsetDeg: 0,
+  hardMinDeg: -90,
+  hardMaxDeg: 90,
+  softMinDeg: -90,
+  softMaxDeg: 90,
+  invert: false,
+};
+
 export interface RobotProfileData {
   version: 1;
+  description?: string;
+  globalServoTypeId?: string | null;
   geometry: HexapodGeometry;
   keyframes: Keyframe[];
   prefs: {
@@ -22,7 +42,7 @@ export interface RobotProfileData {
     bodyTransparent: boolean;
     cogAxisLock: { x: boolean; y: boolean; z: boolean };
   };
-  servoCalibration?: Record<number, { minDeg: number; maxDeg: number; invert: boolean; zeroOffsetDeg: number }>;
+  servoCalibration?: Record<number, ServoCalibration>;
 }
 
 interface HexapodState {
@@ -40,6 +60,9 @@ interface HexapodState {
   cogDragging: boolean;
   /** Per-axis drag lock for the CoG handle. */
   cogAxisLock: { x: boolean; y: boolean; z: boolean };
+  description: string;
+  globalServoTypeId: string | null;
+  servoCalibration: Record<number, ServoCalibration>;
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
@@ -55,6 +78,9 @@ interface HexapodState {
   setArcShown: (servoId: number, shown: boolean) => void;
   setCogDragging: (v: boolean) => void;
   toggleCogAxisLock: (axis: "x" | "y" | "z") => void;
+  setDescription: (d: string) => void;
+  setGlobalServoTypeId: (id: string | null) => void;
+  setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
   serializeProfile: () => RobotProfileData;
   applyProfile: (data: unknown) => void;
 }
@@ -77,6 +103,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   arcShownMask: 0,
   cogDragging: false,
   cogAxisLock: { x: false, y: false, z: false },
+  description: "",
+  globalServoTypeId: null,
+  servoCalibration: {},
 
   setServoAngle: (id, deg) =>
     set((state) => {
@@ -106,6 +135,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         chassis: { ...state.geometry.chassis, ...(partial.chassis ?? {}) },
         segments: { ...state.geometry.segments, ...(partial.segments ?? {}) },
         cog: { ...state.geometry.cog, ...(partial.cog ?? {}) },
+        legLayout: partial.legLayout ?? state.geometry.legLayout,
       },
     })),
 
@@ -147,6 +177,12 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   toggleCogAxisLock: (axis) =>
     set((s) => ({ cogAxisLock: { ...s.cogAxisLock, [axis]: !s.cogAxisLock[axis] } })),
 
+  setDescription: (d) => set({ description: d }),
+
+  setGlobalServoTypeId: (id) => set({ globalServoTypeId: id }),
+
+  setServoCalibrationAll: (calib) => set({ servoCalibration: calib }),
+
   setArcShown: (servoId, shown) =>
     set((s) => {
       if (servoId < 0 || servoId > 31) return s;
@@ -159,6 +195,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
     const s = get();
     return {
       version: 1,
+      description: s.description || undefined,
+      globalServoTypeId: s.globalServoTypeId ?? undefined,
       geometry: s.geometry,
       keyframes: s.keyframes,
       prefs: {
@@ -167,12 +205,29 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         bodyTransparent: s.bodyTransparent,
         cogAxisLock: { ...s.cogAxisLock },
       },
+      servoCalibration: Object.keys(s.servoCalibration).length > 0
+        ? { ...s.servoCalibration }
+        : undefined,
     };
   },
 
   applyProfile: (data: unknown) => {
     const d = data as RobotProfileData;
     if (!d || d.version !== 1) return;
+    const calib: Record<number, ServoCalibration> = {};
+    if (d.servoCalibration) {
+      for (const [k, v] of Object.entries(d.servoCalibration)) {
+        const raw = v as unknown as Record<string, number | boolean>;
+        calib[Number(k)] = {
+          zeroOffsetDeg: (raw.zeroOffsetDeg as number) ?? 0,
+          hardMinDeg: (raw.hardMinDeg as number) ?? (raw.minDeg as number) ?? -90,
+          hardMaxDeg: (raw.hardMaxDeg as number) ?? (raw.maxDeg as number) ?? 90,
+          softMinDeg: (raw.softMinDeg as number) ?? (raw.minDeg as number) ?? -90,
+          softMaxDeg: (raw.softMaxDeg as number) ?? (raw.maxDeg as number) ?? 90,
+          invert: (raw.invert as boolean) ?? false,
+        };
+      }
+    }
     set({
       geometry: d.geometry,
       keyframes: d.keyframes,
@@ -180,6 +235,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       gravityEnabled: d.prefs.gravityEnabled,
       bodyTransparent: d.prefs.bodyTransparent,
       cogAxisLock: d.prefs.cogAxisLock ?? { x: false, y: false, z: false },
+      description: d.description ?? "",
+      globalServoTypeId: d.globalServoTypeId ?? null,
+      servoCalibration: calib,
       pose: defaultPose(),
     });
   },
