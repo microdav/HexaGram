@@ -1,0 +1,17 @@
+# HexaGram — bloc Caddy à fusionner dans /etc/caddy/Caddyfile sur la VM.
+#
+# Sert la build Vite (statique) sur le port 6503 en LAN only.
+# Aucun cert TLS : pas de port forward Freebox, pas de DNS public.
+# try_files renvoie sur index.html pour le SPA routing côté React.
+
+:6503 {
+    root * /opt/hexagram/app
+    encode zstd gzip
+    try_files {path} /index.html
+    file_server
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}
