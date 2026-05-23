@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { DoubleSide, Shape } from "three";
+import { DoubleSide, Shape, Vector3 } from "three";
 import { useBodyTransform } from "../store/useBodyTransform";
 import { useHexapodStore } from "../store/useHexapodStore";
 
@@ -103,32 +103,77 @@ function CompassScene() {
   );
 }
 
+interface InclinationBarProps {
+  value: number; // -1..1, 0 = level; positive = high on the "far" end
+  orientation: "vertical" | "horizontal";
+}
+
+function InclinationBar({ value, orientation }: InclinationBarProps) {
+  const clamped = Math.max(-1, Math.min(1, value));
+  const abs = Math.abs(clamped);
+  const level = abs < 0.12 ? "ok" : abs < 0.35 ? "warn" : "danger";
+
+  // Bubble moves toward the high side:
+  // vertical: positive value → bubble toward top (low CSS top%)
+  // horizontal: positive value → bubble toward right (high CSS left%)
+  const pct =
+    orientation === "vertical"
+      ? 50 - clamped * 38
+      : 50 + clamped * 38;
+
+  return (
+    <div className={`inclination-bar inclination-bar--${orientation}`}>
+      <div
+        className="inclination-bubble"
+        data-level={level}
+        style={{ "--pos": `${pct}%` } as React.CSSProperties}
+      />
+    </div>
+  );
+}
+
 export function Compass() {
   const compassLocked = useHexapodStore((s) => s.compassLocked);
   const toggleCompassLocked = useHexapodStore((s) => s.toggleCompassLocked);
+  const { quaternion } = useBodyTransform();
+
+  // Project world-up (0,1,0) through the body quaternion to get tilt components.
+  // bodyUp.x ≠ 0 → pitch (forward/back); bodyUp.z ≠ 0 → roll (side to side).
+  const { pitch, roll } = useMemo(() => {
+    const up = new Vector3(0, 1, 0).applyQuaternion(quaternion);
+    return { pitch: up.x, roll: up.z };
+  }, [quaternion.x, quaternion.y, quaternion.z, quaternion.w]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="overlay-compass" aria-label="Inclinaison du châssis">
-      <Canvas
-        camera={{ position: [4.5, 1.0, 4.5], fov: 28 }}
-        dpr={[1, 2]}
-        gl={{ alpha: true }}
-      >
-        <CompassScene />
-      </Canvas>
-      <button
-        type="button"
-        className="compass-lock"
-        onClick={toggleCompassLocked}
-        title={
-          compassLocked
-            ? "Boussole figée — cliquer pour resynchroniser avec la caméra"
-            : "Boussole synchronisée avec la caméra — cliquer pour figer"
-        }
-        aria-label={compassLocked ? "Déverrouiller la boussole" : "Verrouiller la boussole"}
-      >
-        {compassLocked ? "🔒" : "🔓"}
-      </button>
+    <div className="compass-cluster" aria-label="Inclinaison du châssis">
+      <InclinationBar value={roll} orientation="horizontal" />
+
+      <div className="overlay-compass">
+        <Canvas
+          camera={{ position: [4.5, 1.0, 4.5], fov: 28 }}
+          dpr={[1, 2]}
+          gl={{ alpha: true }}
+        >
+          <CompassScene />
+        </Canvas>
+        <button
+          type="button"
+          className="compass-lock"
+          onClick={toggleCompassLocked}
+          title={
+            compassLocked
+              ? "Boussole figée — cliquer pour resynchroniser avec la caméra"
+              : "Boussole synchronisée avec la caméra — cliquer pour figer"
+          }
+          aria-label={
+            compassLocked ? "Déverrouiller la boussole" : "Verrouiller la boussole"
+          }
+        >
+          {compassLocked ? "🔒" : "🔓"}
+        </button>
+      </div>
+
+      <InclinationBar value={pitch} orientation="vertical" />
     </div>
   );
 }

@@ -125,13 +125,24 @@ html, body, #root {
   height: 100%;
 }
 
-.overlay-compass {
+.compass-cluster {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 120px;
-  height: 120px;
-  padding: 12px;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  grid-template-columns: 130px 12px;
+  grid-template-rows: 12px 130px;
+  gap: 5px;
+  grid-template-areas:
+    "roll ."
+    "cps  pitch";
+  pointer-events: none;
+}
+
+.overlay-compass {
+  grid-area: cps;
+  position: relative;
+  padding: 8px;
   background: rgba(74, 79, 90, 0.85);
   border: 1px solid #6b7280;
   border-radius: 8px;
@@ -140,6 +151,83 @@ html, body, #root {
   backdrop-filter: blur(4px);
   box-sizing: border-box;
 }
+
+/* Niveau à bulle — barre commune */
+.inclination-bar {
+  background: rgba(10, 13, 20, 0.75);
+  border: 1px solid rgba(107, 114, 128, 0.35);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.inclination-bar--vertical {
+  grid-area: pitch;
+}
+
+.inclination-bar--horizontal {
+  grid-area: roll;
+}
+
+/* Repère central */
+.inclination-bar--vertical::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-50%);
+}
+
+.inclination-bar--horizontal::before {
+  content: "";
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%);
+}
+
+.inclination-bubble {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transform: translate(-50%, -50%);
+  transition: top 0.1s ease-out, left 0.1s ease-out,
+    background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.inclination-bar--vertical .inclination-bubble {
+  top: var(--pos);
+  left: 50%;
+}
+
+.inclination-bar--horizontal .inclination-bubble {
+  left: var(--pos);
+  top: 50%;
+}
+
+.inclination-bubble[data-level="ok"] {
+  background: #27ae60;
+  box-shadow: 0 0 5px #27ae6090;
+}
+
+.inclination-bubble[data-level="warn"] {
+  background: #f5c518;
+  box-shadow: 0 0 5px #f5c51890;
+}
+
+.inclination-bubble[data-level="danger"] {
+  background: #e74c3c;
+  box-shadow: 0 0 5px #e74c3c90;
+}
+
 .compass-lock {
   position: absolute;
   top: 4px;
