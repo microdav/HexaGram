@@ -7,15 +7,35 @@ import { SimulationPanel } from "./ui/SimulationPanel";
 import { MirrorPanel } from "./ui/MirrorPanel";
 import { UserButton } from "./ui/UserButton";
 import { AuthModal } from "./ui/AuthModal";
+import { ProfilePanel } from "./ui/ProfilePanel";
+import { Toast } from "./ui/Toast";
 import { useAuthStore } from "./store/useAuthStore";
+import { useProfilesStore } from "./store/useProfilesStore";
 
 export default function App() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
   const { openModal, setOpenModal, bootstrap } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const listProfiles = useProfilesStore((s) => s.list);
+  const loadProfile = useProfilesStore((s) => s.load);
+  const clearProfiles = useProfilesStore((s) => s.clear);
 
   useEffect(() => { bootstrap(); }, []);
+
+  useEffect(() => {
+    if (!user) {
+      clearProfiles();
+      return;
+    }
+    listProfiles().then(() => {
+      const { profiles } = useProfilesStore.getState();
+      if (profiles.length === 0) return;
+      const latest = [...profiles].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      loadProfile(latest.id);
+    });
+  }, [user]);
 
   return (
     <div className="app">
@@ -25,9 +45,11 @@ export default function App() {
         <UserButton />
       </header>
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
+      <Toast />
 
       <main className={layoutClass}>
         <aside className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}>
+          <ProfilePanel />
           <SimulationPanel />
           <GeometryPanel />
           <PoseList />

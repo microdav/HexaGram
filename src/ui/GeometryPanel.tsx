@@ -29,26 +29,43 @@ function CogSlider({
   label,
   value,
   range,
+  axis,
   onChange,
 }: {
   label: string;
   value: number;
   range: number;
+  axis: "x" | "y" | "z";
   onChange: (v: number) => void;
 }) {
+  const locked = useHexapodStore((s) => s.cogAxisLock[axis]);
+  const toggleCogAxisLock = useHexapodStore((s) => s.toggleCogAxisLock);
+
   return (
-    <label className="geom-row">
-      <span>{label}</span>
+    <div className="geom-row">
+      <span className="geom-row-label">
+        <button
+          type="button"
+          className="cog-axis-lock"
+          title={locked ? `Déverrouiller l'axe ${axis.toUpperCase()}` : `Verrouiller l'axe ${axis.toUpperCase()}`}
+          onClick={() => toggleCogAxisLock(axis)}
+        >
+          {locked ? "🔒" : "🔓"}
+        </button>
+        {label}
+      </span>
       <input
         type="range"
+        aria-label={label}
         min={-range}
         max={range}
         step={0.001}
         value={value}
+        disabled={locked}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <span className="unit">{(value * 100).toFixed(1)} cm</span>
-    </label>
+    </div>
   );
 }
 
@@ -120,20 +137,32 @@ export function GeometryPanel() {
             label="X (avant/arrière)"
             value={geometry.cog.x}
             range={geometry.chassis.length / 2}
+            axis="x"
             onChange={(v) => setGeometry({ cog: { ...geometry.cog, x: v } })}
           />
           <CogSlider
             label="Y (haut/bas)"
             value={geometry.cog.y}
             range={geometry.chassis.height}
+            axis="y"
             onChange={(v) => setGeometry({ cog: { ...geometry.cog, y: v } })}
           />
           <CogSlider
             label="Z (droite/gauche)"
             value={geometry.cog.z}
             range={geometry.chassis.width / 2}
+            axis="z"
             onChange={(v) => setGeometry({ cog: { ...geometry.cog, z: v } })}
           />
+          <div className="geom-cog-reset">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setGeometry({ cog: { x: 0, y: 0, z: 0 } })}
+            >
+              Réinitialiser
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -416,6 +416,124 @@ html, body, #root {
   margin: 4px 0;
   font-size: 12px;
 }
+.geom-row-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.cog-axis-lock {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-dim);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cog-axis-lock:hover { color: var(--text); }
+.geom-cog-reset {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.profile-panel {
+  padding: 8px 10px;
+}
+.profile-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 4px;
+  font-size: 11px;
+}
+.profile-name-label {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.profile-name-value {
+  color: var(--accent);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-name-value em {
+  color: var(--text-dim);
+  font-style: italic;
+  font-weight: 400;
+}
+.profile-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.profile-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.geom-save-row {
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+.btn-save-profile {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.modal-title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────── */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  animation: toast-in 0.2s ease;
+}
 .geom-row input {
   background: var(--bg);
   color: var(--text);

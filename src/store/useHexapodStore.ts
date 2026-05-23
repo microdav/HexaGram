@@ -3,6 +3,14 @@ import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 
+const PREFS_KEY = "hexagram.prefs";
+
+function readPrefs(): { mirrorEnabled?: boolean; gravityEnabled?: boolean; bodyTransparent?: boolean } {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}"); } catch { return {}; }
+}
+
+const _prefs = readPrefs();
+
 export interface RobotProfileData {
   version: 1;
   geometry: HexapodGeometry;
@@ -11,6 +19,7 @@ export interface RobotProfileData {
     mirrorEnabled: boolean;
     gravityEnabled: boolean;
     bodyTransparent: boolean;
+    cogAxisLock: { x: boolean; y: boolean; z: boolean };
   };
   servoCalibration?: Record<number, { minDeg: number; maxDeg: number; invert: boolean; zeroOffsetDeg: number }>;
 }
@@ -26,6 +35,10 @@ interface HexapodState {
   compassLocked: boolean;
   /** Bitmask of servo IDs whose arc is directly hovered (one bit per servo, 0-17). */
   arcShownMask: number;
+  /** True while the user is dragging the CoG handle in the 3D view. */
+  cogDragging: boolean;
+  /** Per-axis drag lock for the CoG handle. */
+  cogAxisLock: { x: boolean; y: boolean; z: boolean };
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
@@ -39,6 +52,8 @@ interface HexapodState {
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
   setArcShown: (servoId: number, shown: boolean) => void;
+  setCogDragging: (v: boolean) => void;
+  toggleCogAxisLock: (axis: "x" | "y" | "z") => void;
   serializeProfile: () => RobotProfileData;
   applyProfile: (data: unknown) => void;
 }
@@ -53,12 +68,14 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   geometry: DEFAULT_GEOMETRY,
   pose: defaultPose(),
   keyframes: [],
-  gravityEnabled: true,
-  bodyTransparent: true,
-  mirrorEnabled: false,
+  gravityEnabled: _prefs.gravityEnabled ?? true,
+  bodyTransparent: _prefs.bodyTransparent ?? true,
+  mirrorEnabled: _prefs.mirrorEnabled ?? false,
   cameraDirection: INITIAL_CAM_DIR,
   compassLocked: false,
   arcShownMask: 0,
+  cogDragging: false,
+  cogAxisLock: { x: false, y: false, z: false },
 
   setServoAngle: (id, deg) =>
     set((state) => {
@@ -124,6 +141,11 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   toggleCompassLocked: () => set((s) => ({ compassLocked: !s.compassLocked })),
 
+  setCogDragging: (v) => set({ cogDragging: v }),
+
+  toggleCogAxisLock: (axis) =>
+    set((s) => ({ cogAxisLock: { ...s.cogAxisLock, [axis]: !s.cogAxisLock[axis] } })),
+
   setArcShown: (servoId, shown) =>
     set((s) => {
       if (servoId < 0 || servoId > 31) return s;
@@ -142,6 +164,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         mirrorEnabled: s.mirrorEnabled,
         gravityEnabled: s.gravityEnabled,
         bodyTransparent: s.bodyTransparent,
+        cogAxisLock: { ...s.cogAxisLock },
       },
     };
   },
@@ -155,6 +178,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       mirrorEnabled: d.prefs.mirrorEnabled,
       gravityEnabled: d.prefs.gravityEnabled,
       bodyTransparent: d.prefs.bodyTransparent,
+      cogAxisLock: d.prefs.cogAxisLock ?? { x: false, y: false, z: false },
       pose: defaultPose(),
     });
   },
@@ -164,3 +188,24 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 export function mirrorLegOf(leg: number): number {
   return leg < 3 ? leg + 3 : leg - 3;
 }
+
+let _savedPrefs = { ..._prefs };
+let _prefsToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+useHexapodStore.subscribe((s) => {
+  if (
+    s.mirrorEnabled === _savedPrefs.mirrorEnabled &&
+    s.gravityEnabled === _savedPrefs.gravityEnabled &&
+    s.bodyTransparent === _savedPrefs.bodyTransparent
+  ) return;
+  _savedPrefs = { mirrorEnabled: s.mirrorEnabled, gravityEnabled: s.gravityEnabled, bodyTransparent: s.bodyTransparent };
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(_savedPrefs)); } catch {}
+  // Debounced toast — avoid flooding if user clicks rapidly
+  if (_prefsToastTimer) clearTimeout(_prefsToastTimer);
+  _prefsToastTimer = setTimeout(() => {
+    _prefsToastTimer = null;
+    import("./useToastStore").then(({ useToastStore }) => {
+      useToastStore.getState().show("Préférences enregistrées");
+    });
+  }, 400);
+});
