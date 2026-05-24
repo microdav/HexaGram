@@ -24,6 +24,9 @@ function GridWithScroll() {
   const prevContacts = useRef<Map<number, { x: number; z: number }> | null>(null);
   const velocity = useRef({ x: 0, z: 0 });
   const stepEndTime = useRef(0);
+  // True accumulated offset kept in memory; only the modulo is applied to the mesh
+  // so the Grid never drifts far from origin and avoids frustum culling on camera rotate.
+  const totalOffset = useRef({ x: 0, z: 0 });
 
   useFrame((_, delta) => {
     const { isPlaying, currentStepIndex, transitionSpeed, stepDelay } =
@@ -33,6 +36,11 @@ function GridWithScroll() {
       prevStepIdx.current = -1;
       prevContacts.current = null;
       velocity.current = { x: 0, z: 0 };
+      totalOffset.current = { x: 0, z: 0 };
+      if (scrollRef.current) {
+        scrollRef.current.position.x = 0;
+        scrollRef.current.position.z = 0;
+      }
       return;
     }
 
@@ -74,8 +82,14 @@ function GridWithScroll() {
     }
 
     if (scrollRef.current && now < stepEndTime.current) {
-      scrollRef.current.position.x += velocity.current.x * delta;
-      scrollRef.current.position.z += velocity.current.z * delta;
+      totalOffset.current.x += velocity.current.x * delta;
+      totalOffset.current.z += velocity.current.z * delta;
+      // Wrap to [0, sectionSize) so the mesh stays near origin — grid is periodic
+      // at sectionSize intervals so the visual appearance is seamless.
+      const s = 0.25;
+      const mod = (v: number) => ((v % s) + s) % s;
+      scrollRef.current.position.x = mod(totalOffset.current.x);
+      scrollRef.current.position.z = mod(totalOffset.current.z);
     }
   });
 

@@ -1815,6 +1815,16 @@ html, body, #root {
 }
 
 /* ── Timeline ────────────────────────────────────────────── */
+.seq-play-error {
+  padding: 6px 10px;
+  background: #4a1a1a;
+  color: #f88;
+  font-size: 11px;
+  border-top: 1px solid #7a3030;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .seq-scroll-wrapper {
   flex: 1;
   overflow: auto;

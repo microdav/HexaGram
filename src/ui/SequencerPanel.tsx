@@ -71,6 +71,7 @@ export function SequencerPanel() {
   const pose = useHexapodStore((s) => s.pose);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [playError, setPlayError] = useState<string | null>(null);
 
   const stopPlayback = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -95,8 +96,20 @@ export function SequencerPanel() {
   }, [stopPlayback]);
 
   const startPlayback = useCallback(() => {
+    setPlayError(null);
+    const definedBefore = useSequencerStore.getState().steps.filter(
+      (st) => !st.type || st.type === 'defined'
+    ).length;
     useSequencerStore.getState().generateInterpolations();
-    if (useSequencerStore.getState().steps.length === 0) return;
+    const afterSteps = useSequencerStore.getState().steps;
+    if (afterSteps.length === 0) {
+      if (definedBefore > 0) {
+        setPlayError(
+          `Impossible de générer les interpolations : ${definedBefore} étape${definedBefore > 1 ? 's' : ''} définie${definedBefore > 1 ? 's' : ''} mais aucune n'a pu être traitée. Vérifiez que les poses sont valides.`
+        );
+      }
+      return;
+    }
     useSequencerStore.getState().setSelectedStepIndex(-1);
     useSequencerStore.getState().setIsPlaying(true);
     playStepRef.current(0);
@@ -544,6 +557,13 @@ export function SequencerPanel() {
               </button>
             </div>
           </div>
+
+          {/* Erreur de lecture */}
+          {playError && (
+            <div className="seq-play-error" onClick={() => setPlayError(null)} title="Cliquer pour fermer">
+              ⚠ {playError}
+            </div>
+          )}
 
           {/* Timeline */}
           <div className="seq-scroll-wrapper">

@@ -159,7 +159,7 @@ export const useSequencerStore = create<SequencerState>()(
 
       generateInterpolations: () =>
         set((s) => {
-          const defined = s.steps.filter((st) => st.type === 'defined');
+          const defined = s.steps.filter((st) => !st.type || st.type === 'defined');
           if (defined.length < 2) {
             return {
               steps: defined,
@@ -222,7 +222,7 @@ export const useSequencerStore = create<SequencerState>()(
 
       loadSteps: (steps, name) =>
         set((s) => ({
-          steps,
+          steps: steps.map((st) => ({ ...st, type: st.type ?? 'defined' })),
           sequenceName: name ?? s.sequenceName,
           history: pushHistory(s.history, s.steps),
           future: [],
