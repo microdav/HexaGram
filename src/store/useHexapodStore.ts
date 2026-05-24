@@ -61,6 +61,8 @@ interface HexapodState {
   arcShownMask: number;
   /** True while the user is dragging the CoG handle in the 3D view. */
   cogDragging: boolean;
+  /** True while the user is dragging a foot tip in the 3D view. */
+  footDragging: boolean;
   /** Per-axis drag lock for the CoG handle. */
   cogAxisLock: { x: boolean; y: boolean; z: boolean };
   description: string;
@@ -80,6 +82,7 @@ interface HexapodState {
   toggleCompassLocked: () => void;
   setArcShown: (servoId: number, shown: boolean) => void;
   setCogDragging: (v: boolean) => void;
+  setFootDragging: (v: boolean) => void;
   toggleCogAxisLock: (axis: "x" | "y" | "z") => void;
   setDescription: (d: string) => void;
   setGlobalServoTypeId: (id: string | null) => void;
@@ -106,6 +109,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   compassLocked: false,
   arcShownMask: 0,
   cogDragging: false,
+  footDragging: false,
   cogAxisLock: { x: false, y: false, z: false },
   description: "",
   globalServoTypeId: null,
@@ -179,6 +183,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   toggleCompassLocked: () => set((s) => ({ compassLocked: !s.compassLocked })),
 
   setCogDragging: (v) => set({ cogDragging: v }),
+
+  setFootDragging: (v) => set({ footDragging: v }),
 
   toggleCogAxisLock: (axis) =>
     set((s) => ({ cogAxisLock: { ...s.cogAxisLock, [axis]: !s.cogAxisLock[axis] } })),

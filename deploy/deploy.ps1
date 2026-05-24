@@ -40,11 +40,14 @@ Write-Step "Build Vite" 1
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 Push-Location $ProjectRoot
 try {
-    npm run build 2>&1 | ForEach-Object {
+    $ErrorActionPreference = "Continue"
+    $out = npm run build 2>&1; $ec = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    $out | ForEach-Object {
         $l = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_.ToString() }
         if ($l.Trim()) { Write-Host "[$((Get-Date).ToString('HH:mm:ss'))]   | $l" }
     }
-    if ($LASTEXITCODE -ne 0) { throw "npm run build echoue" }
+    if ($ec -ne 0) { throw "npm run build echoue" }
 } finally { Pop-Location }
 Write-Ok "$((Get-ChildItem $DistDir -Recurse -File).Count) fichiers" $sw
 
@@ -53,11 +56,14 @@ Write-Step "Build serveur (tsc)" 2
 $sw.Restart()
 Push-Location $ServerDir
 try {
-    npm run build 2>&1 | ForEach-Object {
+    $ErrorActionPreference = "Continue"
+    $out = npm run build 2>&1; $ec = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    $out | ForEach-Object {
         $l = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_.ToString() }
         if ($l.Trim()) { Write-Host "[$((Get-Date).ToString('HH:mm:ss'))]   | $l" }
     }
-    if ($LASTEXITCODE -ne 0) { throw "build serveur echoue" }
+    if ($ec -ne 0) { throw "build serveur echoue" }
 } finally { Pop-Location }
 Write-Ok "dist/ compile" $sw
 

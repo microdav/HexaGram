@@ -88,6 +88,7 @@ export function Scene() {
   const controlsRef = useRef<{ reset: () => void } | null>(null);
   const arcInteracting = useHexapodStore((s) => s.arcShownMask !== 0);
   const cogDragging = useHexapodStore((s) => s.cogDragging);
+  const footDragging = useHexapodStore((s) => s.footDragging);
 
   const onHome = () => controlsRef.current?.reset();
 
@@ -132,7 +133,7 @@ export function Scene() {
         <OrbitControls
           ref={controlsRef as never}
           makeDefault
-          enabled={!arcInteracting && !cogDragging}
+          enabled={!arcInteracting && !cogDragging && !footDragging}
           enableDamping
           dampingFactor={0.1}
           minDistance={0.15}
