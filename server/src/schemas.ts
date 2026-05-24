@@ -14,10 +14,14 @@ export const LoginSchema = z.object({
 
 const ServoCalibrationSchema = z.record(
   z.object({
-    minDeg: z.number(),
-    maxDeg: z.number(),
-    invert: z.boolean(),
     zeroOffsetDeg: z.number(),
+    hardMinDeg: z.number().optional(),
+    hardMaxDeg: z.number().optional(),
+    softMinDeg: z.number().optional(),
+    softMaxDeg: z.number().optional(),
+    minDeg: z.number().optional(),
+    maxDeg: z.number().optional(),
+    invert: z.boolean(),
   })
 );
 
@@ -25,6 +29,7 @@ const HexapodGeometrySchema = z.object({
   chassis: z.object({ length: z.number(), width: z.number(), height: z.number() }),
   segments: z.object({ coxa: z.number(), femur: z.number(), tibia: z.number() }),
   cog: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+  legLayout: z.enum(["star", "linear"]).optional(),
 });
 
 const KeyframeSchema = z.object({
@@ -36,12 +41,15 @@ const KeyframeSchema = z.object({
 
 export const ProfileDataSchema = z.object({
   version: z.literal(1),
+  description: z.string().optional(),
+  globalServoTypeId: z.string().optional(),
   geometry: HexapodGeometrySchema,
   keyframes: z.array(KeyframeSchema),
   prefs: z.object({
     mirrorEnabled: z.boolean(),
     gravityEnabled: z.boolean(),
     bodyTransparent: z.boolean(),
+    cogAxisLock: z.object({ x: z.boolean(), y: z.boolean(), z: z.boolean() }).optional(),
   }),
   servoCalibration: ServoCalibrationSchema.optional(),
 });
