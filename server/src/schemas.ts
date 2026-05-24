@@ -100,3 +100,64 @@ export type CreateProfileInput = z.infer<typeof CreateProfileSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 export type CreateSequenceInput = z.infer<typeof CreateSequenceSchema>;
 export type UpdateSequenceInput = z.infer<typeof UpdateSequenceSchema>;
+
+// ── Programs ─────────────────────────────────────────────────────────────────
+
+const ProgramStepRefSchema = z.object({
+  id: z.string(),
+  type: z.literal('ref'),
+  sequenceId: z.string(),
+  sequenceName: z.string(),
+});
+
+const ProgramStepInlineSchema = z.object({
+  id: z.string(),
+  type: z.literal('inline'),
+  name: z.string(),
+  steps: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    pose: z.array(z.number()),
+    type: z.string().optional(),
+  })),
+});
+
+const ProgramStepSchema = z.discriminatedUnion('type', [
+  ProgramStepRefSchema,
+  ProgramStepInlineSchema,
+]);
+
+const LoopTargetSchema = z.union([
+  z.object({ type: z.literal('none') }),
+  z.object({ type: z.literal('init') }),
+  z.object({ type: z.literal('step'), stepId: z.string() }),
+]);
+
+const ProgramDataSchema = z.object({
+  initPose: z.array(z.number()).nullable(),
+  initPoseName: z.string(),
+  steps: z.array(ProgramStepSchema),
+  loop: LoopTargetSchema,
+});
+
+export const CreateProgramSchema = z.object({
+  name: z.string().min(1).max(80),
+  profileId: z.string(),
+  initPose: z.array(z.number()).nullable(),
+  initPoseName: z.string(),
+  steps: z.array(ProgramStepSchema),
+  loop: LoopTargetSchema,
+});
+
+export const UpdateProgramSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  profileId: z.string().optional(),
+  initPose: z.array(z.number()).nullable().optional(),
+  initPoseName: z.string().optional(),
+  steps: z.array(ProgramStepSchema).optional(),
+  loop: LoopTargetSchema.optional(),
+});
+
+export type ProgramData = z.infer<typeof ProgramDataSchema>;
+export type CreateProgramInput = z.infer<typeof CreateProgramSchema>;
+export type UpdateProgramInput = z.infer<typeof UpdateProgramSchema>;

@@ -1,0 +1,569 @@
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Modal } from "./Modal";
+import { useProgramsStore } from "../store/useProgramsStore";
+import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
+import { useProfilesStore } from "../store/useProfilesStore";
+import { useSequencerStore } from "../store/useSequencerStore";
+import { useToastStore } from "../store/useToastStore";
+import type { Pose } from "../model/pose";
+import type { Program, ProgramStep, LoopTarget } from "../model/program";
+import type { SequencerStep } from "../store/useSequencerStore";
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+const WIN_KEY = "hexagram-program-window";
+const MIN_W = 480;
+const MIN_H = 220;
+
+interface WinState {
+  x: number; y: number;
+  width: number; height: number;
+  minimized: boolean;
+}
+
+function defaultWinState(): WinState {
+  const w = Math.round(window.innerWidth * 0.7);
+  const h = Math.round(window.innerHeight * 0.6);
+  return { x: Math.max(20, (window.innerWidth - w) / 2), y: 60, width: w, height: h, minimized: false };
+}
+
+function readWinPrefs(): WinState {
+  try {
+    const s = JSON.parse(localStorage.getItem(WIN_KEY) ?? "{}");
+    const def = defaultWinState();
+    return {
+      x: typeof s.x === 'number' ? s.x : def.x,
+      y: typeof s.y === 'number' ? s.y : def.y,
+      width: typeof s.width === 'number' ? Math.max(MIN_W, s.width) : def.width,
+      height: typeof s.height === 'number' ? Math.max(MIN_H, s.height) : def.height,
+      minimized: s.minimized === true,
+    };
+  } catch {
+    return defaultWinState();
+  }
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Draft = Omit<Program, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+
+function makeDraft(profileId: string): Draft {
+  return {
+    name: "Nouveau programme",
+    profileId,
+    initPose: null,
+    initPoseName: "",
+    steps: [],
+    loop: { type: 'none' },
+  };
+}
+
+function newStepId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function ProgramModal({ open, onClose }: Props) {
+  // Window geometry + minimize
+  const [pos, setPos] = useState<WinState>(readWinPrefs);
+  const posRef = useRef(pos);
+  useEffect(() => { posRef.current = pos; }, [pos]);
+
+  const saveWin = useCallback((next: WinState) => {
+    localStorage.setItem(WIN_KEY, JSON.stringify(next));
+  }, []);
+
+  const toggleMinimized = useCallback(() => {
+    setPos((p) => {
+      const next = { ...p, minimized: !p.minimized };
+      saveWin(next);
+      return next;
+    });
+  }, [saveWin]);
+
+  // Drag header
+  const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startMX = e.clientX, startMY = e.clientY;
+    const startFX = posRef.current.x, startFY = posRef.current.y;
+    let moved = false;
+
+    const onMove = (ev: MouseEvent) => {
+      const nx = Math.max(0, startFX + ev.clientX - startMX);
+      const ny = Math.max(0, startFY + ev.clientY - startMY);
+      posRef.current = { ...posRef.current, x: nx, y: ny };
+      moved = true;
+      setPos((p) => ({ ...p, x: nx, y: ny }));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (moved) saveWin(posRef.current);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [saveWin]);
+
+  // Resize handle
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startMX = e.clientX, startMY = e.clientY;
+    const startW = posRef.current.width, startH = posRef.current.height;
+
+    const onMove = (ev: MouseEvent) => {
+      const nw = Math.max(MIN_W, startW + ev.clientX - startMX);
+      const nh = Math.max(MIN_H, startH + ev.clientY - startMY);
+      posRef.current = { ...posRef.current, width: nw, height: nh };
+      setPos((p) => ({ ...p, width: nw, height: nh }));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      saveWin(posRef.current);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [saveWin]);
+
+  // ── Store hooks ─────────────────────────────────────────────────────────────
+
+  const programs = useProgramsStore((s) => s.programs);
+  const loading = useProgramsStore((s) => s.loading);
+  const listPrograms = useProgramsStore((s) => s.list);
+  const loadProgram = useProgramsStore((s) => s.load);
+  const createProgram = useProgramsStore((s) => s.create);
+  const updateProgram = useProgramsStore((s) => s.update);
+  const removeProgram = useProgramsStore((s) => s.remove);
+
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const sequences = useSavedSequencesStore((s) => s.sequences);
+  const listSequences = useSavedSequencesStore((s) => s.list);
+  const loadSequence = useSavedSequencesStore((s) => s.load);
+  const sequencerSteps = useSequencerStore((s) => s.steps);
+  const showToast = useToastStore((s) => s.show);
+
+  // ── Draft state ─────────────────────────────────────────────────────────────
+
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showAddOptions, setShowAddOptions] = useState(false);
+
+  // Seq step picker
+  type PickerTarget = 'init' | 'add-step';
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget>('add-step');
+  const [showSeqPicker, setShowSeqPicker] = useState(false);
+  const [pickerSeqId, setPickerSeqId] = useState<string | null>(null);
+  const [pickerSteps, setPickerSteps] = useState<SequencerStep[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    listPrograms();
+    listSequences();
+  }, [open]);
+
+  useEffect(() => {
+    if (!pickerSeqId) { setPickerSteps([]); return; }
+    setPickerLoading(true);
+    loadSequence(pickerSeqId)
+      .then((seq) => setPickerSteps(seq.steps.filter((s) => s.type === 'defined')))
+      .catch(() => setPickerSteps([]))
+      .finally(() => setPickerLoading(false));
+  }, [pickerSeqId]);
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  const patch = (p: Partial<Draft>) => setDraft((d) => d ? { ...d, ...p } : d);
+
+  const openPicker = (target: PickerTarget) => {
+    setPickerTarget(target);
+    setPickerSeqId(null);
+    setPickerSteps([]);
+    setShowSeqPicker(true);
+    setShowAddOptions(false);
+  };
+
+  const handlePickerStep = (step: SequencerStep, pose: Pose) => {
+    const seqName = sequences.find((s) => s.id === pickerSeqId)?.name ?? "";
+    if (pickerTarget === 'init') {
+      patch({ initPose: pose, initPoseName: `${seqName} / ${step.name}` });
+    } else {
+      if (!draft) return;
+      patch({ steps: [...draft.steps, { id: newStepId(), type: 'ref', sequenceId: pickerSeqId!, sequenceName: seqName }] });
+    }
+    setShowSeqPicker(false);
+  };
+
+  const handleSelect = async (id: string) => {
+    setSelectedId(id);
+    setConfirmDelete(false);
+    setShowAddOptions(false);
+    const prog = await loadProgram(id);
+    setDraft(prog);
+  };
+
+  const handleNew = () => {
+    setSelectedId(null);
+    setDraft(makeDraft(activeProfileId ?? ""));
+    setConfirmDelete(false);
+    setShowAddOptions(false);
+  };
+
+  const handleSave = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      if (draft.id) {
+        const updated = await updateProgram(draft.id, draft);
+        setDraft(updated);
+        showToast(`Programme « ${updated.name} » sauvegardé`);
+      } else {
+        const created = await createProgram(draft);
+        setSelectedId(created.id);
+        setDraft(created);
+        showToast(`Programme « ${created.name} » créé`);
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Erreur de sauvegarde");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!draft?.id) return;
+    setDeleting(true);
+    try {
+      await removeProgram(draft.id);
+      setDraft(null);
+      setSelectedId(null);
+      setConfirmDelete(false);
+      showToast("Programme supprimé");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Step mutations ──────────────────────────────────────────────────────────
+
+  const moveStep = (idx: number, dir: -1 | 1) => {
+    if (!draft) return;
+    const steps = [...draft.steps];
+    const ni = idx + dir;
+    if (ni < 0 || ni >= steps.length) return;
+    [steps[idx], steps[ni]] = [steps[ni], steps[idx]];
+    patch({ steps });
+  };
+
+  const removeStep = (idx: number) => {
+    if (!draft) return;
+    const removed = draft.steps[idx];
+    const steps = draft.steps.filter((_, i) => i !== idx);
+    let loop: LoopTarget = draft.loop;
+    if (loop.type === 'step' && loop.stepId === removed.id) loop = { type: 'none' };
+    patch({ steps, loop });
+  };
+
+  const addInlineStep = () => {
+    if (!draft) return;
+    const defined = sequencerSteps.filter((s) => s.type === 'defined');
+    const step: ProgramStep = {
+      id: newStepId(), type: 'inline',
+      name: `Inline (${defined.length} étape${defined.length !== 1 ? 's' : ''})`,
+      steps: defined,
+    };
+    patch({ steps: [...draft.steps, step] });
+    setShowAddOptions(false);
+  };
+
+  const replaceInlineStep = (idx: number) => {
+    if (!draft) return;
+    const defined = sequencerSteps.filter((s) => s.type === 'defined');
+    const steps = draft.steps.map((s, i) => {
+      if (i !== idx || s.type !== 'inline') return s;
+      return { ...s, steps: defined, name: `Inline (${defined.length} étape${defined.length !== 1 ? 's' : ''})` };
+    });
+    patch({ steps });
+  };
+
+  const updateRefSeq = (idx: number, sequenceId: string) => {
+    if (!draft) return;
+    const seq = sequences.find((s) => s.id === sequenceId);
+    if (!seq) return;
+    const steps = draft.steps.map((s, i) =>
+      i !== idx || s.type !== 'ref' ? s : { ...s, sequenceId, sequenceName: seq.name }
+    );
+    patch({ steps });
+  };
+
+  const profilePrograms = programs.filter(
+    (p) => !activeProfileId || p.profileId === activeProfileId
+  );
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  // Inject CSS vars + minimized class directly on DOM node
+  const windowRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = windowRef.current;
+    if (!el) return;
+    el.style.setProperty('--pwx', `${pos.x}px`);
+    el.style.setProperty('--pwy', `${pos.y}px`);
+    el.style.setProperty('--pww', `${pos.width}px`);
+    el.style.setProperty('--pwh', `${pos.height}px`);
+    el.classList.toggle('minimized', pos.minimized);
+  }, [pos]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div ref={windowRef} className="program-window">
+        {/* Header / drag handle */}
+        <div className="program-window-header" onMouseDown={handleHeaderMouseDown}>
+          <span className="toolbox-drag-handle">⠿</span>
+          <span className="program-window-title">▶ Programme graphique</span>
+          <button
+            type="button"
+            className="toolbox-pin"
+            title={pos.minimized ? 'Déplier' : 'Réduire'}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={toggleMinimized}
+          >
+            {pos.minimized ? '+' : '−'}
+          </button>
+          <button
+            type="button"
+            className="toolbox-pin"
+            title="Fermer"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Resize grip */}
+        {!pos.minimized && (
+          <div className="program-window-resize" onMouseDown={handleResizeMouseDown} />
+        )}
+
+        {/* Body */}
+        {!pos.minimized && (
+          <div className="program-window-body">
+            <div className="program-layout">
+              {/* Left sidebar */}
+              <aside className="program-sidebar">
+                <div className="program-sidebar-head">Programmes</div>
+
+                {loading && (
+                  <span className="picker-msg">Chargement…</span>
+                )}
+
+                {profilePrograms.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`program-sidebar-item${selectedId === p.id ? ' active' : ''}`}
+                    onClick={() => handleSelect(p.id)}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+
+                {profilePrograms.length === 0 && !loading && (
+                  <span className="picker-msg">Aucun programme</span>
+                )}
+
+                <button type="button" className="btn btn-sm program-new-btn" onClick={handleNew}>
+                  + Nouveau
+                </button>
+              </aside>
+
+              {/* Editor */}
+              <div className="program-editor">
+                {!draft ? (
+                  <div className="program-empty-hint">
+                    Sélectionnez un programme<br />ou créez-en un nouveau
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      className="program-name-input"
+                      value={draft.name}
+                      onChange={(e) => patch({ name: e.target.value })}
+                      placeholder="Nom du programme"
+                    />
+
+                    <div className="program-flow">
+                      {/* INIT block */}
+                      <div className="flow-block flow-block-init">
+                        <div className="flow-block-label">🏠 Init</div>
+                        {draft.initPose ? (
+                          <div className="flow-row">
+                            <span className="flow-init-name">{draft.initPoseName}</span>
+                            <button type="button" className="btn btn-sm flow-btn-right" onClick={() => openPicker('init')}>
+                              Changer
+                            </button>
+                            <button type="button" className="flow-step-btn flow-step-btn-del" title="Retirer" onClick={() => patch({ initPose: null, initPoseName: "" })}>×</button>
+                          </div>
+                        ) : (
+                          <div className="flow-row">
+                            <span className="flow-hint">Pose au lancement</span>
+                            <button type="button" className="btn btn-sm flow-btn-right" onClick={() => openPicker('init')}>
+                              Choisir un step…
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Step blocks */}
+                      {draft.steps.map((step, idx) => (
+                        <Fragment key={step.id}>
+                          <div className="flow-arrow">↓</div>
+                          <div className="flow-block flow-block-step">
+                            <div className="flow-block-label">📋 Étape {idx + 1}</div>
+                            <div className="flow-step-btns">
+                              <button type="button" className="flow-step-btn" title="Monter" disabled={idx === 0} onClick={() => moveStep(idx, -1)}>↑</button>
+                              <button type="button" className="flow-step-btn" title="Descendre" disabled={idx === draft.steps.length - 1} onClick={() => moveStep(idx, 1)}>↓</button>
+                              <button type="button" className="flow-step-btn flow-step-btn-del" title="Supprimer" onClick={() => removeStep(idx)}>×</button>
+                            </div>
+
+                            {step.type === 'ref' ? (
+                              <div className="flow-row">
+                                <span className="flow-hint">Séq. :</span>
+                                <select aria-label="Séquence de l'étape" className="flow-select" value={step.sequenceId} onChange={(e) => updateRefSeq(idx, e.target.value)}>
+                                  <option value="">— choisir —</option>
+                                  {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                              </div>
+                            ) : (
+                              <div className="flow-row">
+                                <span className="flow-hint">{step.steps.length} étape{step.steps.length !== 1 ? 's' : ''} inline</span>
+                                <button type="button" className="btn btn-sm flow-btn-right" title="Remplacer par le séquenceur actuel" onClick={() => replaceInlineStep(idx)}>
+                                  Remplacer
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </Fragment>
+                      ))}
+
+                      {/* Add */}
+                      <div className="flow-arrow">↓</div>
+                      {showAddOptions ? (
+                        <div className="flow-add-panel">
+                          <button type="button" className="flow-add-option" onClick={() => openPicker('add-step')}>📂 Depuis une séquence sauvegardée</button>
+                          <button type="button" className="flow-add-option" onClick={addInlineStep}>📍 Capturer le séquenceur actuel</button>
+                          <button type="button" className="flow-add-cancel" onClick={() => setShowAddOptions(false)}>Annuler</button>
+                        </div>
+                      ) : (
+                        <button type="button" className="flow-add-btn" onClick={() => setShowAddOptions(true)}>
+                          + Ajouter une séquence
+                        </button>
+                      )}
+
+                      {/* Loop block */}
+                      <div className="flow-arrow">↓</div>
+                      <div className="flow-block flow-block-loop">
+                        <div className="flow-block-label">🔄 Boucle</div>
+                        <div className="flow-loop-row">
+                          <label className="flow-loop-opt"><input type="radio" name={`loop-${draft.id ?? 'new'}`} checked={draft.loop.type === 'none'} onChange={() => patch({ loop: { type: 'none' } })} /> Fin</label>
+                          <label className="flow-loop-opt"><input type="radio" name={`loop-${draft.id ?? 'new'}`} checked={draft.loop.type === 'init'} onChange={() => patch({ loop: { type: 'init' } })} /> → Init</label>
+                          <label className="flow-loop-opt"><input type="radio" name={`loop-${draft.id ?? 'new'}`} checked={draft.loop.type === 'step'} onChange={() => patch({ loop: { type: 'step', stepId: draft.steps[0]?.id ?? '' } })} /> → Étape</label>
+                          {draft.loop.type === 'step' && (
+                            <select aria-label="Étape cible de la boucle" className="flow-select flow-loop-select" value={draft.loop.stepId} onChange={(e) => patch({ loop: { type: 'step', stepId: e.target.value } })}>
+                              <option value="">—</option>
+                              {draft.steps.map((s, i) => <option key={s.id} value={s.id}>Étape {i + 1}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="program-actions-row">
+                      {draft.id && (
+                        confirmDelete ? (
+                          <>
+                            <span className="text-sm-danger">Confirmer ?</span>
+                            <button type="button" className="btn btn-danger" disabled={deleting} onClick={handleDelete}>{deleting ? "…" : "Supprimer"}</button>
+                            <button type="button" className="btn" onClick={() => setConfirmDelete(false)}>Annuler</button>
+                          </>
+                        ) : (
+                          <button type="button" className="btn btn-danger" onClick={() => setConfirmDelete(true)}>Supprimer</button>
+                        )
+                      )}
+                      <span className="program-spacer" />
+                      <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
+                        {saving ? "Sauvegarde…" : draft.id ? "Enregistrer" : "Créer"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Step picker sub-modal */}
+      <Modal open={showSeqPicker} onClose={() => setShowSeqPicker(false)}>
+        <h3 className="modal-title">
+          {pickerTarget === 'init' ? "Choisir le step d'init" : "Ajouter une séquence"}
+        </h3>
+
+        <label className="modal-field">
+          <span>Séquence</span>
+          <select className="flow-select picker-seq-select" value={pickerSeqId ?? ""} onChange={(e) => setPickerSeqId(e.target.value || null)}>
+            <option value="">— choisir une séquence —</option>
+            {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+
+        {pickerTarget === 'init' && pickerSeqId && (
+          <div className="seq-picker-list">
+            {pickerLoading ? (
+              <p className="picker-msg">Chargement…</p>
+            ) : pickerSteps.length === 0 ? (
+              <p className="picker-msg">Aucun step défini</p>
+            ) : (
+              pickerSteps.map((step) => (
+                <button key={step.id} type="button" className="seq-picker-item" onClick={() => handlePickerStep(step, step.pose)}>
+                  {step.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          {pickerTarget === 'add-step' && pickerSeqId && (
+            <button type="button" className="btn btn-primary" onClick={() => {
+              const seqName = sequences.find((s) => s.id === pickerSeqId)?.name ?? "";
+              if (!draft) return;
+              patch({ steps: [...draft.steps, { id: newStepId(), type: 'ref', sequenceId: pickerSeqId, sequenceName: seqName }] });
+              setShowSeqPicker(false);
+            }}>
+              Ajouter
+            </button>
+          )}
+          <button type="button" className="btn" onClick={() => setShowSeqPicker(false)}>Annuler</button>
+        </div>
+      </Modal>
+    </>
+  );
+}

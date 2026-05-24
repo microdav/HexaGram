@@ -4,6 +4,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useToastStore } from "../store/useToastStore";
 import { Modal } from "./Modal";
 import { ProfileSettingsModal } from "./ProfileSettingsModal";
+import { ProgramModal } from "./ProgramModal";
 
 export function ProfilePanel() {
   const user = useAuthStore((s) => s.user);
@@ -17,6 +18,7 @@ export function ProfilePanel() {
 
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [programsOpen, setProgramsOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -86,9 +88,18 @@ export function ProfilePanel() {
         >
           ⚙
         </button>
+        <button
+          type="button"
+          className="btn btn-icon btn-profile-programs"
+          title="Programmes graphiques"
+          onClick={() => setProgramsOpen(true)}
+        >
+          ▶
+        </button>
       </div>
 
       <ProfileSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ProgramModal open={programsOpen} onClose={() => setProgramsOpen(false)} />
 
       <Modal open={saveModalOpen} onClose={() => setSaveModalOpen(false)}>
         <h3 className="modal-title">Nouveau profil robot</h3>
