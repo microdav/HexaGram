@@ -39,6 +39,10 @@ export interface BodyTransform {
   contacts: LegContact[];
   /** CoG world position (after transform applied). */
   cogWorld: Vector3;
+  /** Dynamic CoG: weighted center of mass of body + all leg segments in world space. */
+  cogDynamic: Vector3;
+  /** True if dynamic CoG vertical projection is strictly inside support polygon. */
+  cogDynamicInside: boolean;
   /** Convex hull of contact tips, in world xz (clockwise or CCW from hull algorithm). */
   supportPolygon: { x: number; z: number }[];
   /** True if CoG vertical projection is strictly inside support polygon. */
@@ -215,6 +219,51 @@ function solveTrigEvent(A: number, B: number, C: number): number | null {
   return Math.min(...candidates);
 }
 
+/** Fraction of total mass attributed to the chassis body vs. all six legs combined. */
+const BODY_MASS_FRACTION = 0.6;
+
+/**
+ * Center of mass of a single leg in the chassis body frame.
+ * Each segment's mass is proportional to its length; mass center = segment midpoint.
+ */
+function computeLegCom(mount: LegMount, pose: Pose, geometry: HexapodGeometry): Vector3 {
+  const coxaDeg = pose[servoIndex(mount.index, "coxa")];
+  const femurDeg = pose[servoIndex(mount.index, "femur")];
+  const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
+  const { coxa, femur, tibia } = geometry.segments;
+
+  const mBase = new Matrix4()
+    .makeTranslation(mount.position[0], mount.position[1], mount.position[2])
+    .multiply(new Matrix4().makeRotationY(degToRad(mount.yawDeg)));
+
+  const mFemurJoint = mBase.clone()
+    .multiply(new Matrix4().makeRotationY(degToRad(coxaDeg)))
+    .multiply(new Matrix4().makeTranslation(coxa, 0, 0));
+
+  const mTibiaJoint = mFemurJoint.clone()
+    .multiply(new Matrix4().makeRotationZ(degToRad(femurDeg)))
+    .multiply(new Matrix4().makeTranslation(femur, 0, 0));
+
+  const mTip = mTibiaJoint.clone()
+    .multiply(new Matrix4().makeRotationZ(degToRad(tibiaDeg)))
+    .multiply(new Matrix4().makeTranslation(tibia, 0, 0));
+
+  const p0 = new Vector3().applyMatrix4(mBase);
+  const p1 = new Vector3().applyMatrix4(mFemurJoint);
+  const p2 = new Vector3().applyMatrix4(mTibiaJoint);
+  const p3 = new Vector3().applyMatrix4(mTip);
+
+  const midCoxa = new Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+  const midFemur = new Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+  const midTibia = new Vector3().addVectors(p2, p3).multiplyScalar(0.5);
+
+  const totalLen = coxa + femur + tibia;
+  return new Vector3()
+    .addScaledVector(midCoxa, coxa / totalLen)
+    .addScaledVector(midFemur, femur / totalLen)
+    .addScaledVector(midTibia, tibia / totalLen);
+}
+
 /**
  * Compute the rigid-body transform under static physics:
  *  - foot tips at lowest level form the support polygon
@@ -246,11 +295,21 @@ export function computeBodyTransform(
         });
       }
     });
+    const qId = new Quaternion();
+    const cogBodyWorld = cogBody.clone().add(t);
+    const legMassFrac = (1 - BODY_MASS_FRACTION) / mounts.length;
+    const cogDynamic = cogBodyWorld.clone().multiplyScalar(BODY_MASS_FRACTION);
+    for (const mount of mounts) {
+      const legComBody = computeLegCom(mount, pose, geometry);
+      cogDynamic.addScaledVector(transformPoint(legComBody, qId, t), legMassFrac);
+    }
     return {
       position: t,
       quaternion: new Quaternion(),
       contacts,
-      cogWorld: cogBody.clone().add(t),
+      cogWorld: cogBodyWorld,
+      cogDynamic,
+      cogDynamicInside: false,
       supportPolygon: [],
       cogInside: false,
     };
@@ -424,6 +483,16 @@ export function computeBodyTransform(
     cogInside = false;
   }
 
+  const legMassFrac = (1 - BODY_MASS_FRACTION) / mounts.length;
+  const cogDynamic = cogWorld.clone().multiplyScalar(BODY_MASS_FRACTION);
+  for (const mount of mounts) {
+    const legComBody = computeLegCom(mount, pose, geometry);
+    cogDynamic.addScaledVector(transformPoint(legComBody, state.q, state.t), legMassFrac);
+  }
+  const cogDynamicInside = supportPolygon.length >= 3
+    ? !stableOnEdge && pointInPolygonXZ({ x: cogDynamic.x, z: cogDynamic.z }, supportPolygon)
+    : false;
+
   // Avoid unused warning while keeping the variable for potential future use.
   void contactIndices;
 
@@ -432,6 +501,8 @@ export function computeBodyTransform(
     quaternion: state.q.clone(),
     contacts,
     cogWorld,
+    cogDynamic,
+    cogDynamicInside,
     supportPolygon,
     cogInside,
   };

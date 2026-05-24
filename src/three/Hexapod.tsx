@@ -146,6 +146,8 @@ export function Hexapod() {
         cogWorld={transform.cogWorld}
         supportPolygon={transform.supportPolygon}
         cogInside={transform.cogInside}
+        cogDynamic={transform.cogDynamic}
+        cogDynamicInside={transform.cogDynamicInside}
       />
     </>
   );

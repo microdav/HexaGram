@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { BufferGeometry, DoubleSide, Float32BufferAttribute, PerspectiveCamera, Vector3 } from "three";
+import { BufferGeometry, DoubleSide, Float32BufferAttribute, Line, LineDashedMaterial, PerspectiveCamera, Vector3 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import type { LegContact } from "../model/kinematics";
@@ -10,6 +10,8 @@ interface ContactMarkersProps {
   cogWorld: Vector3;
   supportPolygon: { x: number; z: number }[];
   cogInside: boolean;
+  cogDynamic: Vector3;
+  cogDynamicInside: boolean;
 }
 
 const CONTACT_COLOR = "#1e3a8a";
@@ -205,11 +207,75 @@ function CogDragHandle({
   );
 }
 
+function DynamicCogMarker({
+  cogDynamic,
+  cogDynamicInside,
+}: {
+  cogDynamic: Vector3;
+  cogDynamicInside: boolean;
+}) {
+  const color = cogDynamicInside ? COG_STABLE : COG_UNSTABLE;
+
+  const vertLine = useMemo(() => {
+    const g = new BufferGeometry();
+    g.setAttribute(
+      "position",
+      new Float32BufferAttribute(
+        [cogDynamic.x, cogDynamic.y, cogDynamic.z, cogDynamic.x, 0.001, cogDynamic.z],
+        3
+      )
+    );
+    const mat = new LineDashedMaterial({ color, dashSize: 0.015, gapSize: 0.01, transparent: true, opacity: 0.55 });
+    const line = new Line(g, mat);
+    line.computeLineDistances();
+    return line;
+  }, [cogDynamic.x, cogDynamic.y, cogDynamic.z, color]);
+
+  const groundCircle = useMemo(() => {
+    const segments = 48;
+    const r = 0.018;
+    const pos: number[] = [];
+    for (let i = 0; i <= segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      pos.push(cogDynamic.x + Math.cos(a) * r, 0.0013, cogDynamic.z + Math.sin(a) * r);
+    }
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+    const mat = new LineDashedMaterial({ color, dashSize: 0.01, gapSize: 0.007, transparent: true, opacity: 0.8 });
+    const line = new Line(g, mat);
+    line.computeLineDistances();
+    return line;
+  }, [cogDynamic.x, cogDynamic.z, color]);
+
+  useEffect(() => () => {
+    vertLine.geometry.dispose();
+    (vertLine.material as LineDashedMaterial).dispose();
+  }, [vertLine]);
+
+  useEffect(() => () => {
+    groundCircle.geometry.dispose();
+    (groundCircle.material as LineDashedMaterial).dispose();
+  }, [groundCircle]);
+
+  return (
+    <>
+      <mesh position={[cogDynamic.x, cogDynamic.y, cogDynamic.z]}>
+        <sphereGeometry args={[0.009, 16, 12]} />
+        <meshBasicMaterial color={color} transparent opacity={0.65} />
+      </mesh>
+      <primitive object={vertLine} />
+      <primitive object={groundCircle} />
+    </>
+  );
+}
+
 export function ContactMarkers({
   contacts,
   cogWorld,
   supportPolygon,
   cogInside,
+  cogDynamic,
+  cogDynamicInside,
 }: ContactMarkersProps) {
   const cogColor = cogInside ? COG_STABLE : COG_UNSTABLE;
 
@@ -231,6 +297,7 @@ export function ContactMarkers({
       <PolygonOutline polygon={supportPolygon} color={cogColor} />
       <CogVerticalLine cogWorld={cogWorld} color={cogColor} />
       <CogDragHandle cogWorld={cogWorld} cogColor={cogColor} />
+      <DynamicCogMarker cogDynamic={cogDynamic} cogDynamicInside={cogDynamicInside} />
     </>
   );
 }
