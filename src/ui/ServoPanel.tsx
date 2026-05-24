@@ -9,7 +9,8 @@ const JOINT_LABEL: Record<string, string> = {
   tibia: "Tibia (Z)",
 };
 
-export function ServoPanel() {
+export function ServoGroupContent({ side }: { side: 'left' | 'right' }) {
+  const legStart = side === 'left' ? 0 : 3;
   const pose = useHexapodStore((s) => s.pose);
   const setServoAngle = useHexapodStore((s) => s.setServoAngle);
   const resetPose = useHexapodStore((s) => s.resetPose);
@@ -22,77 +23,78 @@ export function ServoPanel() {
   );
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <h2>Servos (18)</h2>
-        <button type="button" className="btn" onClick={resetPose}>
-          Réinitialiser
-        </button>
-      </div>
+    <>
+      {[0, 1, 2].map((i) => {
+        const legIdx = legStart + i;
+        return (
+          <div className="leg-group" key={legIdx}>
+            <div className="leg-title">{LEG_NAMES[legIdx]}</div>
+            {SERVOS.filter((s) => s.legIndex === legIdx).map((s) => {
+              const value = pose[s.id];
+              const isFemurLocked =
+                s.joint === "femur" && gravityEnabled && contactLegSet.has(s.legIndex);
 
-      {LEG_NAMES.map((name, legIdx) => (
-        <div className="leg-group" key={legIdx}>
-          <div className="leg-title">{name}</div>
-          {SERVOS.filter((s) => s.legIndex === legIdx).map((s) => {
-            const value = pose[s.id];
-            const isFemurLocked =
-              s.joint === "femur" && gravityEnabled && contactLegSet.has(s.legIndex);
+              const LOCK_TOL_DEG = 5;
+              const lockedEndDeg = Math.max(s.minDeg, value - LOCK_TOL_DEG);
+              const lockedPct = isFemurLocked
+                ? ((lockedEndDeg - s.minDeg) / (s.maxDeg - s.minDeg)) * 100
+                : 0;
+              const trackStyle: CSSProperties | undefined = isFemurLocked
+                ? ({
+                    "--track-bg": `linear-gradient(to right, #3a3a3a 0%, #3a3a3a ${lockedPct}%, var(--bg) ${lockedPct}%, var(--bg) 100%)`,
+                  } as CSSProperties)
+                : undefined;
 
-            // Visual locked zone: grey track from minDeg up to (value − 5°),
-            // so the thumb at `value` is shown 5° clear of the grey boundary.
-            // The slider's min/max attributes stay constant — only the gradient
-            // moves with the current value. onChange enforces the strict lock.
-            const LOCK_TOL_DEG = 5;
-            const lockedEndDeg = Math.max(s.minDeg, value - LOCK_TOL_DEG);
-            const lockedPct = isFemurLocked
-              ? ((lockedEndDeg - s.minDeg) / (s.maxDeg - s.minDeg)) * 100
-              : 0;
-            const trackStyle: CSSProperties | undefined = isFemurLocked
-              ? ({
-                  "--track-bg": `linear-gradient(to right, #3a3a3a 0%, #3a3a3a ${lockedPct}%, var(--bg) ${lockedPct}%, var(--bg) 100%)`,
-                } as CSSProperties)
-              : undefined;
-
-            return (
-              <div className="servo-row" key={s.id}>
-                <label className="servo-label">
-                  <span>
-                    {JOINT_LABEL[s.joint]}
-                    {isFemurLocked && (
-                      <span
-                        className="lock-badge"
-                        title="Verrouillé par la gravité (patte en contact) — descente bloquée"
-                      >
-                        🔒
-                      </span>
-                    )}
-                  </span>
-                  <span className="servo-val">{value.toFixed(0)}°</span>
-                </label>
-                <input
-                  type="range"
-                  aria-label={`${LEG_NAMES[s.legIndex]} — ${JOINT_LABEL[s.joint]}`}
-                  className={isFemurLocked ? "locked" : undefined}
-                  style={trackStyle}
-                  min={s.minDeg}
-                  max={s.maxDeg}
-                  step={1}
-                  value={value}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (isFemurLocked && v < lockedEndDeg) return;
-                    setServoAngle(s.id, v);
-                  }}
-                />
-                <div className="servo-range">
-                  <span>{s.minDeg}°</span>
-                  <span>{s.maxDeg}°</span>
+              return (
+                <div className="servo-row" key={s.id}>
+                  <label className="servo-label">
+                    <span>
+                      {JOINT_LABEL[s.joint]}
+                      {isFemurLocked && (
+                        <span
+                          className="lock-badge"
+                          title="Verrouillé par la gravité (patte en contact) — descente bloquée"
+                        >
+                          🔒
+                        </span>
+                      )}
+                    </span>
+                    <span className="servo-val">{value.toFixed(0)}°</span>
+                  </label>
+                  <input
+                    type="range"
+                    aria-label={`${LEG_NAMES[s.legIndex]} — ${JOINT_LABEL[s.joint]}`}
+                    className={isFemurLocked ? "locked" : undefined}
+                    style={trackStyle}
+                    min={s.minDeg}
+                    max={s.maxDeg}
+                    step={1}
+                    value={value}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (isFemurLocked && v < lockedEndDeg) return;
+                      setServoAngle(s.id, v);
+                    }}
+                  />
+                  {s.joint === "coxa" && legIdx === legStart && (
+                    <div className="servo-range">
+                      <span>{s.minDeg}°</span>
+                      <span>{s.maxDeg}°</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        );
+      })}
+      {side === 'left' && (
+        <div className="toolbox-reset">
+          <button type="button" className="btn" onClick={resetPose}>
+            Réinitialiser tout
+          </button>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }

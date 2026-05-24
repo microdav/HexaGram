@@ -39,6 +39,13 @@ const KeyframeSchema = z.object({
   createdAt: z.number(),
 });
 
+const ToolboxConfigSchema = z.object({
+  panel: z.enum(["left", "right"]).nullable(),
+  order: z.number(),
+  minimized: z.boolean(),
+  floatPos: z.object({ x: z.number(), y: z.number() }),
+});
+
 export const ProfileDataSchema = z.object({
   version: z.literal(1),
   description: z.string().optional(),
@@ -52,6 +59,7 @@ export const ProfileDataSchema = z.object({
     cogAxisLock: z.object({ x: z.boolean(), y: z.boolean(), z: z.boolean() }).optional(),
   }),
   servoCalibration: ServoCalibrationSchema.optional(),
+  toolboxLayout: z.record(ToolboxConfigSchema).optional(),
 });
 
 export const CreateProfileSchema = z.object({

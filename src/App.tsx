@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { Scene } from "./three/Scene";
-import { ServoPanel } from "./ui/ServoPanel";
-import { GeometryPanel } from "./ui/GeometryPanel";
 import { PoseList } from "./ui/PoseList";
 import { SimulationPanel } from "./ui/SimulationPanel";
 import { MirrorPanel } from "./ui/MirrorPanel";
@@ -11,8 +9,10 @@ import { ProfilePanel } from "./ui/ProfilePanel";
 import { Toast } from "./ui/Toast";
 import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
+import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
+import { useToolboxStore } from "./store/useToolboxStore";
 
 export default function App() {
   const [leftOpen, setLeftOpen] = useState(true);
@@ -25,6 +25,21 @@ export default function App() {
   const clearProfiles = useProfilesStore((s) => s.clear);
 
   useEffect(() => { bootstrap(); }, []);
+
+  // Auto-save toolbox layout to the active profile after any move/minimize
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const unsub = useToolboxStore.subscribe((state, prev) => {
+      if (state.configs === prev.configs) return;
+      const { activeProfileId } = useProfilesStore.getState();
+      if (!activeProfileId) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        useProfilesStore.getState().update(activeProfileId);
+      }, 1500);
+    });
+    return () => { unsub(); clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -52,10 +67,13 @@ export default function App() {
       <Toast />
 
       <main className={layoutClass}>
-        <aside className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}>
+        <aside
+          className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}
+          data-dock-panel="left"
+        >
           <ProfilePanel />
           <SimulationPanel />
-          <GeometryPanel />
+          <ToolboxSlot panel="left" />
           <PoseList />
         </aside>
         <button
@@ -81,11 +99,16 @@ export default function App() {
         >
           {rightOpen ? "›" : "‹"}
         </button>
-        <aside className={`sidebar sidebar-right${rightOpen ? "" : " collapsed"}`}>
+        <aside
+          className={`sidebar sidebar-right${rightOpen ? "" : " collapsed"}`}
+          data-dock-panel="right"
+        >
           <MirrorPanel />
-          <ServoPanel />
+          <ToolboxSlot panel="right" />
         </aside>
       </main>
+
+      <FloatingToolboxes />
     </div>
   );
 }
