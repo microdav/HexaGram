@@ -4,6 +4,7 @@ import { GizmoHelper, GizmoViewcube, Grid, OrbitControls } from "@react-three/dr
 import { Hexapod } from "./Hexapod";
 import { Compass } from "./Compass";
 import { useHexapodStore } from "../store/useHexapodStore";
+import { useCollisions } from "../store/useCollisions";
 
 const CAM_KEY = "hexagram.camera";
 
@@ -82,6 +83,17 @@ function CameraTracker() {
 
 const DEFAULT_CAM_POS: [number, number, number] = [0.55, 0.4, 0.55];
 
+function CollisionBanner() {
+  const collisions = useCollisions();
+  if (!collisions.hasCollision) return null;
+  return (
+    <div className="collision-banner">
+      <span className="collision-banner-icon">▼</span>
+      <span>Collision détectée</span>
+    </div>
+  );
+}
+
 export function Scene() {
   // Untyped: drei's OrbitControls ref shape is OrbitControlsImpl from three-stdlib;
   // we only need .reset() so we keep it loose.
@@ -96,6 +108,7 @@ export function Scene() {
 
   return (
     <div className="viewer-inner">
+      <CollisionBanner />
       <Canvas
         shadows
         camera={{ position: initCamPos, fov: 45, near: 0.01, far: 50 }}

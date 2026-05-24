@@ -145,9 +145,27 @@ par défaut.
 - **Caméra figée** pendant le drag (OrbitControls désactivés).
 - Retour visuel : sphère jaune au survol, verte pendant le drag.
 
+#### Détection de collisions
+
+- **Détection en temps réel** à chaque changement d'angle : algorithme de distance
+  minimale entre capsules (segment-segment 3D exact).
+- **Collisions patte-patte** : tous les couples de segments entre pattes différentes
+  sont testés à chaque frame.
+- **Collisions patte-corps** (option) : teste l'intrusion des segments fémur/tibia
+  dans le volume du châssis (AABB).
+- **Coloration des segments** : les segments en collision passent en rouge avec halo
+  émissif ; les segments sains restent jaunes.
+- **Flèche blanche oscillante** dans l'espace 3D, pointant vers le centre de la
+  collision la plus sévère.
+- **Bandeau « Collision détectée »** en overlay rouge en haut de la vue 3D.
+- Configuration via l'onglet **Collisions** dans les paramètres du profil :
+  - Activer / désactiver l'affichage (défaut : activé)
+  - Inclure ou non le corps dans la détection (défaut : pattes seulement)
+  - Afficher ou masquer la flèche de marquage (défaut : activée)
+- Préférences persistées dans le profil robot.
+
 ### Ce qui n'est pas encore fait
 
-- **Séquenceur** : timeline avec durées par keyframe, interpolation, lecture animée.
 - **Limites servo réelles** : actuellement valeurs génériques, à remplacer par les
   plages mécaniques mesurées sur le robot.
 - **Communication avec le robot** : abstraction transport + Web Serial / BLE / WiFi,
@@ -179,27 +197,31 @@ src/
 │   ├── hexapod.ts          Dimensions, ancrages, table des 18 servos
 │   ├── servo.ts            Définition d'un servo, helpers d'angle
 │   ├── pose.ts             Type Pose (18 angles), keyframes
-│   └── kinematics.ts       Forward kinematics, plan d'appui, transform corps
+│   ├── kinematics.ts       Forward kinematics, plan d'appui, transform corps
+│   └── collisions.ts       Détection segment-segment et segment-AABB
 ├── three/              Composants 3D React-Three-Fiber
 │   ├── Scene.tsx           Canvas principal, lumières, grille, persistence caméra
 │   ├── Hexapod.tsx         Châssis, flèches d'orientation, lift gravité
-│   ├── Leg.tsx             Patte articulée (3 segments)
+│   ├── Leg.tsx             Patte articulée (3 segments, coloration collision)
+│   ├── CollisionMarker.tsx Flèche 3D oscillante sur le centre de collision
 │   ├── ContactMarkers.tsx  Marqueurs de contact + CoG drag handle
 │   └── Compass.tsx         Boussole 3D + indicateurs pitch/roll
 ├── ui/                 Panneaux HTML
-│   ├── ProfilePanel.tsx    Sélecteur de profil robot + sauvegarde
-│   ├── SimulationPanel.tsx Toggles gravité / transparence + copie état
-│   ├── GeometryPanel.tsx   Saisie dimensions + centre de gravité
-│   ├── ServoPanel.tsx      Sliders + verrouillage gravité
-│   ├── MirrorPanel.tsx     Toggle mode miroir
-│   ├── PoseList.tsx        Capture / restauration des poses
-│   ├── AuthModal.tsx       Modal inscription / connexion
-│   ├── UserButton.tsx      Bouton utilisateur connecté
-│   ├── Modal.tsx           Composant modal générique
-│   └── Toast.tsx           Notification toast 3 secondes
+│   ├── ProfilePanel.tsx         Sélecteur de profil robot + sauvegarde
+│   ├── ProfileSettingsModal.tsx Paramètres profil (général, servos, collisions)
+│   ├── SimulationPanel.tsx      Toggles gravité / transparence + copie état
+│   ├── GeometryPanel.tsx        Saisie dimensions + centre de gravité
+│   ├── ServoPanel.tsx           Sliders + verrouillage gravité
+│   ├── MirrorPanel.tsx          Toggle mode miroir
+│   ├── PoseList.tsx             Capture / restauration des poses
+│   ├── AuthModal.tsx            Modal inscription / connexion
+│   ├── UserButton.tsx           Bouton utilisateur connecté
+│   ├── Modal.tsx                Composant modal générique
+│   └── Toast.tsx                Notification toast 3 secondes
 ├── store/              État global Zustand
-│   ├── useHexapodStore.ts   Pose, géométrie, CoG, options, sérialisation profil
+│   ├── useHexapodStore.ts   Pose, géométrie, CoG, collisionPrefs, sérialisation
 │   ├── useBodyTransform.ts  Hook : position/rotation corps + polygone d'appui
+│   ├── useCollisions.ts     Hook : détection de collisions mémoïsée
 │   ├── useProfilesStore.ts  CRUD profils robot (API serveur)
 │   ├── useAuthStore.ts      Authentification JWT
 │   └── useToastStore.ts     Notifications toast
@@ -258,7 +280,8 @@ Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy — disponible s
 | 0 | Setup projet (Vite + TS + R3F + Zustand) | ✅ |
 | 1 | POC visuel : modèle 3D, sliders, gravité, capture de poses | ✅ |
 | 1b | Profils robot, comptes utilisateur, CoG drag, persistance | ✅ |
-| 2 | Séquenceur : timeline, interpolation, lecture animée, persistance | 🔜 |
+| 1c | Détection de collisions 3D (patte-patte et patte-corps) | ✅ |
+| 2 | Séquenceur : timeline, interpolation, lecture animée, persistance | 🔄 |
 | 3 | Cinématique inverse (manipulation directe en 3D) | ✅ |
 | 4 | Communication robot (Web Serial / BLE / WiFi) | 🔜 |
 | 5 | Packaging Tauri (Windows) + PWA (tablette) | 🔜 |

@@ -3,7 +3,9 @@ import { DoubleSide, Shape } from "three";
 import { computeLegMounts } from "../model/hexapod";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useBodyTransform } from "../store/useBodyTransform";
+import { useCollisions } from "../store/useCollisions";
 import { ContactMarkers } from "./ContactMarkers";
+import { CollisionMarker } from "./CollisionMarker";
 import { Leg } from "./Leg";
 
 const ARROW_COLOR = "#1a1a1a";
@@ -61,8 +63,23 @@ export function Hexapod() {
   const geometry = useHexapodStore((s) => s.geometry);
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
+  const showArrow = useHexapodStore((s) => s.collisionPrefs.showArrow);
   const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
   const transform = useBodyTransform();
+  const collisions = useCollisions();
+
+  // Pour chaque patte, calcule l'ensemble des segments en collision (0/1/2)
+  const legCollisionMap = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (const key of collisions.collidingSegments) {
+      const [legStr, segStr] = key.split("-");
+      const legIndex = parseInt(legStr, 10);
+      const seg = parseInt(segStr, 10);
+      if (!map.has(legIndex)) map.set(legIndex, new Set());
+      map.get(legIndex)!.add(seg);
+    }
+    return map;
+  }, [collisions.collidingSegments]);
 
   return (
     <>
@@ -116,8 +133,13 @@ export function Hexapod() {
         </mesh>
 
         {mounts.map((m) => (
-          <Leg key={m.index} mount={m} />
+          <Leg key={m.index} mount={m} collidingSegs={legCollisionMap.get(m.index)} />
         ))}
+
+        {/* Flèche 3D de marquage de collision */}
+        {collisions.hasCollision && showArrow && collisions.center && (
+          <CollisionMarker center={collisions.center} />
+        )}
       </group>
 
       {gravityEnabled && (

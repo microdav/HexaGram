@@ -12,9 +12,12 @@ import { ServoArc } from "./ServoArc";
 
 interface LegProps {
   mount: LegMount;
+  /** Ensemble des segments en collision pour cette patte (0=coxa, 1=fémur, 2=tibia) */
+  collidingSegs?: Set<number>;
 }
 
 const HEXAPOD_YELLOW = "#f5c518";
+const COLLISION_RED = "#ef4444";
 const JOINT_COLOR = "#222";
 const JOINT_HOVER_COLOR = "#7ab8ff";
 
@@ -34,7 +37,7 @@ interface DragStart {
   bodyQuat: Quaternion; // body world quaternion at drag start
 }
 
-export function Leg({ mount }: LegProps) {
+export function Leg({ mount, collidingSegs }: LegProps) {
   const pose = useHexapodStore((s) => s.pose);
   const segs = useHexapodStore((s) => s.geometry.segments);
   const setServoAngle = useHexapodStore((s) => s.setServoAngle);
@@ -251,6 +254,10 @@ export function Leg({ mount }: LegProps) {
     footState === "hover" ? FOOT_HOVER :
     FOOT_NORMAL;
 
+  const coxaColor  = collidingSegs?.has(0) ? COLLISION_RED : HEXAPOD_YELLOW;
+  const femurColor = collidingSegs?.has(1) ? COLLISION_RED : HEXAPOD_YELLOW;
+  const tibiaColor = collidingSegs?.has(2) ? COLLISION_RED : HEXAPOD_YELLOW;
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <group position={mount.position} rotation={[0, degToRad(mount.yawDeg), 0]}>
@@ -279,7 +286,7 @@ export function Leg({ mount }: LegProps) {
       <group rotation={[0, degToRad(coxaDeg), 0]}>
         <mesh position={[segs.coxa / 2, 0, 0]}>
           <boxGeometry args={[segs.coxa, 0.018, 0.018]} />
-          <meshStandardMaterial color={HEXAPOD_YELLOW} />
+          <meshStandardMaterial color={coxaColor} emissive={collidingSegs?.has(0) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(0) ? 0.4 : 0} />
         </mesh>
         <group position={[segs.coxa, 0, 0]}>
           {/* Femur joint + arc (rotation around Z) */}
@@ -307,7 +314,7 @@ export function Leg({ mount }: LegProps) {
           <group rotation={[0, 0, degToRad(femurDeg)]}>
             <mesh position={[segs.femur / 2, 0, 0]}>
               <boxGeometry args={[segs.femur, 0.016, 0.016]} />
-              <meshStandardMaterial color={HEXAPOD_YELLOW} />
+              <meshStandardMaterial color={femurColor} emissive={collidingSegs?.has(1) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(1) ? 0.4 : 0} />
             </mesh>
             <group position={[segs.femur, 0, 0]}>
               {/* Tibia joint + arc (knee, rotation around Z) */}
@@ -335,7 +342,7 @@ export function Leg({ mount }: LegProps) {
               <group rotation={[0, 0, degToRad(tibiaDeg)]}>
                 <mesh position={[segs.tibia / 2, 0, 0]}>
                   <boxGeometry args={[segs.tibia, 0.012, 0.012]} />
-                  <meshStandardMaterial color={HEXAPOD_YELLOW} />
+                  <meshStandardMaterial color={tibiaColor} emissive={collidingSegs?.has(2) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(2) ? 0.4 : 0} />
                 </mesh>
                 {/* Foot tip — draggable */}
                 <mesh

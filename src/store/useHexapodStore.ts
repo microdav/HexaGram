@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod";
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
+import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
 import { useToastStore } from "./useToastStore";
 import { useToolboxStore, type ToolboxConfig, type UiPrefs } from "./useToolboxStore";
 
@@ -42,6 +43,7 @@ export interface RobotProfileData {
     gravityEnabled: boolean;
     bodyTransparent: boolean;
     cogAxisLock: { x: boolean; y: boolean; z: boolean };
+    collisionPrefs?: CollisionPrefs;
   };
   servoCalibration?: Record<number, ServoCalibration>;
   toolboxLayout?: Record<string, ToolboxConfig>;
@@ -68,6 +70,7 @@ interface HexapodState {
   description: string;
   globalServoTypeId: string | null;
   servoCalibration: Record<number, ServoCalibration>;
+  collisionPrefs: CollisionPrefs;
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
@@ -87,6 +90,7 @@ interface HexapodState {
   setDescription: (d: string) => void;
   setGlobalServoTypeId: (id: string | null) => void;
   setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
+  setCollisionPrefs: (prefs: Partial<CollisionPrefs>) => void;
   applyPose: (pose: Pose) => void;
   serializeProfile: () => RobotProfileData;
   applyProfile: (data: unknown) => void;
@@ -114,6 +118,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   description: "",
   globalServoTypeId: null,
   servoCalibration: {},
+  collisionPrefs: { ...DEFAULT_COLLISION_PREFS },
 
   setServoAngle: (id, deg) =>
     set((state) => {
@@ -195,6 +200,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   setServoCalibrationAll: (calib) => set({ servoCalibration: calib }),
 
+  setCollisionPrefs: (prefs) =>
+    set((s) => ({ collisionPrefs: { ...s.collisionPrefs, ...prefs } })),
+
   setArcShown: (servoId, shown) =>
     set((s) => {
       if (servoId < 0 || servoId > 31) return s;
@@ -216,6 +224,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         gravityEnabled: s.gravityEnabled,
         bodyTransparent: s.bodyTransparent,
         cogAxisLock: { ...s.cogAxisLock },
+        collisionPrefs: { ...s.collisionPrefs },
       },
       servoCalibration: Object.keys(s.servoCalibration).length > 0
         ? { ...s.servoCalibration }
@@ -249,6 +258,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       gravityEnabled: d.prefs.gravityEnabled,
       bodyTransparent: d.prefs.bodyTransparent,
       cogAxisLock: d.prefs.cogAxisLock ?? { x: false, y: false, z: false },
+      collisionPrefs: { ...DEFAULT_COLLISION_PREFS, ...(d.prefs.collisionPrefs ?? {}) },
       description: d.description ?? "",
       globalServoTypeId: d.globalServoTypeId ?? null,
       servoCalibration: calib,

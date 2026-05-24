@@ -11,11 +11,12 @@ import {
   useHexapodStore,
   type ServoCalibration,
 } from "../store/useHexapodStore";
+import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
 import { useProfilesStore } from "../store/useProfilesStore";
 import { useToastStore } from "../store/useToastStore";
 import { Modal } from "./Modal";
 
-type Tab = "general" | "servos";
+type Tab = "general" | "servos" | "collisions";
 
 const JOINTS = ["coxa", "femur", "tibia"] as const;
 const JOINT_LABELS: Record<string, string> = { coxa: "Coxa", femur: "Fémur", tibia: "Tibia" };
@@ -463,6 +464,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const [customTypes, setCustomTypes] = useState<ServoSpec[]>([]);
   const [showNewServoForm, setShowNewServoForm] = useState(false);
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
+  const [localCollisionPrefs, setLocalCollisionPrefs] = useState<CollisionPrefs>({ ...DEFAULT_COLLISION_PREFS });
   const [saving, setSaving] = useState(false);
 
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
@@ -474,9 +476,11 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const storeGlobalServoTypeId = useHexapodStore((s) => s.globalServoTypeId);
   const storeCalibration = useHexapodStore((s) => s.servoCalibration);
   const storeGeometry = useHexapodStore((s) => s.geometry);
+  const storeCollisionPrefs = useHexapodStore((s) => s.collisionPrefs);
   const setDescription = useHexapodStore((s) => s.setDescription);
   const setGlobalServoTypeIdStore = useHexapodStore((s) => s.setGlobalServoTypeId);
   const setServoCalibrationAll = useHexapodStore((s) => s.setServoCalibrationAll);
+  const setCollisionPrefs = useHexapodStore((s) => s.setCollisionPrefs);
   const setGeometry = useHexapodStore((s) => s.setGeometry);
 
   const showToast = useToastStore((s) => s.show);
@@ -491,6 +495,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setLocalLegLayout(storeGeometry.legLayout ?? "star");
     setGlobalServoTypeId(storeGlobalServoTypeId);
     setCalibration({ ...storeCalibration });
+    setLocalCollisionPrefs({ ...storeCollisionPrefs });
     setCustomTypes(loadCustomServoTypes());
     setShowNewServoForm(false);
     setExpandedLegs(new Set());
@@ -541,6 +546,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
       setGeometry({ legLayout: localLegLayout });
       setGlobalServoTypeIdStore(globalServoTypeId);
       setServoCalibrationAll(calibration);
+      setCollisionPrefs(localCollisionPrefs);
       if (activeProfileId) {
         await update(activeProfileId);
         showToast("Paramètres enregistrés");
@@ -571,6 +577,13 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
             onClick={() => setTab("servos")}
           >
             Servo-Moteurs
+          </button>
+          <button
+            type="button"
+            className={`settings-tab${tab === "collisions" ? " active" : ""}`}
+            onClick={() => setTab("collisions")}
+          >
+            Collisions
           </button>
         </nav>
 
@@ -720,6 +733,50 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          {/* Tab Collisions */}
+          {tab === "collisions" && (
+            <div className="collision-prefs-tab">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={localCollisionPrefs.enabled}
+                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, enabled: e.target.checked }))}
+                />
+                <span>Activer l&apos;affichage des collisions</span>
+                <span className="hint">
+                  {localCollisionPrefs.enabled
+                    ? "Les segments en collision s'affichent en rouge"
+                    : "Détection désactivée"}
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={localCollisionPrefs.includeBody}
+                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, includeBody: e.target.checked }))}
+                />
+                <span>Corps et pattes</span>
+                <span className="hint">
+                  {localCollisionPrefs.includeBody
+                    ? "Détecte aussi les collisions entre les pattes et le châssis"
+                    : "Uniquement les collisions entre pattes"}
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={localCollisionPrefs.showArrow}
+                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, showArrow: e.target.checked }))}
+                />
+                <span>Flèche de marquage</span>
+                <span className="hint">
+                  {localCollisionPrefs.showArrow
+                    ? "Affiche une flèche 3D pointant vers le centre de collision"
+                    : "Pas de flèche de marquage"}
+                </span>
+              </label>
             </div>
           )}
         </div>
