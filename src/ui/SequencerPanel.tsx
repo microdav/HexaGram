@@ -22,6 +22,9 @@ export function SequencerPanel() {
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
+  const [dragColFrom, setDragColFrom] = useState<number | null>(null);
+  const [dragColOver, setDragColOver] = useState<number | null>(null);
+  const [previewColIdx, setPreviewColIdx] = useState<number | null>(null);
 
   const steps = useSequencerStore((s) => s.steps);
   const servoOrder = useSequencerStore((s) => s.servoOrder);
@@ -61,6 +64,7 @@ export function SequencerPanel() {
 
   const startPlayback = useCallback(() => {
     if (useSequencerStore.getState().steps.length === 0) return;
+    setPreviewColIdx(null);
     useSequencerStore.getState().setIsPlaying(true);
     playStepRef.current(0);
   }, []);
@@ -101,6 +105,26 @@ export function SequencerPanel() {
     setDragRowOver(null);
   };
   const onRowDragEnd = () => { setDragRowFrom(null); setDragRowOver(null); };
+
+  // Step column drag-and-drop (horizontal reorder)
+  const onColDragStart = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
+    setDragColFrom(colIdx);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const onColDragOver = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragColOver !== colIdx) setDragColOver(colIdx);
+  };
+  const onColDrop = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
+    e.preventDefault();
+    if (dragColFrom !== null && dragColFrom !== colIdx) {
+      useSequencerStore.getState().moveStep(dragColFrom, colIdx);
+    }
+    setDragColFrom(null);
+    setDragColOver(null);
+  };
+  const onColDragEnd = () => { setDragColFrom(null); setDragColOver(null); };
 
   // Resize du panneau par drag du bord supérieur
   const resizeStartRef = useRef<{ y: number; h: number } | null>(null);
@@ -239,11 +263,28 @@ export function SequencerPanel() {
             {steps.map((step, colIdx) => (
               <div
                 key={step.id}
-                className={`seq-step-col${currentStepIndex === colIdx ? ' active' : ''}`}
+                className={`seq-step-col${currentStepIndex === colIdx || previewColIdx === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
+                draggable
+                onDragStart={(e) => onColDragStart(e, colIdx)}
+                onDragOver={(e) => onColDragOver(e, colIdx)}
+                onDrop={(e) => onColDrop(e, colIdx)}
+                onDragEnd={onColDragEnd}
               >
                 <div className="seq-hdr-cell seq-step-hdr">
                   <span className="seq-step-name" title={step.name}>{step.name}</span>
                   <span className="seq-step-actions">
+                    <button
+                      type="button"
+                      className="seq-icon-btn"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => { setPreviewColIdx(colIdx); useHexapodStore.getState().applyPose(step.pose); }}
+                      title="Prévisualiser cette étape dans la vue 3D"
+                    >
+                      <svg width="11" height="7" viewBox="0 0 11 7" fill="none" aria-hidden="true">
+                        <path d="M5.5 0.5C3 0.5 1 3.5 1 3.5s2 3 4.5 3 4.5-3 4.5-3-2-3-4.5-3z" stroke="currentColor" strokeWidth="0.9"/>
+                        <circle cx="5.5" cy="3.5" r="1.3" fill="currentColor"/>
+                      </svg>
+                    </button>
                     {colIdx > 0 && (
                       <button
                         type="button"

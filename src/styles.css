@@ -1845,6 +1845,7 @@ html, body, #root {
   transition: background 0.35s ease;
 }
 .seq-step-col.active { background: rgba(245, 197, 24, 0.06); }
+.seq-step-col.drag-col-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
 
 .seq-step-hdr {
   justify-content: space-between;
