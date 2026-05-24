@@ -20,6 +20,7 @@ interface SavedSequencesState {
 
   list: () => Promise<void>;
   save: (name: string, steps: SequencerStep[]) => Promise<SavedSequence>;
+  updateSteps: (id: string, steps: SequencerStep[]) => Promise<void>;
   load: (id: string) => Promise<SavedSequence>;
   rename: (id: string, name: string) => Promise<void>;
   duplicate: (id: string, newName: string) => Promise<SavedSequence>;
@@ -49,6 +50,15 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
       activeSequenceId: seq.id,
     }));
     return seq;
+  },
+
+  updateSteps: async (id, steps) => {
+    await api.put(`/sequences/${id}`, { steps });
+    set((s) => ({
+      sequences: s.sequences.map((sq) =>
+        sq.id === id ? { ...sq, updatedAt: Date.now() } : sq
+      ),
+    }));
   },
 
   load: async (id) => {

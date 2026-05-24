@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Pose } from '../model/pose';
+import { SERVOS, LEG_NAMES } from '../model/hexapod';
 
 export type StepType = 'defined' | 'interpolated';
 
@@ -231,7 +232,30 @@ export const useSequencerStore = create<SequencerState>()(
           isPlaying: false,
         })),
 
-      exportJson: () => JSON.stringify({ steps: get().steps }, null, 2),
+      exportJson: () => {
+        const { steps, transitionSpeed, stepDelay, sequenceName } = get();
+        const definedSteps = steps.filter((st) => st.type !== 'interpolated');
+        return JSON.stringify(
+          {
+            name: sequenceName,
+            transitionSpeed,
+            stepDelay,
+            steps: definedSteps.map((st) => ({
+              id: st.id,
+              name: st.name,
+              type: st.type ?? 'defined',
+              pose: Object.fromEntries(
+                SERVOS.map((servo) => [
+                  `${LEG_NAMES[servo.legIndex]} - ${servo.joint} (S${servo.id})`,
+                  +(st.pose[servo.id] ?? 0).toFixed(2),
+                ])
+              ),
+            })),
+          },
+          null,
+          2
+        );
+      },
     }),
     {
       name: 'hexagram-sequencer',

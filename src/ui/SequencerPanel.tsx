@@ -179,17 +179,31 @@ export function SequencerPanel() {
     if (!name) { setSaveModalError('Le nom ne peut pas être vide.'); return; }
     try {
       if (isNewSequence) {
-        // Vide le séquenceur puis crée une séquence vide
         useSequencerStore.getState().loadSteps([], name);
         await useSavedSequencesStore.getState().save(name, []);
       } else {
-        await useSavedSequencesStore.getState().save(name, steps);
+        const definedSteps = useSequencerStore.getState().steps.filter((s) => s.type !== 'interpolated');
+        await useSavedSequencesStore.getState().save(name, definedSteps);
         useSequencerStore.getState().setSequenceName(name);
       }
       setShowSaveModal(false);
     } catch (err) {
       setSaveModalError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
     }
+  };
+
+  // Direct save (overwrite active sequence without asking for name)
+  const handleDirectSave = async () => {
+    const { activeSequenceId } = useSavedSequencesStore.getState();
+    if (!activeSequenceId) {
+      setIsNewSequence(false);
+      setShowSaveModal(true);
+      return;
+    }
+    const definedSteps = useSequencerStore.getState().steps.filter((s) => s.type !== 'interpolated');
+    try {
+      await useSavedSequencesStore.getState().updateSteps(activeSequenceId, definedSteps);
+    } catch { /* ignore — no steps to save */ }
   };
 
   // Load sequence from select
@@ -470,9 +484,9 @@ export function SequencerPanel() {
               <button
                 type="button"
                 className="seq-btn seq-btn-save"
-                onClick={() => { setIsNewSequence(false); setShowSaveModal(true); }}
+                onClick={handleDirectSave}
                 disabled={steps.length === 0}
-                title="Enregistrer la séquence"
+                title={activeSequenceId ? `Enregistrer dans « ${sequenceName} »` : 'Enregistrer la séquence (nouveau nom)'}
               >
                 💾
               </button>
