@@ -411,7 +411,7 @@ export function SequencerPanel() {
               <label className="seq-ctrl">
                 <span className="seq-ctrl-label">Trans.</span>
                 <input
-                  type="range" min="0.1" max="5" step="0.1"
+                  type="range" min="0.1" max="1.5" step="0.1"
                   value={transitionSpeed}
                   onChange={(e) => useSequencerStore.getState().setTransitionSpeed(Number(e.target.value))}
                   title={`Durée de transition : ${transitionSpeed.toFixed(1)} s`}
@@ -422,7 +422,7 @@ export function SequencerPanel() {
               <label className="seq-ctrl">
                 <span className="seq-ctrl-label">Délai</span>
                 <input
-                  type="range" min="0" max="5" step="0.1"
+                  type="range" min="0" max="2" step="0.1"
                   value={stepDelay}
                   onChange={(e) => useSequencerStore.getState().setStepDelay(Number(e.target.value))}
                   title={`Délai après chaque étape : ${stepDelay.toFixed(1)} s`}
