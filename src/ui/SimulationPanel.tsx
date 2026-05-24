@@ -4,7 +4,7 @@ import { useBodyTransform } from "../store/useBodyTransform";
 import { computeFootTip } from "../model/kinematics";
 import { computeLegMounts, LEG_NAMES, SERVOS } from "../model/hexapod";
 
-export function SimulationPanel() {
+export function SimulationContent() {
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const setGravityEnabled = useHexapodStore((s) => s.setGravityEnabled);
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
@@ -82,10 +82,7 @@ export function SimulationPanel() {
   };
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <h2>Simulation</h2>
-      </div>
+    <>
       <label className="toggle-row">
         <input
           type="checkbox"
@@ -115,6 +112,6 @@ export function SimulationPanel() {
       <button type="button" className="copy-state-btn" onClick={handleCopy}>
         {copyStatus ?? "Copier l'état complet"}
       </button>
-    </div>
+    </>
   );
 }

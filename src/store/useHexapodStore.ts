@@ -3,7 +3,7 @@ import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 import { useToastStore } from "./useToastStore";
-import { useToolboxStore, type ToolboxConfig } from "./useToolboxStore";
+import { useToolboxStore, type ToolboxConfig, type UiPrefs } from "./useToolboxStore";
 
 const PREFS_KEY = "hexagram.prefs";
 
@@ -45,6 +45,7 @@ export interface RobotProfileData {
   };
   servoCalibration?: Record<number, ServoCalibration>;
   toolboxLayout?: Record<string, ToolboxConfig>;
+  uiPrefs?: UiPrefs;
 }
 
 interface HexapodState {
@@ -214,6 +215,7 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         ? { ...s.servoCalibration }
         : undefined,
       toolboxLayout: { ...useToolboxStore.getState().configs },
+      uiPrefs: { ...useToolboxStore.getState().uiPrefs },
     };
   },
 
@@ -248,6 +250,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
     });
     if (d.toolboxLayout) {
       useToolboxStore.getState().applyLayout(d.toolboxLayout);
+    }
+    if (d.uiPrefs) {
+      useToolboxStore.getState().applyUiPrefs(d.uiPrefs);
     }
   },
 }));

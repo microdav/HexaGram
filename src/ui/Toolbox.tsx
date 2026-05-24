@@ -12,10 +12,6 @@ export function Toolbox({ id, title, children }: Props) {
   const config = useToolboxStore((s) => s.configs[id]);
   const draggingId = useToolboxStore((s) => s.draggingId);
 
-  // Refs survive across renders within the same component instance.
-  // When a docked toolbox undocks mid-drag, the new floating instance
-  // mounts but the document event handlers still close over the old refs —
-  // that's intentional: drag continues via the old handlers.
   const draggingRef = useRef(false);
   const dragRef = useRef<{
     startMX: number; startMY: number;
@@ -57,8 +53,7 @@ export function Toolbox({ id, title, children }: Props) {
           const ny = dragRef.current.startFY + dy;
           useToolboxStore.getState().setFloatPos(id, { x: nx, y: ny });
 
-          // Detect sidebar under cursor using bounding-box check
-          // (more reliable than elementFromPoint for pointer-events:none elements)
+          // Detect sidebar under cursor
           let hovered: 'left' | 'right' | null = null;
           for (const side of ['left', 'right'] as const) {
             const el = document.querySelector(`[data-dock-panel="${side}"]`);
@@ -71,7 +66,25 @@ export function Toolbox({ id, title, children }: Props) {
               }
             }
           }
-          useToolboxStore.getState().setHoveredPanel(hovered);
+
+          // Compute insert index from Y position relative to docked toolboxes
+          let insertIndex = 0;
+          if (hovered) {
+            const panelEl = document.querySelector(`[data-dock-panel="${hovered}"]`);
+            if (panelEl) {
+              const toolboxEls = panelEl.querySelectorAll('[data-toolbox-id]');
+              insertIndex = toolboxEls.length;
+              for (let i = 0; i < toolboxEls.length; i++) {
+                const r = toolboxEls[i].getBoundingClientRect();
+                if (ev.clientY < r.top + r.height / 2) {
+                  insertIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+
+          useToolboxStore.getState().setHoverState(hovered, insertIndex);
         }
       };
 
@@ -81,7 +94,7 @@ export function Toolbox({ id, title, children }: Props) {
         if (draggingRef.current) {
           const s = useToolboxStore.getState();
           if (s.hoveredPanel) {
-            s.dock(id, s.hoveredPanel);
+            s.dock(id, s.hoveredPanel, s.hoveredInsertIndex);
           } else {
             s.setDragging(null);
             s.setHoveredPanel(null);
@@ -102,21 +115,19 @@ export function Toolbox({ id, title, children }: Props) {
   const isFloating = config.panel === null;
   const isBeingDragged = draggingId === id;
 
-  const style = isFloating
+  const cssVars = isFloating
     ? ({
-        position: 'fixed',
-        left: config.floatPos?.x ?? 300,
-        top: config.floatPos?.y ?? 120,
-        width: 290,
-        zIndex: isBeingDragged ? 200 : 100,
-        pointerEvents: isBeingDragged ? 'none' : 'auto',
+        '--tx': `${config.floatPos?.x ?? 300}px`,
+        '--ty': `${config.floatPos?.y ?? 120}px`,
+        '--tz': String(isBeingDragged ? 200 : 100),
       } as React.CSSProperties)
     : undefined;
 
   return (
     <div
       className={`toolbox${isFloating ? ' toolbox-floating' : ''}${isBeingDragged ? ' toolbox-dragging' : ''}`}
-      style={style}
+      style={cssVars}
+      data-toolbox-id={id}
     >
       <div className="toolbox-header" onMouseDown={handleMouseDown}>
         <span className="toolbox-drag-handle">⠿</span>

@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Scene } from "./three/Scene";
-import { SimulationPanel } from "./ui/SimulationPanel";
 import { MirrorPanel } from "./ui/MirrorPanel";
 import { UserButton } from "./ui/UserButton";
 import { AuthModal } from "./ui/AuthModal";
@@ -15,8 +14,10 @@ import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
 
 export default function App() {
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
+  const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
+  const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
+  const setRightOpen = useToolboxStore((s) => s.setRightOpen);
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
   const { openModal, setOpenModal, bootstrap } = useAuthStore();
   const user = useAuthStore((s) => s.user);
@@ -30,7 +31,7 @@ export default function App() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const unsub = useToolboxStore.subscribe((state, prev) => {
-      if (state.configs === prev.configs) return;
+      if (state.configs === prev.configs && state.uiPrefs === prev.uiPrefs) return;
       const { activeProfileId } = useProfilesStore.getState();
       if (!activeProfileId) return;
       clearTimeout(timer);
@@ -72,7 +73,6 @@ export default function App() {
           data-dock-panel="left"
         >
           <ProfilePanel />
-          <SimulationPanel />
           <ToolboxSlot panel="left" />
         </aside>
         <button

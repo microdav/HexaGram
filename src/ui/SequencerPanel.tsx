@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { DragEvent } from 'react';
 import { useSequencerStore } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
+import { useToolboxStore } from '../store/useToolboxStore';
 import { SERVOS } from '../model/hexapod';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
@@ -16,7 +17,8 @@ const MIN_PANEL_H = 100;
 const MAX_PANEL_H = 700;
 
 export function SequencerPanel() {
-  const [open, setOpen] = useState(false);
+  const seqOpen = useToolboxStore((s) => s.uiPrefs.sequencerOpen);
+  const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
@@ -132,7 +134,7 @@ export function SequencerPanel() {
 
   return (
     <div
-      className={`sequencer-panel${open ? ' open' : ''}${isResizing ? ' resizing' : ''}`}
+      className={`sequencer-panel${seqOpen ? ' open' : ''}${isResizing ? ' resizing' : ''}`}
       // eslint-disable-next-line react/forbid-component-props
       style={{ '--seq-panel-h': `${panelHeight}px` } as React.CSSProperties}
     >
@@ -141,10 +143,10 @@ export function SequencerPanel() {
       <button
         type="button"
         className="seq-panel-handle"
-        onClick={() => setOpen((v) => !v)}
-        title={`${open ? 'Fermer' : 'Ouvrir'} le séquenceur${steps.length > 0 ? ` · ${steps.length} étape${steps.length !== 1 ? 's' : ''}` : ''}`}
+        onClick={() => setSequencerOpen(!seqOpen)}
+        title={`${seqOpen ? 'Fermer' : 'Ouvrir'} le séquenceur${steps.length > 0 ? ` · ${steps.length} étape${steps.length !== 1 ? 's' : ''}` : ''}`}
       >
-        Séquenceur {open ? '▾' : '▴'}
+        Séquenceur {seqOpen ? '▾' : '▴'}
       </button>
 
       {/* ── Contenu collapsible ──────────────────────────────── */}

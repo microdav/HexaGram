@@ -60,6 +60,11 @@ export const ProfileDataSchema = z.object({
   }),
   servoCalibration: ServoCalibrationSchema.optional(),
   toolboxLayout: z.record(ToolboxConfigSchema).optional(),
+  uiPrefs: z.object({
+    leftOpen: z.boolean(),
+    rightOpen: z.boolean(),
+    sequencerOpen: z.boolean(),
+  }).optional(),
 });
 
 export const CreateProfileSchema = z.object({

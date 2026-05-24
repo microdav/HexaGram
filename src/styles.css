@@ -1531,15 +1531,26 @@ html, body, #root {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .toolbox-floating {
+  position: fixed;
+  left: var(--tx, 300px);
+  top: var(--ty, 120px);
+  width: 290px;
+  z-index: var(--tz, 100);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
   border-color: var(--accent);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
 }
 
 .toolbox-dragging {
   opacity: 0.9;
+  pointer-events: none;
+  z-index: 200;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
 }
 
@@ -1591,7 +1602,15 @@ html, body, #root {
   color: var(--text);
 }
 
-.toolbox-body { padding: 10px 12px; }
+.toolbox-body {
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.toolbox-floating .toolbox-body {
+  flex: 1;
+  min-height: 0;
+}
 
 .toolbox-reset {
   display: flex;
@@ -1601,20 +1620,17 @@ html, body, #root {
   border-top: 1px dashed var(--border);
 }
 
-/* ── Dock zones ───────────────────────────────────────────── */
-.dock-zone {
-  border: 2px dashed var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-dim);
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+/* ── Insert markers (drag & drop ordering) ────────────────── */
+.insert-marker {
+  height: 3px;
+  border-radius: 2px;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.1s, box-shadow 0.1s;
 }
-.dock-zone-active {
-  border-color: var(--accent);
-  background: rgba(245, 197, 24, 0.07);
-  color: var(--accent);
+.insert-marker.active {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 
 /* ══════════════════════════════════════════════════════════
