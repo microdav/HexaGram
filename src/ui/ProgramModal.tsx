@@ -178,7 +178,7 @@ export function ProgramModal({ open, onClose }: Props) {
     if (!pickerSeqId) { setPickerSteps([]); return; }
     setPickerLoading(true);
     loadSequence(pickerSeqId)
-      .then((seq) => setPickerSteps(seq.steps.filter((s) => s.type === 'defined')))
+      .then((seq) => setPickerSteps(seq.steps.filter((s) => s.type !== 'interpolated')))
       .catch(() => setPickerSteps([]))
       .finally(() => setPickerLoading(false));
   }, [pickerSeqId]);
@@ -278,7 +278,7 @@ export function ProgramModal({ open, onClose }: Props) {
 
   const addInlineStep = () => {
     if (!draft) return;
-    const defined = sequencerSteps.filter((s) => s.type === 'defined');
+    const defined = sequencerSteps.filter((s) => s.type !== 'interpolated');
     const step: ProgramStep = {
       id: newStepId(), type: 'inline',
       name: `Inline (${defined.length} étape${defined.length !== 1 ? 's' : ''})`,
@@ -290,7 +290,7 @@ export function ProgramModal({ open, onClose }: Props) {
 
   const replaceInlineStep = (idx: number) => {
     if (!draft) return;
-    const defined = sequencerSteps.filter((s) => s.type === 'defined');
+    const defined = sequencerSteps.filter((s) => s.type !== 'interpolated');
     const steps = draft.steps.map((s, i) => {
       if (i !== idx || s.type !== 'inline') return s;
       return { ...s, steps: defined, name: `Inline (${defined.length} étape${defined.length !== 1 ? 's' : ''})` };
