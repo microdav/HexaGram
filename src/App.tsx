@@ -78,7 +78,7 @@ export default function App() {
         <button
           type="button"
           className={`sidebar-handle handle-left${leftOpen ? "" : " collapsed"}`}
-          onClick={() => setLeftOpen((v) => !v)}
+          onClick={() => setLeftOpen(!leftOpen)}
           aria-label={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
           title={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
         >
@@ -92,7 +92,7 @@ export default function App() {
         <button
           type="button"
           className={`sidebar-handle handle-right${rightOpen ? "" : " collapsed"}`}
-          onClick={() => setRightOpen((v) => !v)}
+          onClick={() => setRightOpen(!rightOpen)}
           aria-label={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
           title={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
         >
