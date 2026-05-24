@@ -1617,6 +1617,306 @@ html, body, #root {
   color: var(--accent);
 }
 
+/* ══════════════════════════════════════════════════════════
+   Séquenceur — panneau bas rétractable
+   ══════════════════════════════════════════════════════════ */
+
+.sequencer-panel {
+  position: relative;
+  flex: 0 0 auto;
+  height: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  overflow: visible;        /* laisse l'onglet déborder au-dessus */
+  transition: height 0.25s ease;
+  z-index: 10;
+}
+.sequencer-panel.open { height: var(--seq-panel-h, 258px); }
+.sequencer-panel.resizing { transition: none; }
+
+/* Bord de redimensionnement */
+.seq-resize-handle {
+  flex: 0 0 5px;
+  cursor: ns-resize;
+  background: transparent;
+  position: relative;
+  transition: background 0.15s;
+}
+.seq-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background 0.15s, width 0.15s;
+}
+.seq-resize-handle:hover { background: rgba(245, 197, 24, 0.07); }
+.seq-resize-handle:hover::after { background: var(--accent); width: 56px; }
+
+/* Onglet — même esprit que sidebar-handle, horizontal, centré en haut */
+.seq-panel-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  height: 18px;
+  padding: 0 14px;
+  background: var(--bg-panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-bottom: none;      /* se fond avec le bord supérieur du panneau */
+  border-radius: 6px 6px 0 0;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.seq-panel-handle:hover {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+
+/* Contenu — clippé à la hauteur du panneau */
+.sequencer-content {
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.seq-toolbar {
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.seq-btn {
+  width: 26px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.seq-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.seq-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.seq-btn-active {
+  background: rgba(245, 197, 24, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.seq-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+.seq-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  cursor: default;
+}
+.seq-ctrl-label { color: var(--text-dim); white-space: nowrap; }
+.seq-ctrl input[type="range"] {
+  width: 68px;
+  height: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.seq-ctrl-val {
+  color: var(--accent);
+  font-size: 11px;
+  min-width: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Timeline ────────────────────────────────────────────── */
+.seq-scroll-wrapper {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+.seq-inner {
+  display: flex;
+  flex-direction: row;
+  width: max-content;
+  min-height: 100%;
+}
+
+/* Sticky servo labels column */
+.seq-sticky-labels {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--bg-panel-2);
+  flex: 0 0 112px;
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid var(--border);
+}
+
+/* Shared header cell height */
+.seq-hdr-cell {
+  flex: 0 0 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.seq-labels-hdr {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 9px;
+}
+
+/* Servo label rows */
+.seq-label-row {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  cursor: grab;
+  transition: background 0.1s;
+  border-bottom: 1px solid rgba(42, 47, 58, 0.5);
+}
+.seq-label-row:hover { background: rgba(255,255,255,0.04); }
+.seq-label-row.drag-over {
+  background: rgba(245, 197, 24, 0.12);
+  border-top: 2px solid var(--accent);
+}
+.seq-row-drag { color: var(--text-dim); font-size: 9px; opacity: 0.45; flex-shrink: 0; }
+.seq-row-label-text {
+  font-size: 10px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Step columns */
+.seq-step-col {
+  flex: 0 0 74px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  transition: background 0.35s ease;
+}
+.seq-step-col.active { background: rgba(245, 197, 24, 0.06); }
+
+.seq-step-hdr {
+  justify-content: space-between;
+  padding: 0 4px 0 7px;
+  gap: 2px;
+  transition: background 0.35s ease, color 0.35s ease;
+  overflow: visible;
+}
+.seq-step-col.active .seq-step-hdr {
+  background: rgba(245, 197, 24, 0.18);
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.seq-step-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+/* Step header action buttons (visible on hover) */
+.seq-step-actions {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  flex-shrink: 0;
+}
+.seq-step-hdr:hover .seq-step-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.seq-icon-btn {
+  width: 14px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0;
+  line-height: 1;
+}
+.seq-icon-btn:hover { background: var(--border); color: var(--text); }
+.seq-icon-btn-danger:hover { color: var(--danger); }
+
+/* Data cells */
+.seq-cell {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+  border-bottom: 1px solid rgba(42, 47, 58, 0.5);
+  color: var(--text-dim);
+  transition: background 0.35s ease, color 0.35s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.seq-step-col.active .seq-cell { color: var(--text); }
+.seq-cell-empty { cursor: default; }
+
+/* Add-step column */
+.seq-add-col {
+  flex: 0 0 72px;
+  display: flex;
+  flex-direction: column;
+}
+.seq-add-btn {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 6px;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.seq-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

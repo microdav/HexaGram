@@ -83,6 +83,7 @@ interface HexapodState {
   setDescription: (d: string) => void;
   setGlobalServoTypeId: (id: string | null) => void;
   setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
+  applyPose: (pose: Pose) => void;
   serializeProfile: () => RobotProfileData;
   applyProfile: (data: unknown) => void;
 }
@@ -161,6 +162,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   deleteKeyframe: (id) =>
     set((state) => ({ keyframes: state.keyframes.filter((k) => k.id !== id) })),
+
+  applyPose: (pose) => set({ pose: pose.slice() }),
 
   exportKeyframesJson: () => JSON.stringify(get().keyframes, null, 2),
 

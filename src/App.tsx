@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Scene } from "./three/Scene";
-import { PoseList } from "./ui/PoseList";
 import { SimulationPanel } from "./ui/SimulationPanel";
 import { MirrorPanel } from "./ui/MirrorPanel";
 import { UserButton } from "./ui/UserButton";
@@ -10,6 +9,7 @@ import { Toast } from "./ui/Toast";
 import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
+import { SequencerPanel } from "./ui/SequencerPanel";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
@@ -74,7 +74,6 @@ export default function App() {
           <ProfilePanel />
           <SimulationPanel />
           <ToolboxSlot panel="left" />
-          <PoseList />
         </aside>
         <button
           type="button"
@@ -108,6 +107,7 @@ export default function App() {
         </aside>
       </main>
 
+      <SequencerPanel />
       <FloatingToolboxes />
     </div>
   );
