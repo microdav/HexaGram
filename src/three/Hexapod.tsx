@@ -61,7 +61,6 @@ function FrontArrow({ chassisLength, chassisHeight, flipDown }: ArrowProps) {
 
 export function Hexapod() {
   const geometry = useHexapodStore((s) => s.geometry);
-  const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const showArrow = useHexapodStore((s) => s.collisionPrefs.showArrow);
   const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
@@ -142,14 +141,12 @@ export function Hexapod() {
         )}
       </group>
 
-      {gravityEnabled && (
-        <ContactMarkers
-          contacts={transform.contacts}
-          cogWorld={transform.cogWorld}
-          supportPolygon={transform.supportPolygon}
-          cogInside={transform.cogInside}
-        />
-      )}
+      <ContactMarkers
+        contacts={transform.contacts}
+        cogWorld={transform.cogWorld}
+        supportPolygon={transform.supportPolygon}
+        cogInside={transform.cogInside}
+      />
     </>
   );
 }

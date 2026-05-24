@@ -1,13 +1,103 @@
 import { useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { GizmoHelper, GizmoViewcube, Grid, OrbitControls } from "@react-three/drei";
+import type { Group } from "three";
 import { Hexapod } from "./Hexapod";
 import { Compass } from "./Compass";
 import { StepInfoPanel } from "./StepInfoPanel";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useCollisions } from "../store/useCollisions";
+import { useSequencerStore } from "../store/useSequencerStore";
+import { computeBodyTransform } from "../model/kinematics";
+import { computeLegMounts } from "../model/hexapod";
 
 const CAM_KEY = "hexagram.camera";
+
+/**
+ * Grid that scrolls during sequencer playback to give the illusion of locomotion.
+ * Motion is derived from how contact foot positions shift between consecutive steps:
+ * a stance foot appearing to move backward in body-local space means the body moved forward.
+ */
+function GridWithScroll() {
+  const scrollRef = useRef<Group>(null);
+  const prevStepIdx = useRef(-1);
+  const prevContacts = useRef<Map<number, { x: number; z: number }> | null>(null);
+  const velocity = useRef({ x: 0, z: 0 });
+  const stepEndTime = useRef(0);
+
+  useFrame((_, delta) => {
+    const { isPlaying, currentStepIndex, transitionSpeed, stepDelay } =
+      useSequencerStore.getState();
+
+    if (!isPlaying) {
+      prevStepIdx.current = -1;
+      prevContacts.current = null;
+      velocity.current = { x: 0, z: 0 };
+      return;
+    }
+
+    const now = performance.now() / 1000;
+
+    if (currentStepIndex !== prevStepIdx.current) {
+      prevStepIdx.current = currentStepIndex;
+
+      const { pose, geometry, gravityEnabled } = useHexapodStore.getState();
+      const mounts = computeLegMounts(geometry);
+      const bt = computeBodyTransform(pose, geometry, mounts, gravityEnabled);
+
+      // Build contact map for this step: legIndex → XZ position
+      const currentMap = new Map<number, { x: number; z: number }>();
+      for (const c of bt.contacts) {
+        currentMap.set(c.legIndex, { x: c.position.x, z: c.position.z });
+      }
+
+      if (prevContacts.current !== null) {
+        // Persistent contacts (same leg in both steps) reveal body displacement:
+        // if a stance foot appears to drift backward, the robot moved forward.
+        let sumDx = 0, sumDz = 0, count = 0;
+        for (const [leg, curr] of currentMap) {
+          const prev = prevContacts.current.get(leg);
+          if (prev) {
+            sumDx += curr.x - prev.x;
+            sumDz += curr.z - prev.z;
+            count++;
+          }
+        }
+        if (count > 0) {
+          const dur = Math.max(0.05, transitionSpeed + stepDelay);
+          velocity.current = { x: sumDx / count / dur, z: sumDz / count / dur };
+          stepEndTime.current = now + dur;
+        }
+      }
+
+      prevContacts.current = currentMap;
+    }
+
+    if (scrollRef.current && now < stepEndTime.current) {
+      scrollRef.current.position.x += velocity.current.x * delta;
+      scrollRef.current.position.z += velocity.current.z * delta;
+    }
+  });
+
+  return (
+    <group position={[0, -0.001, 0]}>
+      <group ref={scrollRef}>
+        <Grid
+          args={[2, 2]}
+          cellSize={0.05}
+          cellThickness={0.6}
+          cellColor="#2a2f3a"
+          sectionSize={0.25}
+          sectionThickness={1}
+          sectionColor="#3a4150"
+          fadeDistance={2.5}
+          fadeStrength={1}
+          infiniteGrid
+        />
+      </group>
+    </group>
+  );
+}
 
 type SavedCamera = {
   position: [number, number, number];
@@ -126,19 +216,7 @@ export function Scene() {
           shadow-mapSize-height={1024}
         />
 
-        <Grid
-          args={[2, 2]}
-          cellSize={0.05}
-          cellThickness={0.6}
-          cellColor="#2a2f3a"
-          sectionSize={0.25}
-          sectionThickness={1}
-          sectionColor="#3a4150"
-          fadeDistance={2.5}
-          fadeStrength={1}
-          infiniteGrid
-          position={[0, -0.001, 0]}
-        />
+        <GridWithScroll />
 
         <Hexapod />
 

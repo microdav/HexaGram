@@ -243,8 +243,8 @@ export const useSequencerStore = create<SequencerState>()(
             ...state,
             showInterpolated: false,
             steps: (state.steps ?? []).map((st) => ({
-              type: 'defined' as StepType,
               ...st,
+              type: 'defined' as StepType,
             })),
           };
         }

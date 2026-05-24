@@ -95,6 +95,7 @@ export function SequencerPanel() {
   }, [stopPlayback]);
 
   const startPlayback = useCallback(() => {
+    useSequencerStore.getState().generateInterpolations();
     if (useSequencerStore.getState().steps.length === 0) return;
     useSequencerStore.getState().setSelectedStepIndex(-1);
     useSequencerStore.getState().setIsPlaying(true);

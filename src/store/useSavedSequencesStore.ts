@@ -27,7 +27,7 @@ interface SavedSequencesState {
   setActiveSequenceId: (id: string | null) => void;
 }
 
-export const useSavedSequencesStore = create<SavedSequencesState>((set, get) => ({
+export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   sequences: [],
   activeSequenceId: null,
   loading: false,

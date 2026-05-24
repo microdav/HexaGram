@@ -236,10 +236,20 @@ export function computeBodyTransform(
     let lowest = chassisBottomY;
     for (const p of tipsBody) if (p.y < lowest) lowest = p.y;
     const t = new Vector3(0, -lowest, 0);
+    const contacts: LegContact[] = [];
+    tipsBody.forEach((p, i) => {
+      const worldY = p.y - lowest;
+      if (worldY < CONTACT_THRESHOLD) {
+        contacts.push({
+          legIndex: mounts[i].index,
+          position: new Vector3(p.x, worldY, p.z),
+        });
+      }
+    });
     return {
       position: t,
       quaternion: new Quaternion(),
-      contacts: [],
+      contacts,
       cogWorld: cogBody.clone().add(t),
       supportPolygon: [],
       cogInside: false,
