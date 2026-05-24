@@ -132,10 +132,22 @@ par défaut.
 - Position et cible de la caméra sauvegardées et restaurées.
 - **Notifications toast** (3 s) à chaque enregistrement de préférences ou de profil.
 
+#### Cinématique inverse (IK)
+
+- **Drag du pied en 3D** : cliquer sur la sphère de bout de tibia et glisser pour
+  déplacer le pied dans l'espace caméra (haut/bas/gauche/droite).
+- Solveur IK analytique (configuration elbow-up) : calcule coxa, fémur et tibia
+  depuis la position cible en temps réel.
+- **Contrainte sol** : le pied ne peut pas descendre sous y = 0.
+- Contrainte de portée : si la cible est hors de portée des segments, le pied est
+  ramené au point le plus proche dans la direction demandée.
+- Les angles servo sont automatiquement bridés aux limites ±90°.
+- **Caméra figée** pendant le drag (OrbitControls désactivés).
+- Retour visuel : sphère jaune au survol, verte pendant le drag.
+
 ### Ce qui n'est pas encore fait
 
 - **Séquenceur** : timeline avec durées par keyframe, interpolation, lecture animée.
-- **Cinématique inverse** : manipuler le bout d'une patte directement en 3D.
 - **Limites servo réelles** : actuellement valeurs génériques, à remplacer par les
   plages mécaniques mesurées sur le robot.
 - **Communication avec le robot** : abstraction transport + Web Serial / BLE / WiFi,
@@ -247,7 +259,7 @@ Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy — disponible s
 | 1 | POC visuel : modèle 3D, sliders, gravité, capture de poses | ✅ |
 | 1b | Profils robot, comptes utilisateur, CoG drag, persistance | ✅ |
 | 2 | Séquenceur : timeline, interpolation, lecture animée, persistance | 🔜 |
-| 3 | Cinématique inverse (manipulation directe en 3D) | 🔜 |
+| 3 | Cinématique inverse (manipulation directe en 3D) | ✅ |
 | 4 | Communication robot (Web Serial / BLE / WiFi) | 🔜 |
 | 5 | Packaging Tauri (Windows) + PWA (tablette) | 🔜 |
 
