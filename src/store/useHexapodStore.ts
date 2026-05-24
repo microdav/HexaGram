@@ -252,7 +252,11 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       }
     }
     set({
-      geometry: d.geometry,
+      geometry: {
+        ...DEFAULT_GEOMETRY,
+        ...d.geometry,
+        cog: d.geometry.cog ?? DEFAULT_GEOMETRY.cog,
+      },
       keyframes: d.keyframes,
       mirrorEnabled: d.prefs.mirrorEnabled,
       gravityEnabled: d.prefs.gravityEnabled,

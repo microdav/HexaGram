@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LEG_NAMES, type LegLayout } from "../model/hexapod";
+import { LEG_NAMES, computeLegMounts, type LegLayout } from "../model/hexapod";
 import {
   SERVO_CATALOG,
   loadCustomServoTypes,
@@ -14,9 +14,18 @@ import {
 import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
 import { useProfilesStore } from "../store/useProfilesStore";
 import { useToastStore } from "../store/useToastStore";
+import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
+import { useSequencerStore } from "../store/useSequencerStore";
+import {
+  generateGait,
+  gaitSequenceName,
+  stabilityLevel,
+  STABILITY_LABELS,
+  type GaitType,
+} from "../model/gaitGenerator";
 import { Modal } from "./Modal";
 
-type Tab = "general" | "servos" | "collisions";
+type Tab = "general" | "servos" | "collisions" | "sequences";
 
 const JOINTS = ["coxa", "femur", "tibia"] as const;
 const JOINT_LABELS: Record<string, string> = { coxa: "Coxa", femur: "Fémur", tibia: "Tibia" };
@@ -467,6 +476,14 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const [localCollisionPrefs, setLocalCollisionPrefs] = useState<CollisionPrefs>({ ...DEFAULT_COLLISION_PREFS });
   const [saving, setSaving] = useState(false);
 
+  // ── Sequences tab state ────────────────────────────────────────────────────
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [selectedGaits, setSelectedGaits] = useState<Set<GaitType>>(new Set(["tripod"]));
+  const [genStepFraction, setGenStepFraction] = useState(0.6);
+  const [genLiftFraction, setGenLiftFraction] = useState(0.5);
+  const [genUseSoft, setGenUseSoft] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const profiles = useProfilesStore((s) => s.profiles);
   const rename = useProfilesStore((s) => s.rename);
@@ -485,6 +502,14 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
 
   const showToast = useToastStore((s) => s.show);
 
+  const sequences = useSavedSequencesStore((s) => s.sequences);
+  const sequencesLoading = useSavedSequencesStore((s) => s.loading);
+  const listSequences = useSavedSequencesStore((s) => s.list);
+  const saveSequence = useSavedSequencesStore((s) => s.save);
+  const removeSequence = useSavedSequencesStore((s) => s.remove);
+  const loadSequenceById = useSavedSequencesStore((s) => s.load);
+  const loadSteps = useSequencerStore((s) => s.loadSteps);
+
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
 
   useEffect(() => {
@@ -499,7 +524,16 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setCustomTypes(loadCustomServoTypes());
     setShowNewServoForm(false);
     setExpandedLegs(new Set());
+    setShowGenerator(false);
+    setSelectedGaits(new Set(["tripod"]));
+    setGenStepFraction(0.6);
+    setGenLiftFraction(0.5);
+    setGenUseSoft(true);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open && tab === "sequences") listSequences();
+  }, [open, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allTypes = useMemo(
     () => [...SERVO_CATALOG, ...customTypes],
@@ -534,6 +568,60 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setGlobalServoTypeId(spec.id);
     setShowNewServoForm(false);
     showToast(`Servo « ${spec.model} » ajouté`);
+  };
+
+  // Per-gait: minimum stability score across all steps (worst case = bottleneck)
+  const stabilityPreview = useMemo((): Partial<Record<GaitType, number>> => {
+    if (!showGenerator) return {};
+    const mounts = computeLegMounts(storeGeometry);
+    const result: Partial<Record<GaitType, number>> = {};
+    for (const gt of (["tripod", "ripple", "wave"] as GaitType[])) {
+      if (selectedGaits.has(gt)) {
+        const { stabilityScores } = generateGait({
+          geometry: storeGeometry,
+          legMounts: mounts,
+          calibration,
+          gaitType: gt,
+          stepFraction: genStepFraction,
+          liftFraction: genLiftFraction,
+          useSoftLimits: genUseSoft,
+        });
+        result[gt] = Math.min(...stabilityScores);
+      }
+    }
+    return result;
+  }, [showGenerator, selectedGaits, genStepFraction, genLiftFraction, genUseSoft, storeGeometry, calibration]);
+
+  const handleLoadSequence = async (id: string) => {
+    const seq = await loadSequenceById(id);
+    loadSteps(seq.steps, seq.name);
+    onClose();
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const mounts = computeLegMounts(storeGeometry);
+      for (const gt of selectedGaits) {
+        const { steps } = generateGait({
+          geometry: storeGeometry,
+          legMounts: mounts,
+          calibration,
+          gaitType: gt,
+          stepFraction: genStepFraction,
+          liftFraction: genLiftFraction,
+          useSoftLimits: genUseSoft,
+        });
+        await saveSequence(gaitSequenceName(gt, activeProfile?.name), steps);
+      }
+      setShowGenerator(false);
+      await listSequences();
+      showToast(`${selectedGaits.size} séquence(s) générée(s)`);
+    } catch {
+      showToast("Erreur lors de la génération");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSave = async () => {
@@ -584,6 +672,13 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
             onClick={() => setTab("collisions")}
           >
             Collisions
+          </button>
+          <button
+            type="button"
+            className={`settings-tab${tab === "sequences" ? " active" : ""}`}
+            onClick={() => setTab("sequences")}
+          >
+            Séquences
           </button>
         </nav>
 
@@ -779,6 +874,188 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
               </label>
             </div>
           )}
+          {/* Tab Séquences */}
+          {tab === "sequences" && (
+            <div className="sequences-tab">
+              {!showGenerator ? (
+                <>
+                  <div className="sequences-list">
+                    {sequencesLoading ? (
+                      <div className="seq-empty">Chargement…</div>
+                    ) : sequences.length === 0 ? (
+                      <div className="seq-empty">Aucune séquence enregistrée</div>
+                    ) : (
+                      sequences.map((seq) => (
+                        <div key={seq.id} className="seq-row">
+                          <div className="seq-info">
+                            <span className="seq-name">{seq.name}</span>
+                          </div>
+                          <div className="seq-actions">
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => handleLoadSequence(seq.id)}
+                            >
+                              Charger
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-danger"
+                              onClick={() => removeSequence(seq.id)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setShowGenerator(true)}
+                  >
+                    Générer une démarche…
+                  </button>
+                </>
+              ) : (
+                <div className="gait-generator">
+                  <div className="ggt-title">Générer une démarche de marche</div>
+
+                  <div className="ggt-section">
+                    <div className="ggt-section-label">Type de démarche</div>
+                    <div className="ggt-checkboxes">
+                      {(["tripod", "ripple", "wave"] as GaitType[]).map((gt) => (
+                        <label key={gt} className="ggt-check-label">
+                          <input
+                            type="checkbox"
+                            checked={selectedGaits.has(gt)}
+                            onChange={(e) => {
+                              setSelectedGaits((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(gt);
+                                else next.delete(gt);
+                                return next;
+                              });
+                            }}
+                          />
+                          {gt === "tripod" ? "Tripod — 4 étapes (2 groupes alternés)" :
+                           gt === "ripple" ? "Ripple — 6 étapes (3 paires diagonales)" :
+                           "Wave — 6 étapes (séquentiel patte par patte)"}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="ggt-section">
+                    <div className="ggt-section-label">Paramètres</div>
+                    <div className="ggt-slider-row">
+                      <span className="ggt-slider-label">Amplitude de pas</span>
+                      <input
+                        type="range"
+                        className="ggt-slider"
+                        aria-label="Amplitude de pas"
+                        min={10} max={100} step={5}
+                        value={Math.round(genStepFraction * 100)}
+                        onChange={(e) => setGenStepFraction(parseInt(e.target.value) / 100)}
+                      />
+                      <span className="ggt-slider-value">{Math.round(genStepFraction * 100)}%</span>
+                    </div>
+                    <div className="ggt-slider-row">
+                      <span className="ggt-slider-label">Hauteur de levée</span>
+                      <input
+                        type="range"
+                        className="ggt-slider"
+                        aria-label="Hauteur de levée"
+                        min={10} max={100} step={5}
+                        value={Math.round(genLiftFraction * 100)}
+                        onChange={(e) => setGenLiftFraction(parseInt(e.target.value) / 100)}
+                      />
+                      <span className="ggt-slider-value">{Math.round(genLiftFraction * 100)}%</span>
+                    </div>
+                    <div className="ggt-limits-row">
+                      <span className="ggt-slider-label">Limites</span>
+                      <label>
+                        <input
+                          type="radio"
+                          name="gen-limits"
+                          checked={genUseSoft}
+                          onChange={() => setGenUseSoft(true)}
+                        />
+                        Logicielles
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name="gen-limits"
+                          checked={!genUseSoft}
+                          onChange={() => setGenUseSoft(false)}
+                        />
+                        Physiques
+                      </label>
+                    </div>
+                  </div>
+
+                  {selectedGaits.size > 0 && (
+                    <div className="ggt-section">
+                      <div className="ggt-section-label">Stabilité statique (pire étape)</div>
+                      <div className="ggt-preview">
+                        {(["tripod", "ripple", "wave"] as GaitType[]).filter((gt) => selectedGaits.has(gt)).map((gt) => {
+                          const score = stabilityPreview[gt] ?? -1;
+                          const lvl = stabilityLevel(score);
+                          // Needle position: score [-1,+1] → 0%–100% within the 5-zone bar
+                          const needlePct = Math.max(0, Math.min(100, (score + 1) / 2 * 100));
+                          return (
+                            <div key={gt} className="ggt-preview-row">
+                              <span className="ggt-preview-gait">{gt.charAt(0).toUpperCase() + gt.slice(1)}</span>
+                              <div className="ggt-stability-bar-wrap">
+                                <div className="ggt-stability-bar">
+                                  <div className="ggt-sz ggt-sz-0">Danger</div>
+                                  <div className="ggt-sz ggt-sz-1">(−)</div>
+                                  <div className="ggt-sz ggt-sz-2">Moyenne</div>
+                                  <div className="ggt-sz ggt-sz-3">(+)</div>
+                                  <div className="ggt-sz ggt-sz-4">Parfait</div>
+                                  <div
+                                    className="ggt-stability-needle"
+                                    style={{ "--needle-pos": `${needlePct}%` } as React.CSSProperties}
+                                    title={`Score : ${score.toFixed(2)} — ${STABILITY_LABELS[lvl]}`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {(["tripod", "ripple", "wave"] as GaitType[]).some(
+                          (gt) => selectedGaits.has(gt) && stabilityLevel(stabilityPreview[gt] ?? -1) < 2
+                        ) && (
+                          <div className="ggt-warning-note">
+                            Stabilité faible — réduire l&apos;amplitude ou déplacer le CoG dans la géométrie.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="ggt-actions">
+                    <button type="button" className="btn" onClick={() => setShowGenerator(false)}>
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={selectedGaits.size === 0 || generating}
+                      onClick={handleGenerate}
+                    >
+                      {generating
+                        ? "Génération…"
+                        : `Générer${selectedGaits.size > 1 ? ` (${selectedGaits.size})` : ""}`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
 

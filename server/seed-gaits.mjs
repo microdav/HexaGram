@@ -138,11 +138,14 @@ const waveSteps = [
 ];
 
 // ── Insertion ──────────────────────────────────────────────────────────────
-const userId = db.prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1").get()?.id;
-if (!userId) { console.error("Aucun utilisateur trouvé."); process.exit(1); }
+const users = db.prepare("SELECT id FROM users ORDER BY created_at ASC").all();
+if (users.length === 0) { console.error("Aucun utilisateur trouvé."); process.exit(1); }
 
 const insert = db.prepare(
   "INSERT INTO sequences (id, user_id, name, steps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+);
+const exists = db.prepare(
+  "SELECT id FROM sequences WHERE user_id = ? AND name = ?"
 );
 
 const gaits = [
@@ -151,10 +154,15 @@ const gaits = [
   { name: "Gait — Wave",   steps: waveSteps   },
 ];
 
-for (const { name, steps } of gaits) {
-  const now = Date.now();
-  insert.run(randomUUID(), userId, name, JSON.stringify(steps), now, now);
-  console.log(`✓ ${name} (${steps.length} étapes définies)`);
+for (const { id: userId } of users) {
+  let inserted = 0;
+  for (const { name, steps } of gaits) {
+    if (exists.get(userId, name)) continue; // idempotent: skip if already present
+    const now = Date.now();
+    insert.run(randomUUID(), userId, name, JSON.stringify(steps), now, now);
+    inserted++;
+  }
+  console.log(`User ${userId}: ${inserted} séquence(s) insérée(s)`);
 }
 
 console.log("Seed terminé.");
