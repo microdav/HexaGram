@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { DragEvent } from 'react';
-import { useSequencerStore } from '../store/useSequencerStore';
+import { useSequencerStore, MAX_FPS } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
@@ -40,6 +40,11 @@ export function SequencerPanel() {
   const optionsBtnRef = useRef<HTMLButtonElement>(null);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
 
+  // Step context menu (portal)
+  const [stepMenuId, setStepMenuId] = useState<string | null>(null);
+  const [stepMenuRect, setStepMenuRect] = useState<DOMRect | null>(null);
+  const stepMenuRef = useRef<HTMLDivElement>(null);
+
   // Rename modal
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -55,6 +60,10 @@ export function SequencerPanel() {
   const history = useSequencerStore((s) => s.history);
   const panelHeight = useSequencerStore((s) => s.panelHeight);
   const sequenceName = useSequencerStore((s) => s.sequenceName);
+  const showInterpolated = useSequencerStore((s) => s.showInterpolated);
+
+  const definedStepsCount = steps.filter((s) => s.type === 'defined').length;
+  const displayedSteps = showInterpolated ? steps : steps.filter((s) => s.type !== 'interpolated');
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const activeSequenceId = useSavedSequencesStore((s) => s.activeSequenceId);
@@ -111,6 +120,16 @@ export function SequencerPanel() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showOptions]);
+
+  // Close step context menu on outside click
+  useEffect(() => {
+    if (!stepMenuId) return;
+    const handler = (e: MouseEvent) => {
+      if (!stepMenuRef.current?.contains(e.target as Node)) setStepMenuId(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [stepMenuId]);
 
   // Focus save modal input when it opens
   useEffect(() => {
@@ -410,6 +429,26 @@ export function SequencerPanel() {
                 />
                 <span className="seq-ctrl-val">{stepDelay.toFixed(1)}s</span>
               </label>
+
+              <div className="seq-sep" />
+
+              <button
+                type="button"
+                className="seq-btn seq-btn-generate"
+                onClick={() => useSequencerStore.getState().generateInterpolations()}
+                disabled={definedStepsCount < 2}
+                title={`Générer les étapes interpolées entre les ${definedStepsCount} étapes définies (${MAX_FPS} fps, délai ${stepDelay.toFixed(1)}s)`}
+              >
+                ↔ Générer
+              </button>
+              <label className="seq-interp-toggle" title="Afficher / masquer les étapes interpolées dans le tableau">
+                <input
+                  type="checkbox"
+                  checked={showInterpolated}
+                  onChange={() => useSequencerStore.getState().toggleShowInterpolated()}
+                />
+                <span>Interpolées</span>
+              </label>
             </div>
 
             {/* Droite : gestion de la séquence */}
@@ -529,65 +568,81 @@ export function SequencerPanel() {
               </div>
 
               {/* Step columns */}
-              {steps.map((step, colIdx) => (
-                <div
-                  key={step.id}
-                  className={`seq-step-col${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
-                  draggable
-                  onDragStart={(e) => onColDragStart(e, colIdx)}
-                  onDragOver={(e) => onColDragOver(e, colIdx)}
-                  onDrop={(e) => onColDrop(e, colIdx)}
-                  onDragEnd={onColDragEnd}
-                >
-                  <div className="seq-hdr-cell seq-step-hdr">
-                    <span className="seq-step-name" title={step.name}>{step.name}</span>
-                    <span className="seq-step-actions">
-                      <button
-                        type="button"
-                        className="seq-icon-btn"
-                        onMouseDown={(e) => e.stopPropagation()}
+              {displayedSteps.map((step) => {
+                const colIdx = steps.indexOf(step);
+                const isInterp = step.type === 'interpolated';
+                return (
+                  <div
+                    key={step.id}
+                    className={`seq-step-col${isInterp ? ' interpolated' : ''}${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
+                    draggable={!isInterp}
+                    onDragStart={isInterp ? undefined : (e) => onColDragStart(e, colIdx)}
+                    onDragOver={(e) => onColDragOver(e, colIdx)}
+                    onDrop={(e) => onColDrop(e, colIdx)}
+                    onDragEnd={onColDragEnd}
+                  >
+                    <div className="seq-hdr-cell seq-step-hdr">
+                      <span
+                        className="seq-step-name"
+                        title={step.name}
                         onClick={() => handleStepClick(colIdx)}
-                        title="Sélectionner / prévisualiser cette étape dans la vue 3D"
-                      >
-                        <svg width="11" height="7" viewBox="0 0 11 7" fill="none" aria-hidden="true">
-                          <path d="M5.5 0.5C3 0.5 1 3.5 1 3.5s2 3 4.5 3 4.5-3 4.5-3-2-3-4.5-3z" stroke="currentColor" strokeWidth="0.9"/>
-                          <circle cx="5.5" cy="3.5" r="1.3" fill="currentColor"/>
-                        </svg>
-                      </button>
-                      {colIdx > 0 && (
+                      >{step.name}</span>
+                      <span className="seq-step-actions">
                         <button
                           type="button"
                           className="seq-icon-btn"
                           onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => useSequencerStore.getState().moveStep(colIdx, colIdx - 1)}
-                          title="Déplacer à gauche"
-                        >‹</button>
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setStepMenuId(stepMenuId === step.id ? null : step.id);
+                            setStepMenuRect(rect);
+                          }}
+                          title="Actions"
+                        >⋯</button>
+                      </span>
+                      {stepMenuId === step.id && stepMenuRect && createPortal(
+                        <div
+                          ref={stepMenuRef}
+                          className="seq-step-ctx-menu seq-step-ctx-menu-portal"
+                          // eslint-disable-next-line react/forbid-component-props
+                          style={{
+                            '--scm-top': `${stepMenuRect.bottom + 4}px`,
+                            '--scm-left': `${stepMenuRect.left}px`,
+                          } as React.CSSProperties}
+                        >
+                          {isInterp && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={() => { useSequencerStore.getState().convertToDefined(step.id); setStepMenuId(null); }}
+                            >Convertir en définie</button>
+                          )}
+                          {!isInterp && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={() => { useSequencerStore.getState().duplicateStep(step.id); setStepMenuId(null); }}
+                            >Dupliquer</button>
+                          )}
+                          <button
+                            type="button"
+                            className="danger"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={() => { useSequencerStore.getState().removeStep(step.id); setStepMenuId(null); }}
+                          >Supprimer</button>
+                        </div>,
+                        document.body
                       )}
-                      {colIdx < steps.length - 1 && (
-                        <button
-                          type="button"
-                          className="seq-icon-btn"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => useSequencerStore.getState().moveStep(colIdx, colIdx + 1)}
-                          title="Déplacer à droite"
-                        >›</button>
-                      )}
-                      <button
-                        type="button"
-                        className="seq-icon-btn seq-icon-btn-danger"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={() => useSequencerStore.getState().removeStep(step.id)}
-                        title="Supprimer cette étape"
-                      >×</button>
-                    </span>
-                  </div>
-                  {servoOrder.map((servoId) => (
-                    <div key={servoId} className="seq-cell">
-                      {step.pose[servoId] !== undefined ? `${step.pose[servoId].toFixed(1)}°` : '—'}
                     </div>
-                  ))}
-                </div>
-              ))}
+                    {servoOrder.map((servoId) => (
+                      <div key={servoId} className="seq-cell">
+                        {step.pose[servoId] !== undefined ? `${step.pose[servoId].toFixed(1)}°` : '—'}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
 
               {/* Add-step column */}
               <div className="seq-add-col">
@@ -595,7 +650,11 @@ export function SequencerPanel() {
                   <button
                     type="button"
                     className="seq-add-btn"
-                    onClick={() => useSequencerStore.getState().addStep(pose)}
+                    onClick={() => {
+                      const { steps, addStep } = useSequencerStore.getState();
+                      const defaultPose = steps.length > 0 ? steps[steps.length - 1].pose : pose;
+                      addStep(defaultPose);
+                    }}
                     title="Capturer la pose actuelle comme nouvelle étape"
                   >
                     + Étape
