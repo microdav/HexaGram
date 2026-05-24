@@ -1980,6 +1980,210 @@ html, body, #root {
 }
 .seq-add-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ── Toolbar : séparation gauche / droite ────────────────── */
+.seq-toolbar-left  { display: flex; align-items: center; gap: 5px; flex: 1; }
+.seq-toolbar-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+/* Bouton save séquence */
+.seq-btn-save { font-size: 12px; }
+
+/* Select nom de séquence */
+.seq-name-select {
+  height: 22px;
+  max-width: 160px;
+  min-width: 80px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.seq-name-select:hover { border-color: var(--accent); }
+.seq-name-select:focus { border-color: var(--accent); }
+
+/* Options dropdown */
+.seq-options-wrap { position: relative; }
+
+.seq-options-menu {
+  min-width: 140px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  overflow: hidden;
+  padding: 3px 0;
+}
+.seq-options-menu-portal {
+  position: fixed;
+  bottom: var(--om-bottom);
+  right: var(--om-right);
+  z-index: 10000;
+}
+.seq-options-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.seq-options-item:hover { background: rgba(255,255,255,0.07); }
+.seq-options-item-danger { color: var(--danger); }
+.seq-options-item-danger:hover { background: rgba(239,68,68,0.12); }
+.seq-options-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+/* ── Modal save / rename ─────────────────────────────────── */
+.seq-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.seq-modal {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  min-width: 300px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.seq-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.seq-modal-input {
+  width: 100%;
+  height: 32px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 0 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.seq-modal-input:focus { border-color: var(--accent); }
+.seq-modal-error {
+  font-size: 11px;
+  color: var(--danger);
+}
+.seq-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.seq-modal-btn {
+  height: 28px;
+  padding: 0 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.seq-modal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.seq-modal-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+.seq-modal-btn-primary:hover { background: #e6b800; border-color: #e6b800; color: #1a1a1a; }
+
+/* ── StepInfoPanel : overlay 3D bas-droit ────────────────── */
+.step-info-panel {
+  position: absolute;
+  bottom: 48px;
+  right: 12px;
+  background: rgba(21, 23, 28, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  z-index: 20;
+}
+/* Input stylé comme un label au repos, devient champ à l'édition */
+.step-info-name {
+  width: 100%;
+  height: 26px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 6px;
+  outline: none;
+  box-sizing: border-box;
+  cursor: default;
+  transition: background 0.15s, border-color 0.15s;
+}
+.step-info-name:hover {
+  background: var(--bg-panel-2);
+  border-color: var(--border);
+  cursor: text;
+}
+.step-info-name:focus {
+  background: var(--bg-panel-2);
+  border-color: var(--accent);
+  cursor: text;
+}
+.step-info-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.step-info-btn {
+  height: 24px;
+  padding: 0 9px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.step-info-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.step-info-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.step-info-btn-save {
+  flex: 1;
+  background: rgba(245, 197, 24, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.step-info-btn-save:hover:not(:disabled) { background: var(--accent); color: #1a1a1a; }
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

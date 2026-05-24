@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { GizmoHelper, GizmoViewcube, Grid, OrbitControls } from "@react-three/drei";
 import { Hexapod } from "./Hexapod";
 import { Compass } from "./Compass";
+import { StepInfoPanel } from "./StepInfoPanel";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useCollisions } from "../store/useCollisions";
 
@@ -168,6 +169,8 @@ export function Scene() {
       </Canvas>
 
       <Compass />
+
+      <StepInfoPanel />
 
       <button
         type="button"

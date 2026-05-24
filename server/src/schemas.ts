@@ -77,8 +77,26 @@ export const UpdateProfileSchema = z.object({
   data: ProfileDataSchema.optional(),
 });
 
+const SequencerStepSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  pose: z.array(z.number()),
+});
+
+export const CreateSequenceSchema = z.object({
+  name: z.string().min(1).max(80),
+  steps: z.array(SequencerStepSchema),
+});
+
+export const UpdateSequenceSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  steps: z.array(SequencerStepSchema).optional(),
+});
+
 export type SignupInput = z.infer<typeof SignupSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type ProfileData = z.infer<typeof ProfileDataSchema>;
 export type CreateProfileInput = z.infer<typeof CreateProfileSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
+export type CreateSequenceInput = z.infer<typeof CreateSequenceSchema>;
+export type UpdateSequenceInput = z.infer<typeof UpdateSequenceSchema>;
