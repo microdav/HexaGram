@@ -1,14 +1,16 @@
 import { useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useToolboxStore } from '../store/useToolboxStore';
+import type { PanelSide } from '../store/useToolboxStore';
 
 interface Props {
   id: string;
   title: string;
   children: ReactNode;
+  compact?: boolean;
 }
 
-export function Toolbox({ id, title, children }: Props) {
+export function Toolbox({ id, title, children, compact = false }: Props) {
   const config = useToolboxStore((s) => s.configs[id]);
   const draggingId = useToolboxStore((s) => s.draggingId);
 
@@ -53,11 +55,11 @@ export function Toolbox({ id, title, children }: Props) {
           const ny = dragRef.current.startFY + dy;
           useToolboxStore.getState().setFloatPos(id, { x: nx, y: ny });
 
-          // Detect sidebar under cursor
-          let hovered: 'left' | 'right' | null = null;
-          for (const side of ['left', 'right'] as const) {
-            const el = document.querySelector(`[data-dock-panel="${side}"]`);
-            if (el) {
+          // Detect panel under cursor (querySelectorAll to cover multiple elements per panel)
+          let hovered: PanelSide | null = null;
+          for (const side of ['left', 'right', 'sequencer'] as const) {
+            const els = document.querySelectorAll(`[data-dock-panel="${side}"]`);
+            for (const el of els) {
               const r = el.getBoundingClientRect();
               if (ev.clientX >= r.left && ev.clientX <= r.right &&
                   ev.clientY >= r.top  && ev.clientY <= r.bottom) {
@@ -65,6 +67,7 @@ export function Toolbox({ id, title, children }: Props) {
                 break;
               }
             }
+            if (hovered) break;
           }
 
           // Compute insert index from Y position relative to docked toolboxes
@@ -114,6 +117,17 @@ export function Toolbox({ id, title, children }: Props) {
 
   const isFloating = config.panel === null;
   const isBeingDragged = draggingId === id;
+
+  if (compact) {
+    return (
+      <div className="toolbox-inline" data-toolbox-id={id}>
+        <span className="toolbox-drag-handle toolbox-drag-handle--sm" onMouseDown={handleMouseDown} title="Déplacer">
+          ⠿
+        </span>
+        {children}
+      </div>
+    );
+  }
 
   const cssVars = isFloating
     ? ({

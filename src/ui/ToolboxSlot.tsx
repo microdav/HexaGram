@@ -5,6 +5,7 @@ import { Toolbox } from './Toolbox';
 import { GeometryContent, CogContent } from './GeometryPanel';
 import { ServoGroupContent } from './ServoPanel';
 import { SimulationContent } from './SimulationPanel';
+import { SequencerControlsContent } from './SequencerControlsContent';
 
 const ServoLeft = () => <ServoGroupContent side="left" />;
 const ServoRight = () => <ServoGroupContent side="right" />;
@@ -15,6 +16,7 @@ const REGISTRY: Record<string, { title: string; Content: ComponentType }> = {
   simulation:     { title: 'Simulation',        Content: SimulationContent },
   'servos-left':  { title: 'Servos gauche',     Content: ServoLeft },
   'servos-right': { title: 'Servos droite',     Content: ServoRight },
+  'seq-ctrl':     { title: 'Lecture',           Content: SequencerControlsContent },
 };
 
 function InsertMarker({ active }: { active: boolean }) {
@@ -33,10 +35,11 @@ export function ToolboxSlot({ panel }: { panel: PanelSide }) {
 
   const isDragging = !!draggingId;
   const isHovered = hoveredPanel === panel;
+  const compact = panel === 'sequencer';
 
   return (
     <>
-      {isDragging && (
+      {isDragging && !compact && (
         <InsertMarker active={isHovered && hoveredInsertIndex === 0} />
       )}
       {docked.map(([id], idx) => {
@@ -45,10 +48,10 @@ export function ToolboxSlot({ panel }: { panel: PanelSide }) {
         const { Content } = reg;
         return (
           <Fragment key={id}>
-            <Toolbox id={id} title={reg.title}>
+            <Toolbox id={id} title={reg.title} compact={compact}>
               <Content />
             </Toolbox>
-            {isDragging && (
+            {isDragging && !compact && (
               <InsertMarker active={isHovered && hoveredInsertIndex === idx + 1} />
             )}
           </Fragment>

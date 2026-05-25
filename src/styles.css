@@ -1669,6 +1669,7 @@ html, body, #root {
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
+  transition: left 0.25s ease, top 0.25s ease;
 }
 
 .toolbox-dragging {
@@ -1676,6 +1677,7 @@ html, body, #root {
   pointer-events: none;
   z-index: 200;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+  transition: none;
 }
 
 .toolbox-header {
@@ -1774,6 +1776,18 @@ html, body, #root {
 .sequencer-panel.open { height: var(--seq-panel-h, 258px); }
 .sequencer-panel.resizing { transition: none; }
 
+/* Zone de dépôt séquenceur */
+.sequencer-panel.seq-drop-zone .seq-panel-handle {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: rgba(245, 197, 24, 0.14);
+  color: var(--accent);
+  transition: none;
+}
+.sequencer-panel.open.seq-drop-zone .sequencer-content {
+  box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 24px rgba(245, 197, 24, 0.06);
+}
+
 /* Bord de redimensionnement */
 .seq-resize-handle {
   flex: 0 0 5px;
@@ -1863,6 +1877,84 @@ html, body, #root {
   background: rgba(245, 197, 24, 0.15);
   border-color: var(--accent);
   color: var(--accent);
+}
+.seq-btn-paused {
+  background: rgba(99, 179, 237, 0.12);
+  border-color: #63b3ed;
+  color: #63b3ed;
+}
+
+/* ── Boîte contrôles séquenceur ─────────────────────────── */
+/* Toolbox auto-sizing pour seq-ctrl */
+.toolbox-floating[data-toolbox-id="seq-ctrl"] { width: auto; min-width: 0; }
+[data-toolbox-id="seq-ctrl"] .toolbox-body   { padding: 5px 8px; }
+
+.seq-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  justify-content: center;
+}
+.seq-ctrl-btn {
+  width: 38px;
+  height: 26px;
+  border-radius: 5px;
+  border: none;
+  border-bottom: 3px solid rgba(0,0,0,0.28);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.07s, border-bottom-width 0.07s, filter 0.1s;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+  position: relative;
+}
+.seq-ctrl-btn--play  { background: #22c55e; color: #fff; }
+.seq-ctrl-btn--pause { background: #d97706; color: #fff; }
+.seq-ctrl-btn--stop  { background: #ea580c; color: #fff; }
+.seq-ctrl-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  border-bottom-color: rgba(0,0,0,0.12);
+  box-shadow: none;
+}
+.seq-ctrl-btn:not(:disabled):hover  { filter: brightness(1.12); transform: translateY(-1px); }
+.seq-ctrl-btn:not(:disabled):active { transform: translateY(2px); border-bottom-width: 1px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.18); }
+.seq-ctrl-error {
+  width: 100%;
+  font-size: 10px;
+  color: var(--danger, #f87171);
+  text-align: center;
+  cursor: pointer;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+
+/* Mode compact (ancré dans le séquenceur) */
+.toolbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.toolbox-drag-handle--sm {
+  font-size: 10px;
+  cursor: grab;
+  opacity: 0.45;
+  padding: 2px 1px;
+}
+.toolbox-drag-handle--sm:hover { opacity: 1; }
+.toolbox-inline .seq-controls {
+  padding: 0;
+  gap: 5px;
+}
+.toolbox-inline .seq-ctrl-btn {
+  width: 28px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 10px;
+  border-bottom-width: 2px;
 }
 .seq-sep {
   width: 1px;

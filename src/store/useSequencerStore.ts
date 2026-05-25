@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Pose } from '../model/pose';
 import { SERVOS, LEG_NAMES } from '../model/hexapod';
+import { useHexapodStore } from './useHexapodStore';
 
 export type StepType = 'defined' | 'interpolated';
 
@@ -16,6 +17,23 @@ export const MAX_FPS = 40;
 
 const MAX_HISTORY = 20;
 
+// Module-level playback timer (shared across components)
+let _timer: ReturnType<typeof setTimeout> | null = null;
+
+function _clearTimer() {
+  if (_timer !== null) { clearTimeout(_timer); _timer = null; }
+}
+
+function _scheduleStep(idx: number) {
+  const s = useSequencerStore.getState();
+  if (!s.isPlaying || s.steps.length === 0) return;
+  const stepIdx = idx % s.steps.length;
+  s.setCurrentStepIndex(stepIdx);
+  useHexapodStore.getState().applyPose(s.steps[stepIdx].pose);
+  const { transitionSpeed, stepDelay } = useSequencerStore.getState();
+  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), (transitionSpeed + stepDelay) * 1000);
+}
+
 interface SequencerState {
   steps: SequencerStep[];
   servoOrder: number[];
@@ -24,6 +42,8 @@ interface SequencerState {
   currentStepIndex: number;
   selectedStepIndex: number;
   isPlaying: boolean;
+  isPaused: boolean;
+  playError: string | null;
   history: SequencerStep[][];
   future: SequencerStep[][];
   panelHeight: number;
@@ -40,6 +60,10 @@ interface SequencerState {
   setCurrentStepIndex: (i: number) => void;
   setSelectedStepIndex: (i: number) => void;
   setIsPlaying: (v: boolean) => void;
+  setPlayError: (v: string | null) => void;
+  play: () => void;
+  pause: () => void;
+  stop: () => void;
   setPanelHeight: (h: number) => void;
   setSequenceName: (name: string) => void;
   toggleShowInterpolated: () => void;
@@ -69,6 +93,8 @@ export const useSequencerStore = create<SequencerState>()(
       currentStepIndex: -1,
       selectedStepIndex: -1,
       isPlaying: false,
+      isPaused: false,
+      playError: null,
       history: [],
       future: [],
       panelHeight: 258,
@@ -140,6 +166,47 @@ export const useSequencerStore = create<SequencerState>()(
       setCurrentStepIndex: (i) => set({ currentStepIndex: i }),
       setSelectedStepIndex: (i) => set({ selectedStepIndex: i }),
       setIsPlaying: (v) => set({ isPlaying: v }),
+      setPlayError: (v) => set({ playError: v }),
+
+      play: () => {
+        const s = get();
+        if (s.isPaused) {
+          set({ isPlaying: true, isPaused: false });
+          _scheduleStep(s.currentStepIndex >= 0 ? s.currentStepIndex : 0);
+          return;
+        }
+        if (s.isPlaying) return;
+        const definedBefore = s.steps.filter((st) => !st.type || st.type === 'defined').length;
+        get().generateInterpolations();
+        const after = get();
+        if (after.steps.length === 0) {
+          if (definedBefore > 0) {
+            set({ playError: `Impossible de générer les interpolations : ${definedBefore} étape${definedBefore > 1 ? 's' : ''} définie${definedBefore > 1 ? 's' : ''} mais aucune n'a pu être traitée. Vérifiez que les poses sont valides.` });
+          }
+          return;
+        }
+        set({ isPlaying: true, isPaused: false, selectedStepIndex: -1, playError: null });
+        _scheduleStep(0);
+      },
+
+      pause: () => {
+        _clearTimer();
+        set({ isPlaying: false, isPaused: true });
+      },
+
+      stop: () => {
+        _clearTimer();
+        const { steps } = useSequencerStore.getState();
+        const firstDefined = steps.find((st) => st.type !== 'interpolated') ?? steps[0];
+        if (firstDefined) useHexapodStore.getState().applyPose(firstDefined.pose);
+        set({
+          isPlaying: false,
+          isPaused: false,
+          currentStepIndex: -1,
+          selectedStepIndex: firstDefined ? steps.indexOf(firstDefined) : -1,
+        });
+      },
+
       setPanelHeight: (h) => set({ panelHeight: h }),
       setSequenceName: (name) => set({ sequenceName: name }),
       toggleShowInterpolated: () => set((s) => ({ showInterpolated: !s.showInterpolated })),
@@ -221,7 +288,8 @@ export const useSequencerStore = create<SequencerState>()(
           };
         }),
 
-      loadSteps: (steps, name) =>
+      loadSteps: (steps, name) => {
+        _clearTimer();
         set((s) => ({
           steps: steps.map((st) => ({ ...st, type: st.type ?? 'defined' })),
           sequenceName: name ?? s.sequenceName,
@@ -230,7 +298,9 @@ export const useSequencerStore = create<SequencerState>()(
           selectedStepIndex: -1,
           currentStepIndex: -1,
           isPlaying: false,
-        })),
+          isPaused: false,
+        }));
+      },
 
       exportJson: () => {
         const { steps, transitionSpeed, stepDelay, sequenceName } = get();

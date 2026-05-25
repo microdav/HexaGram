@@ -7,6 +7,7 @@ import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { SERVOS } from '../model/hexapod';
+import { ToolboxSlot } from './ToolboxSlot';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
 
@@ -23,6 +24,8 @@ export function SequencerPanel() {
   const seqOpen = useToolboxStore((s) => s.uiPrefs.sequencerOpen);
   const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
   const setProgramsOpen = useToolboxStore((s) => s.setProgramsOpen);
+  const seqCtrlDocked = useToolboxStore((s) => s.configs['seq-ctrl']?.panel === 'sequencer');
+  const isDraggingToSeq = useToolboxStore((s) => s.draggingId !== null && s.hoveredPanel === 'sequencer');
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
@@ -59,6 +62,8 @@ export function SequencerPanel() {
   const currentStepIndex = useSequencerStore((s) => s.currentStepIndex);
   const selectedStepIndex = useSequencerStore((s) => s.selectedStepIndex);
   const isPlaying = useSequencerStore((s) => s.isPlaying);
+  const isPaused = useSequencerStore((s) => s.isPaused);
+  const playError = useSequencerStore((s) => s.playError);
   const history = useSequencerStore((s) => s.history);
   const panelHeight = useSequencerStore((s) => s.panelHeight);
   const sequenceName = useSequencerStore((s) => s.sequenceName);
@@ -73,52 +78,6 @@ export function SequencerPanel() {
 
   const pose = useHexapodStore((s) => s.pose);
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [playError, setPlayError] = useState<string | null>(null);
-
-  const stopPlayback = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    useSequencerStore.getState().setIsPlaying(false);
-    useSequencerStore.getState().setCurrentStepIndex(-1);
-  }, []);
-
-  const playStepRef = useRef<(idx: number) => void>(() => {});
-
-  useEffect(() => {
-    playStepRef.current = (idx: number) => {
-      const store = useSequencerStore.getState();
-      if (!store.isPlaying || store.steps.length === 0) { stopPlayback(); return; }
-      const stepIdx = idx % store.steps.length;
-      store.setCurrentStepIndex(stepIdx);
-      useHexapodStore.getState().applyPose(store.steps[stepIdx].pose);
-      timerRef.current = setTimeout(
-        () => playStepRef.current(stepIdx + 1),
-        (store.transitionSpeed + store.stepDelay) * 1000
-      );
-    };
-  }, [stopPlayback]);
-
-  const startPlayback = useCallback(() => {
-    setPlayError(null);
-    const definedBefore = useSequencerStore.getState().steps.filter(
-      (st) => !st.type || st.type === 'defined'
-    ).length;
-    useSequencerStore.getState().generateInterpolations();
-    const afterSteps = useSequencerStore.getState().steps;
-    if (afterSteps.length === 0) {
-      if (definedBefore > 0) {
-        setPlayError(
-          `Impossible de générer les interpolations : ${definedBefore} étape${definedBefore > 1 ? 's' : ''} définie${definedBefore > 1 ? 's' : ''} mais aucune n'a pu être traitée. Vérifiez que les poses sont valides.`
-        );
-      }
-      return;
-    }
-    useSequencerStore.getState().setSelectedStepIndex(-1);
-    useSequencerStore.getState().setIsPlaying(true);
-    playStepRef.current(0);
-  }, []);
-
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   // Load sequences list when user logs in
   useEffect(() => {
@@ -383,7 +342,7 @@ export function SequencerPanel() {
       )}
 
       <div
-        className={`sequencer-panel${seqOpen ? ' open' : ''}${isResizing ? ' resizing' : ''}`}
+        className={`sequencer-panel${seqOpen ? ' open' : ''}${isResizing ? ' resizing' : ''}${isDraggingToSeq ? ' seq-drop-zone' : ''}`}
         // eslint-disable-next-line react/forbid-component-props
         style={{ '--seq-panel-h': `${panelHeight}px` } as React.CSSProperties}
       >
@@ -392,6 +351,7 @@ export function SequencerPanel() {
         <button
           type="button"
           className="seq-panel-handle"
+          data-dock-panel="sequencer"
           onClick={() => setSequencerOpen(!seqOpen)}
           title={`${seqOpen ? 'Fermer' : 'Ouvrir'} le séquenceur${steps.length > 0 ? ` · ${steps.length} étape${steps.length !== 1 ? 's' : ''}` : ''}`}
         >
@@ -399,7 +359,7 @@ export function SequencerPanel() {
         </button>
 
         {/* ── Contenu collapsible ───────────────────────── */}
-        <div className="sequencer-content">
+        <div className="sequencer-content" data-dock-panel="sequencer">
 
           {/* Bord de redimensionnement */}
           <div className="seq-resize-handle" onMouseDown={handleResizeStart} />
@@ -408,15 +368,19 @@ export function SequencerPanel() {
           <div className="seq-toolbar">
             {/* Gauche : contrôles lecture/édition */}
             <div className="seq-toolbar-left">
-              <button
-                type="button"
-                className={`seq-btn${isPlaying ? ' seq-btn-active' : ''}`}
-                onClick={isPlaying ? stopPlayback : startPlayback}
-                disabled={steps.length === 0}
-                title={isPlaying ? 'Arrêter' : 'Lancer la séquence'}
-              >
-                {isPlaying ? '■' : '▶'}
-              </button>
+              {seqCtrlDocked ? (
+                <ToolboxSlot panel="sequencer" />
+              ) : (
+                <button
+                  type="button"
+                  className={`seq-btn${isPlaying ? ' seq-btn-active' : ''}${isPaused ? ' seq-btn-paused' : ''}`}
+                  onClick={isPlaying ? () => useSequencerStore.getState().stop() : () => useSequencerStore.getState().play()}
+                  disabled={steps.length === 0}
+                  title={isPlaying ? 'Arrêter' : isPaused ? 'Reprendre la séquence' : 'Lancer la séquence'}
+                >
+                  {isPlaying ? '■' : isPaused ? '▷' : '▶'}
+                </button>
+              )}
 
               <button
                 type="button"
@@ -596,7 +560,7 @@ export function SequencerPanel() {
 
           {/* Erreur de lecture */}
           {playError && (
-            <div className="seq-play-error" onClick={() => setPlayError(null)} title="Cliquer pour fermer">
+            <div className="seq-play-error" onClick={() => useSequencerStore.getState().setPlayError(null)} title="Cliquer pour fermer">
               ⚠ {playError}
             </div>
           )}
