@@ -9,7 +9,7 @@ import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { SequencerPanel } from "./ui/SequencerPanel";
-import { ProgramModal } from "./ui/ProgramModal";
+import { ProgramPage } from "./ui/ProgramPage";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
@@ -20,10 +20,10 @@ import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
-  const programsOpen = useToolboxStore((s) => s.uiPrefs.programsOpen ?? false);
+  const activeTab = useToolboxStore((s) => s.uiPrefs.activeTab ?? 'conception');
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
   const setRightOpen = useToolboxStore((s) => s.setRightOpen);
-  const setProgramsOpen = useToolboxStore((s) => s.setProgramsOpen);
+  const setActiveTab = useToolboxStore((s) => s.setActiveTab);
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
   const { openModal, setOpenModal, bootstrap } = useAuthStore();
   const user = useAuthStore((s) => s.user);
@@ -80,53 +80,76 @@ export default function App() {
           <UserButton />
         </div>
       </header>
+
+      <nav className="app-tabs">
+        <button
+          type="button"
+          className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}
+          onClick={() => setActiveTab('conception')}
+        >
+          Conception 3D
+        </button>
+        <button
+          type="button"
+          className={`app-tab${activeTab === 'programmation' ? ' active' : ''}`}
+          onClick={() => setActiveTab('programmation')}
+        >
+          Programmation graphique
+        </button>
+      </nav>
+
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
       <InstallBanner />
       <Toast />
 
-      <main className={layoutClass}>
-        <aside
-          className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}
-          data-dock-panel="left"
-        >
-          <ProfilePanel />
-          <ToolboxSlot panel="left" />
-        </aside>
-        <button
-          type="button"
-          className={`sidebar-handle handle-left${leftOpen ? "" : " collapsed"}`}
-          onClick={() => setLeftOpen(!leftOpen)}
-          aria-label={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
-          title={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
-        >
-          {leftOpen ? "‹" : "›"}
-        </button>
+      {activeTab === 'conception' && (
+        <>
+          <main className={layoutClass}>
+            <aside
+              className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}
+              data-dock-panel="left"
+            >
+              <ProfilePanel />
+              <ToolboxSlot panel="left" />
+            </aside>
+            <button
+              type="button"
+              className={`sidebar-handle handle-left${leftOpen ? "" : " collapsed"}`}
+              onClick={() => setLeftOpen(!leftOpen)}
+              aria-label={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
+              title={leftOpen ? "Fermer le panneau gauche" : "Ouvrir le panneau gauche"}
+            >
+              {leftOpen ? "‹" : "›"}
+            </button>
 
-        <section className="viewer">
-          <Scene />
-        </section>
+            <section className="viewer">
+              <Scene />
+            </section>
 
-        <button
-          type="button"
-          className={`sidebar-handle handle-right${rightOpen ? "" : " collapsed"}`}
-          onClick={() => setRightOpen(!rightOpen)}
-          aria-label={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
-          title={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
-        >
-          {rightOpen ? "›" : "‹"}
-        </button>
-        <aside
-          className={`sidebar sidebar-right${rightOpen ? "" : " collapsed"}`}
-          data-dock-panel="right"
-        >
-          <MirrorPanel />
-          <ToolboxSlot panel="right" />
-        </aside>
-      </main>
+            <button
+              type="button"
+              className={`sidebar-handle handle-right${rightOpen ? "" : " collapsed"}`}
+              onClick={() => setRightOpen(!rightOpen)}
+              aria-label={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
+              title={rightOpen ? "Fermer le panneau droit" : "Ouvrir le panneau droit"}
+            >
+              {rightOpen ? "›" : "‹"}
+            </button>
+            <aside
+              className={`sidebar sidebar-right${rightOpen ? "" : " collapsed"}`}
+              data-dock-panel="right"
+            >
+              <MirrorPanel />
+              <ToolboxSlot panel="right" />
+            </aside>
+          </main>
 
-      <SequencerPanel />
-      <ProgramModal open={programsOpen} onClose={() => setProgramsOpen(false)} />
-      <FloatingToolboxes />
+          <SequencerPanel />
+          <FloatingToolboxes />
+        </>
+      )}
+
+      {activeTab === 'programmation' && <ProgramPage />}
     </div>
   );
 }

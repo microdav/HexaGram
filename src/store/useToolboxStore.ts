@@ -10,11 +10,13 @@ export interface ToolboxConfig {
   floatPos: { x: number; y: number };
 }
 
+export type AppTab = 'conception' | 'programmation';
+
 export interface UiPrefs {
   leftOpen: boolean;
   rightOpen: boolean;
   sequencerOpen: boolean;
-  programsOpen: boolean;
+  activeTab: AppTab;
 }
 
 const LEFT_PANEL_W = 260;
@@ -70,7 +72,7 @@ const DEFAULT_UI_PREFS: UiPrefs = {
   leftOpen: true,
   rightOpen: true,
   sequencerOpen: false,
-  programsOpen: false,
+  activeTab: 'conception',
 };
 
 interface ToolboxStore {
@@ -90,7 +92,7 @@ interface ToolboxStore {
   setLeftOpen: (v: boolean) => void;
   setRightOpen: (v: boolean) => void;
   setSequencerOpen: (v: boolean) => void;
-  setProgramsOpen: (v: boolean) => void;
+  setActiveTab: (tab: AppTab) => void;
   applyUiPrefs: (prefs: Partial<UiPrefs>) => void;
 }
 
@@ -151,7 +153,7 @@ export const useToolboxStore = create<ToolboxStore>()(
           uiPrefs: { ...s.uiPrefs, rightOpen: v },
         })),
       setSequencerOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, sequencerOpen: v } })),
-      setProgramsOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, programsOpen: v } })),
+      setActiveTab: (tab) => set((s) => ({ uiPrefs: { ...s.uiPrefs, activeTab: tab } })),
       applyUiPrefs: (prefs) => set((s) => ({ uiPrefs: { ...s.uiPrefs, ...prefs } })),
     }),
     {

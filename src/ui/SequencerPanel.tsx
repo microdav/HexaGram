@@ -23,7 +23,7 @@ const MAX_PANEL_H = 700;
 export function SequencerPanel() {
   const seqOpen = useToolboxStore((s) => s.uiPrefs.sequencerOpen);
   const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
-  const setProgramsOpen = useToolboxStore((s) => s.setProgramsOpen);
+  const setActiveTab = useToolboxStore((s) => s.setActiveTab);
   const seqCtrlDocked = useToolboxStore((s) => s.configs['seq-ctrl']?.panel === 'sequencer');
   const isDraggingToSeq = useToolboxStore((s) => s.draggingId !== null && s.hoveredPanel === 'sequencer');
   const [isResizing, setIsResizing] = useState(false);
@@ -454,7 +454,7 @@ export function SequencerPanel() {
               <button
                 type="button"
                 className="seq-btn seq-btn-programs"
-                onClick={() => setProgramsOpen(true)}
+                onClick={() => setActiveTab('programmation')}
                 title="Programmes graphiques"
               >
                 ▶ Prog.
