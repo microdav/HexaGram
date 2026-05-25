@@ -7,23 +7,11 @@ import { computeLegMounts, LEG_NAMES, SERVOS } from "../model/hexapod";
 export function SimulationContent() {
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const setBodyTransparent = useHexapodStore((s) => s.setBodyTransparent);
-  const torqueEnabled = useHexapodStore((s) => s.torqueEnabled);
-  const setTorqueEnabled = useHexapodStore((s) => s.setTorqueEnabled);
-  const globalServoTypeId = useHexapodStore((s) => s.globalServoTypeId);
-  const totalWeightG = useHexapodStore((s) => s.weightConfig.totalWeightG);
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const geometry = useHexapodStore((s) => s.geometry);
   const pose = useHexapodStore((s) => s.pose);
   const transform = useBodyTransform();
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
-
-  const torqueAvailable = !!(globalServoTypeId && totalWeightG && totalWeightG > 0);
-
-  const torqueDisabledReason = !globalServoTypeId
-    ? "Définissez un servo global dans les paramètres du profil"
-    : !totalWeightG
-    ? "Définissez le poids total dans les paramètres du profil (onglet Matériel)"
-    : null;
 
   const handleCopy = async () => {
     const mounts = computeLegMounts(geometry);
@@ -107,47 +95,6 @@ export function SimulationContent() {
             : "Châssis opaque"}
         </span>
       </label>
-
-      <label className={`toggle-row${!torqueAvailable ? " toggle-row--disabled" : ""}`}
-        title={torqueDisabledReason ?? undefined}
-      >
-        <input
-          type="checkbox"
-          checked={torqueEnabled && torqueAvailable}
-          disabled={!torqueAvailable}
-          onChange={(e) => setTorqueEnabled(e.target.checked)}
-        />
-        <span>Couple</span>
-        <span className="hint">
-          {torqueDisabledReason
-            ? torqueDisabledReason
-            : torqueEnabled
-            ? "Couples estimés visibles en lecture de séquence"
-            : "Masqué — activer pour voir les couples pendant la lecture"}
-        </span>
-      </label>
-
-      {torqueEnabled && torqueAvailable && (
-        <div className="torque-legend">
-          <div className="tl-row">
-            <span className="tl-dot tl-dot--green" />
-            <span>&lt; 40 % — nominal</span>
-          </div>
-          <div className="tl-row">
-            <span className="tl-dot tl-dot--yellow" />
-            <span>40–65 % — attention</span>
-          </div>
-          <div className="tl-row">
-            <span className="tl-dot tl-dot--orange" />
-            <span>65–85 % — élevé</span>
-          </div>
-          <div className="tl-row">
-            <span className="tl-dot tl-dot--red" />
-            <span>&gt; 85 % — critique</span>
-          </div>
-          <div className="tl-note">% du couple max du servo sélectionné</div>
-        </div>
-      )}
 
       <button type="button" className="copy-state-btn" onClick={handleCopy}>
         {copyStatus ?? "Copier l'état complet"}

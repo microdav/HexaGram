@@ -57,12 +57,13 @@ function shiftFloating(
 }
 
 const DEFAULTS: Record<string, ToolboxConfig> = {
-  geometry:       { panel: 'left',  order: 0, minimized: false, floatPos: { x: 280, y: 120 } },
-  cog:            { panel: 'left',  order: 1, minimized: false, floatPos: { x: 280, y: 300 } },
-  simulation:     { panel: 'left',  order: 2, minimized: false, floatPos: { x: 280, y: 480 } },
-  'servos-left':  { panel: 'right', order: 0, minimized: false, floatPos: { x: 900, y: 120 } },
-  'servos-right': { panel: 'right', order: 1, minimized: false, floatPos: { x: 900, y: 320 } },
-  'seq-ctrl':     { panel: null,    order: 0, minimized: false, floatPos: { x: Math.round(window.innerWidth / 2 - 100), y: 60 } },
+  geometry:         { panel: 'left',  order: 0, minimized: false, floatPos: { x: 280, y: 120 } },
+  cog:              { panel: 'left',  order: 1, minimized: false, floatPos: { x: 280, y: 300 } },
+  simulation:       { panel: 'left',  order: 2, minimized: false, floatPos: { x: 280, y: 480 } },
+  electromechanics: { panel: 'left',  order: 3, minimized: false, floatPos: { x: 280, y: 480 } },
+  'servos-left':    { panel: 'right', order: 0, minimized: false, floatPos: { x: 900, y: 120 } },
+  'servos-right':   { panel: 'right', order: 1, minimized: false, floatPos: { x: 900, y: 320 } },
+  'seq-ctrl':       { panel: null,    order: 0, minimized: false, floatPos: { x: Math.round(window.innerWidth / 2 - 100), y: 60 } },
 };
 
 const DEFAULT_UI_PREFS: UiPrefs = {

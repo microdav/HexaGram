@@ -3113,6 +3113,58 @@ html, body, #root {
   font-style: italic;
 }
 
+/* ── Performances électromécaniques ─────────────────────────────────── */
+.perf-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.perf-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.power-chart-svg {
+  display: block;
+  margin-top: 2px;
+}
+
+.perf-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text);
+  margin-top: 5px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.perf-stats span {
+  white-space: nowrap;
+}
+
+.perf-stat-label {
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.perf-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 4px;
+}
+
 /* ── Onglet Matériel (poids & électronique) ──────────────────────────── */
 .hardware-tab {
   display: flex;
