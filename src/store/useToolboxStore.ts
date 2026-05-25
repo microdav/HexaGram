@@ -14,6 +14,7 @@ export interface UiPrefs {
   leftOpen: boolean;
   rightOpen: boolean;
   sequencerOpen: boolean;
+  programsOpen: boolean;
 }
 
 const DEFAULTS: Record<string, ToolboxConfig> = {
@@ -28,6 +29,7 @@ const DEFAULT_UI_PREFS: UiPrefs = {
   leftOpen: true,
   rightOpen: true,
   sequencerOpen: false,
+  programsOpen: false,
 };
 
 interface ToolboxStore {
@@ -47,6 +49,7 @@ interface ToolboxStore {
   setLeftOpen: (v: boolean) => void;
   setRightOpen: (v: boolean) => void;
   setSequencerOpen: (v: boolean) => void;
+  setProgramsOpen: (v: boolean) => void;
   applyUiPrefs: (prefs: Partial<UiPrefs>) => void;
 }
 
@@ -99,6 +102,7 @@ export const useToolboxStore = create<ToolboxStore>()(
       setLeftOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, leftOpen: v } })),
       setRightOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, rightOpen: v } })),
       setSequencerOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, sequencerOpen: v } })),
+      setProgramsOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, programsOpen: v } })),
       applyUiPrefs: (prefs) => set((s) => ({ uiPrefs: { ...s.uiPrefs, ...prefs } })),
     }),
     {

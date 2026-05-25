@@ -1,5 +1,6 @@
 import { useHexapodStore } from "../store/useHexapodStore";
 
+
 function NumberInput({
   label,
   value,
@@ -117,9 +118,24 @@ export function GeometryContent() {
 export function CogContent() {
   const geometry = useHexapodStore((s) => s.geometry);
   const setGeometry = useHexapodStore((s) => s.setGeometry);
+  const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
+  const setGravityEnabled = useHexapodStore((s) => s.setGravityEnabled);
 
   return (
     <div className="geom-section">
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={gravityEnabled}
+          onChange={(e) => setGravityEnabled(e.target.checked)}
+        />
+        <span>Gravité</span>
+        <span className="hint">
+          {gravityEnabled
+            ? "Le corps s'incline selon les appuis"
+            : "Translation simple (pas d'inclinaison)"}
+        </span>
+      </label>
       <CogSlider
         label="X (avant/arrière)"
         value={geometry.cog.x}

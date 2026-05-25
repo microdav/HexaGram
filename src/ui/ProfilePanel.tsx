@@ -4,7 +4,6 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useToastStore } from "../store/useToastStore";
 import { Modal } from "./Modal";
 import { ProfileSettingsModal } from "./ProfileSettingsModal";
-import { ProgramModal } from "./ProgramModal";
 
 export function ProfilePanel() {
   const user = useAuthStore((s) => s.user);
@@ -18,7 +17,6 @@ export function ProfilePanel() {
 
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [programsOpen, setProgramsOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -73,33 +71,27 @@ export function ProfilePanel() {
         )}
         <button
           type="button"
-          className="btn btn-save-profile"
+          className="btn btn-icon btn-save-profile"
           disabled={saving}
           title={activeProfile ? `Sauvegarder « ${activeProfile.name} »` : "Sauvegarder le profil…"}
           onClick={handleSave}
         >
-          {saving ? "…" : "Sauvegarder"}
+          {saving ? "…" : "💾"}
         </button>
+      </div>
+
+      <div className="profile-panel-gear-row">
         <button
           type="button"
-          className="btn btn-icon btn-profile-gear"
+          className="btn btn-profile-gear"
           title="Paramètres du profil"
           onClick={() => setSettingsOpen(true)}
         >
-          ⚙
-        </button>
-        <button
-          type="button"
-          className="btn btn-icon btn-profile-programs"
-          title="Programmes graphiques"
-          onClick={() => setProgramsOpen(true)}
-        >
-          ▶
+          ⚙ Paramétrage robot
         </button>
       </div>
 
       <ProfileSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <ProgramModal open={programsOpen} onClose={() => setProgramsOpen(false)} />
 
       <Modal open={saveModalOpen} onClose={() => setSaveModalOpen(false)}>
         <h3 className="modal-title">Nouveau profil robot</h3>

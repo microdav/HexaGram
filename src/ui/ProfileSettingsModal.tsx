@@ -10,7 +10,17 @@ import {
   DEFAULT_SERVO_CALIB,
   useHexapodStore,
   type ServoCalibration,
+  type WeightConfig,
+  type ElectronicsConfig,
 } from "../store/useHexapodStore";
+import {
+  SERVO_CONTROLLER_CATALOG,
+  type ServoControllerSpec,
+} from "../model/servoControllers";
+import {
+  COMMAND_ELECTRONICS_CATALOG,
+  type CommandElectronicsSpec,
+} from "../model/commandElectronics";
 import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
 import { useProfilesStore } from "../store/useProfilesStore";
 import { useToastStore } from "../store/useToastStore";
@@ -25,7 +35,7 @@ import {
 } from "../model/gaitGenerator";
 import { Modal } from "./Modal";
 
-type Tab = "general" | "servos" | "collisions" | "sequences";
+type Tab = "general" | "servos" | "collisions" | "sequences" | "hardware";
 
 const JOINTS = ["coxa", "femur", "tibia"] as const;
 const JOINT_LABELS: Record<string, string> = { coxa: "Coxa", femur: "Fémur", tibia: "Tibia" };
@@ -456,6 +466,389 @@ function ServoCalibBlock({
   );
 }
 
+// ── Onglet Matériel ──────────────────────────────────────────────────────────
+
+interface HardwareTabProps {
+  weightConfig: WeightConfig;
+  onWeightChange: (cfg: WeightConfig) => void;
+  electronics: ElectronicsConfig;
+  onElectronicsChange: (cfg: ElectronicsConfig) => void;
+  servoCount: number;
+  globalServoTypeId: string | null;
+  allServoTypes: ServoSpec[];
+}
+
+function HardwareTab({
+  weightConfig,
+  onWeightChange,
+  electronics,
+  onElectronicsChange,
+  servoCount,
+  globalServoTypeId,
+  allServoTypes,
+}: HardwareTabProps) {
+
+  const selectedController = SERVO_CONTROLLER_CATALOG.find(
+    (c) => c.id === electronics.servoControllerId
+  );
+  const selectedCommand = COMMAND_ELECTRONICS_CATALOG.find(
+    (c) => c.id === electronics.commandElectronicsId
+  );
+  const selectedServo = allServoTypes.find((s) => s.id === globalServoTypeId);
+
+  const canEstimate = !!(
+    weightConfig.emptyWeightG !== undefined || weightConfig.totalWeightG !== undefined
+  );
+
+  const handleEstimate = () => {
+    const servoWeightG = (selectedServo?.weightG ?? 0) * servoCount;
+    const controllerWeightG = selectedController?.weightG ?? 0;
+    const commandWeightG = selectedCommand?.weightG ?? 0;
+    const electronicsWeightG = servoWeightG + controllerWeightG + commandWeightG;
+
+    if (weightConfig.emptyWeightG !== undefined && weightConfig.totalWeightG === undefined) {
+      onWeightChange({
+        ...weightConfig,
+        totalWeightG: Math.round(weightConfig.emptyWeightG + electronicsWeightG),
+      });
+    } else if (weightConfig.totalWeightG !== undefined && weightConfig.emptyWeightG === undefined) {
+      onWeightChange({
+        ...weightConfig,
+        emptyWeightG: Math.max(0, Math.round(weightConfig.totalWeightG - electronicsWeightG)),
+      });
+    } else if (
+      weightConfig.emptyWeightG !== undefined &&
+      weightConfig.totalWeightG !== undefined
+    ) {
+      // Recalcule le total depuis le squelette + électronique connue
+      onWeightChange({
+        ...weightConfig,
+        totalWeightG: Math.round(weightConfig.emptyWeightG + electronicsWeightG),
+      });
+    }
+  };
+
+  const estimateHint = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedServo?.weightG) parts.push(`${servoCount}× servos : ${(selectedServo.weightG * servoCount).toFixed(0)} g`);
+    if (selectedController?.weightG) parts.push(`contrôleur : ${selectedController.weightG} g`);
+    if (selectedCommand?.weightG) parts.push(`commande : ${selectedCommand.weightG} g`);
+    if (parts.length === 0) return "Définissez un servo global et une électronique pour estimer";
+    return "Base : " + parts.join(" + ");
+  }, [selectedServo, selectedController, selectedCommand, servoCount]);
+
+  return (
+    <div className="hardware-tab">
+
+      {/* Poids */}
+      <div className="hw-section">
+        <div className="hw-section-title">Poids du robot</div>
+
+        <div className="hw-weight-grid">
+          <label className="hw-field">
+            <span className="hw-label">Poids à vide</span>
+            <span className="hw-sublabel">Squelette hors servomoteurs</span>
+            <div className="hw-input-row">
+              <input
+                className="hw-num-input"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="—"
+                value={weightConfig.emptyWeightG ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                  onWeightChange({ ...weightConfig, emptyWeightG: v });
+                }}
+              />
+              <span className="hw-unit">g</span>
+            </div>
+          </label>
+
+          <label className="hw-field">
+            <span className="hw-label">Poids total embarqué</span>
+            <span className="hw-sublabel">Squelette + servos + électronique (hors batterie)</span>
+            <div className="hw-input-row">
+              <input
+                className="hw-num-input"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="—"
+                value={weightConfig.totalWeightG ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                  onWeightChange({ ...weightConfig, totalWeightG: v });
+                }}
+              />
+              <span className="hw-unit">g</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="hw-estimate-row">
+          <span className="hw-estimate-hint">{estimateHint}</span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={!canEstimate}
+            onClick={handleEstimate}
+            title="Calcule la valeur manquante depuis les specs des composants sélectionnés"
+          >
+            Estimer
+          </button>
+        </div>
+      </div>
+
+      {/* Contrôleur servo */}
+      <div className="hw-section">
+        <div className="hw-section-title">Contrôleur servo</div>
+        <ControllerCombobox
+          value={electronics.servoControllerId}
+          onChange={(id) => onElectronicsChange({ ...electronics, servoControllerId: id })}
+          items={SERVO_CONTROLLER_CATALOG}
+          placeholder="aucun"
+        />
+        {selectedController && (
+          <div className="hw-spec-card">
+            <div className="hw-spec-row"><span>Canaux</span><span>{selectedController.channels}</span></div>
+            <div className="hw-spec-row"><span>Interfaces</span><span>{selectedController.interfaces.join(", ")}</span></div>
+            <div className="hw-spec-row"><span>Tension entrée</span><span>{selectedController.voltageInputV[0]}–{selectedController.voltageInputV[1]} V</span></div>
+            {selectedController.voltageServoV && (
+              <div className="hw-spec-row"><span>Tension servo</span><span>{selectedController.voltageServoV[0]}–{selectedController.voltageServoV[1]} V</span></div>
+            )}
+            <div className="hw-spec-row"><span>Résolution</span><span>{selectedController.resolutionUs} µs</span></div>
+            <div className="hw-spec-row"><span>Poids</span><span>{selectedController.weightG} g</span></div>
+            <div className="hw-spec-row"><span>Dimensions</span><span>{selectedController.dimensionsMm.l}×{selectedController.dimensionsMm.w}×{selectedController.dimensionsMm.h} mm</span></div>
+            {selectedController.notes && <div className="hw-spec-notes">{selectedController.notes}</div>}
+          </div>
+        )}
+      </div>
+
+      {/* Électronique de commande */}
+      <div className="hw-section">
+        <div className="hw-section-title">Électronique de commande</div>
+        <CommandElecCombobox
+          value={electronics.commandElectronicsId}
+          onChange={(id) => onElectronicsChange({ ...electronics, commandElectronicsId: id })}
+          items={COMMAND_ELECTRONICS_CATALOG}
+          placeholder="aucune"
+        />
+        {selectedCommand && (
+          <div className="hw-spec-card">
+            <div className="hw-spec-row"><span>CPU</span><span>{selectedCommand.cpu}</span></div>
+            {selectedCommand.flashKb !== undefined && (
+              <div className="hw-spec-row"><span>Flash</span><span>{selectedCommand.flashKb >= 1024 ? `${selectedCommand.flashKb / 1024} Mo` : `${selectedCommand.flashKb} Ko`}</span></div>
+            )}
+            {selectedCommand.ramKb !== undefined && (
+              <div className="hw-spec-row"><span>RAM</span><span>{selectedCommand.ramKb >= 1024 ? `${(selectedCommand.ramKb / 1024).toFixed(0)} Mo` : `${selectedCommand.ramKb} Ko`}</span></div>
+            )}
+            <div className="hw-spec-row"><span>GPIO</span><span>{selectedCommand.gpio}</span></div>
+            <div className="hw-spec-row"><span>Interfaces</span><span>{selectedCommand.interfaces.join(", ")}</span></div>
+            <div className="hw-spec-row"><span>Tension</span><span>{selectedCommand.voltageV} V</span></div>
+            <div className="hw-spec-row"><span>Courant repos / actif</span><span>{selectedCommand.currentMa.idle} / {selectedCommand.currentMa.active} mA</span></div>
+            <div className="hw-spec-row"><span>Poids</span><span>{selectedCommand.weightG} g</span></div>
+            <div className="hw-spec-row"><span>Dimensions</span><span>{selectedCommand.dimensionsMm.l}×{selectedCommand.dimensionsMm.w}×{selectedCommand.dimensionsMm.h} mm</span></div>
+            {selectedCommand.notes && <div className="hw-spec-notes">{selectedCommand.notes}</div>}
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+// ── Combobox contrôleur servo ────────────────────────────────────────────────
+
+function ControllerCombobox({
+  value,
+  onChange,
+  items,
+  placeholder,
+}: {
+  value: string | undefined;
+  onChange: (id: string | undefined) => void;
+  items: ServoControllerSpec[];
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selected = items.find((i) => i.id === value);
+  const filtered = useMemo(() => {
+    if (!search) return items;
+    const q = search.toLowerCase();
+    return items.filter(
+      (i) => i.brand.toLowerCase().includes(q) || i.model.toLowerCase().includes(q)
+    );
+  }, [items, search]);
+
+  return (
+    <div ref={ref} className="servo-combobox">
+      <button
+        type="button"
+        className="servo-combobox-trigger"
+        onClick={() => { setOpen((o) => !o); setTimeout(() => inputRef.current?.focus(), 50); }}
+      >
+        <span>
+          {selected ? (
+            <><span className="sct-brand">{selected.brand}</span>{" "}<strong>{selected.model}</strong></>
+          ) : (
+            <span className="sct-none">— {placeholder} —</span>
+          )}
+        </span>
+        <span className="sct-caret">▼</span>
+      </button>
+      {open && (
+        <div className="servo-combobox-dropdown">
+          <input
+            ref={inputRef}
+            className="servo-combobox-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher…"
+          />
+          <div className="servo-combobox-list">
+            <button
+              type="button"
+              className={`servo-combobox-option${!value ? " selected" : ""}`}
+              onClick={() => { onChange(undefined); setOpen(false); setSearch(""); }}
+            >
+              <span className="sco-model">— aucun —</span>
+            </button>
+            {filtered.map((i) => (
+              <button
+                type="button"
+                key={i.id}
+                className={`servo-combobox-option${i.id === value ? " selected" : ""}`}
+                onClick={() => { onChange(i.id); setOpen(false); setSearch(""); }}
+              >
+                <span className="sco-brand">{i.brand}</span>
+                <span className="sco-model">{i.model}</span>
+                <span className="sco-hint">{i.channels} ch</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="servo-combobox-empty">Aucun résultat</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommandElecCombobox({
+  value,
+  onChange,
+  items,
+  placeholder,
+}: {
+  value: string | undefined;
+  onChange: (id: string | undefined) => void;
+  items: CommandElectronicsSpec[];
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selected = items.find((i) => i.id === value);
+  const filtered = useMemo(() => {
+    if (!search) return items;
+    const q = search.toLowerCase();
+    return items.filter(
+      (i) =>
+        i.brand.toLowerCase().includes(q) ||
+        i.model.toLowerCase().includes(q) ||
+        i.cpu.toLowerCase().includes(q)
+    );
+  }, [items, search]);
+
+  const TYPE_LABELS: Record<string, string> = {
+    microcontroller: "µC",
+    sbc: "SBC",
+    soc: "SoC",
+  };
+
+  return (
+    <div ref={ref} className="servo-combobox">
+      <button
+        type="button"
+        className="servo-combobox-trigger"
+        onClick={() => { setOpen((o) => !o); setTimeout(() => inputRef.current?.focus(), 50); }}
+      >
+        <span>
+          {selected ? (
+            <><span className="sct-brand">{selected.brand}</span>{" "}<strong>{selected.model}</strong></>
+          ) : (
+            <span className="sct-none">— {placeholder} —</span>
+          )}
+        </span>
+        <span className="sct-caret">▼</span>
+      </button>
+      {open && (
+        <div className="servo-combobox-dropdown">
+          <input
+            ref={inputRef}
+            className="servo-combobox-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher…"
+          />
+          <div className="servo-combobox-list">
+            <button
+              type="button"
+              className={`servo-combobox-option${!value ? " selected" : ""}`}
+              onClick={() => { onChange(undefined); setOpen(false); setSearch(""); }}
+            >
+              <span className="sco-model">— aucun —</span>
+            </button>
+            {filtered.map((i) => (
+              <button
+                type="button"
+                key={i.id}
+                className={`servo-combobox-option${i.id === value ? " selected" : ""}`}
+                onClick={() => { onChange(i.id); setOpen(false); setSearch(""); }}
+              >
+                <span className="sco-brand">{i.brand}</span>
+                <span className="sco-model">{i.model}</span>
+                <span className="sco-hint">{TYPE_LABELS[i.type] ?? i.type}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="servo-combobox-empty">Aucun résultat</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Modal principale ─────────────────────────────────────────────────────────
 
 interface Props {
@@ -474,6 +867,8 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const [showNewServoForm, setShowNewServoForm] = useState(false);
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
   const [localCollisionPrefs, setLocalCollisionPrefs] = useState<CollisionPrefs>({ ...DEFAULT_COLLISION_PREFS });
+  const [localWeightConfig, setLocalWeightConfig] = useState<WeightConfig>({});
+  const [localElectronics, setLocalElectronics] = useState<ElectronicsConfig>({});
   const [saving, setSaving] = useState(false);
 
   // ── Sequences tab state ────────────────────────────────────────────────────
@@ -494,11 +889,15 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const storeCalibration = useHexapodStore((s) => s.servoCalibration);
   const storeGeometry = useHexapodStore((s) => s.geometry);
   const storeCollisionPrefs = useHexapodStore((s) => s.collisionPrefs);
+  const storeWeightConfig = useHexapodStore((s) => s.weightConfig);
+  const storeElectronics = useHexapodStore((s) => s.electronics);
   const setDescription = useHexapodStore((s) => s.setDescription);
   const setGlobalServoTypeIdStore = useHexapodStore((s) => s.setGlobalServoTypeId);
   const setServoCalibrationAll = useHexapodStore((s) => s.setServoCalibrationAll);
   const setCollisionPrefs = useHexapodStore((s) => s.setCollisionPrefs);
   const setGeometry = useHexapodStore((s) => s.setGeometry);
+  const setWeightConfigStore = useHexapodStore((s) => s.setWeightConfig);
+  const setElectronicsStore = useHexapodStore((s) => s.setElectronics);
 
   const showToast = useToastStore((s) => s.show);
 
@@ -521,6 +920,8 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setGlobalServoTypeId(storeGlobalServoTypeId);
     setCalibration({ ...storeCalibration });
     setLocalCollisionPrefs({ ...storeCollisionPrefs });
+    setLocalWeightConfig({ ...storeWeightConfig });
+    setLocalElectronics({ ...storeElectronics });
     setCustomTypes(loadCustomServoTypes());
     setShowNewServoForm(false);
     setExpandedLegs(new Set());
@@ -635,6 +1036,8 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
       setGlobalServoTypeIdStore(globalServoTypeId);
       setServoCalibrationAll(calibration);
       setCollisionPrefs(localCollisionPrefs);
+      setWeightConfigStore(localWeightConfig);
+      setElectronicsStore(localElectronics);
       if (activeProfileId) {
         await update(activeProfileId);
         showToast("Paramètres enregistrés");
@@ -679,6 +1082,13 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
             onClick={() => setTab("sequences")}
           >
             Séquences
+          </button>
+          <button
+            type="button"
+            className={`settings-tab${tab === "hardware" ? " active" : ""}`}
+            onClick={() => setTab("hardware")}
+          >
+            Matériel
           </button>
         </nav>
 
@@ -1054,6 +1464,19 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Tab Matériel */}
+          {tab === "hardware" && (
+            <HardwareTab
+              weightConfig={localWeightConfig}
+              onWeightChange={setLocalWeightConfig}
+              electronics={localElectronics}
+              onElectronicsChange={setLocalElectronics}
+              servoCount={18}
+              globalServoTypeId={globalServoTypeId}
+              allServoTypes={allTypes}
+            />
           )}
 
         </div>

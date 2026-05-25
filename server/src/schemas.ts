@@ -46,10 +46,26 @@ const ToolboxConfigSchema = z.object({
   floatPos: z.object({ x: z.number(), y: z.number() }),
 });
 
+const CollisionPrefsSchema = z.object({
+  enabled: z.boolean().optional(),
+  includeBody: z.boolean().optional(),
+  showArrow: z.boolean().optional(),
+});
+
+const WeightConfigSchema = z.object({
+  emptyWeightG: z.number().optional(),
+  totalWeightG: z.number().optional(),
+});
+
+const ElectronicsConfigSchema = z.object({
+  servoControllerId: z.string().optional(),
+  commandElectronicsId: z.string().optional(),
+});
+
 export const ProfileDataSchema = z.object({
   version: z.literal(1),
   description: z.string().optional(),
-  globalServoTypeId: z.string().optional(),
+  globalServoTypeId: z.string().nullable().optional(),
   geometry: HexapodGeometrySchema,
   keyframes: z.array(KeyframeSchema),
   prefs: z.object({
@@ -57,6 +73,7 @@ export const ProfileDataSchema = z.object({
     gravityEnabled: z.boolean(),
     bodyTransparent: z.boolean(),
     cogAxisLock: z.object({ x: z.boolean(), y: z.boolean(), z: z.boolean() }).optional(),
+    collisionPrefs: CollisionPrefsSchema.optional(),
   }),
   servoCalibration: ServoCalibrationSchema.optional(),
   toolboxLayout: z.record(ToolboxConfigSchema).optional(),
@@ -65,6 +82,8 @@ export const ProfileDataSchema = z.object({
     rightOpen: z.boolean(),
     sequencerOpen: z.boolean(),
   }).optional(),
+  weightConfig: WeightConfigSchema.optional(),
+  electronics: ElectronicsConfigSchema.optional(),
 });
 
 export const CreateProfileSchema = z.object({

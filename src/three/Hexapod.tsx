@@ -7,6 +7,7 @@ import { useCollisions } from "../store/useCollisions";
 import { ContactMarkers } from "./ContactMarkers";
 import { CollisionMarker } from "./CollisionMarker";
 import { Leg } from "./Leg";
+import { TorqueIndicator } from "./TorqueIndicator";
 
 const ARROW_COLOR = "#1a1a1a";
 
@@ -139,6 +140,9 @@ export function Hexapod() {
         {collisions.hasCollision && showArrow && collisions.center && (
           <CollisionMarker center={collisions.center} />
         )}
+
+        {/* Indicateurs de couple par joint (actifs pendant la lecture de séquence) */}
+        <TorqueIndicator />
       </group>
 
       <ContactMarkers

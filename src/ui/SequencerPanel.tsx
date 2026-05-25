@@ -22,6 +22,7 @@ const MAX_PANEL_H = 700;
 export function SequencerPanel() {
   const seqOpen = useToolboxStore((s) => s.uiPrefs.sequencerOpen);
   const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
+  const setProgramsOpen = useToolboxStore((s) => s.setProgramsOpen);
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
@@ -483,6 +484,18 @@ export function SequencerPanel() {
                 <span>Interpolées</span>
               </label>
             </div>
+
+            {/* Programmes */}
+            {user && (
+              <button
+                type="button"
+                className="seq-btn seq-btn-programs"
+                onClick={() => setProgramsOpen(true)}
+                title="Programmes graphiques"
+              >
+                ▶ Prog.
+              </button>
+            )}
 
             {/* Droite : gestion de la séquence */}
             <div className="seq-toolbar-right">

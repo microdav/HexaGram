@@ -32,6 +32,16 @@ export const DEFAULT_SERVO_CALIB: ServoCalibration = {
   invert: false,
 };
 
+export interface WeightConfig {
+  emptyWeightG?: number;
+  totalWeightG?: number;
+}
+
+export interface ElectronicsConfig {
+  servoControllerId?: string;
+  commandElectronicsId?: string;
+}
+
 export interface RobotProfileData {
   version: 1;
   description?: string;
@@ -48,6 +58,8 @@ export interface RobotProfileData {
   servoCalibration?: Record<number, ServoCalibration>;
   toolboxLayout?: Record<string, ToolboxConfig>;
   uiPrefs?: UiPrefs;
+  weightConfig?: WeightConfig;
+  electronics?: ElectronicsConfig;
 }
 
 interface HexapodState {
@@ -71,6 +83,9 @@ interface HexapodState {
   globalServoTypeId: string | null;
   servoCalibration: Record<number, ServoCalibration>;
   collisionPrefs: CollisionPrefs;
+  weightConfig: WeightConfig;
+  electronics: ElectronicsConfig;
+  torqueEnabled: boolean;
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
@@ -91,6 +106,9 @@ interface HexapodState {
   setGlobalServoTypeId: (id: string | null) => void;
   setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
   setCollisionPrefs: (prefs: Partial<CollisionPrefs>) => void;
+  setWeightConfig: (cfg: Partial<WeightConfig>) => void;
+  setElectronics: (cfg: Partial<ElectronicsConfig>) => void;
+  setTorqueEnabled: (v: boolean) => void;
   applyPose: (pose: Pose) => void;
   serializeProfile: () => RobotProfileData;
   applyProfile: (data: unknown) => void;
@@ -119,6 +137,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   globalServoTypeId: null,
   servoCalibration: {},
   collisionPrefs: { ...DEFAULT_COLLISION_PREFS },
+  weightConfig: {},
+  electronics: {},
+  torqueEnabled: false,
 
   setServoAngle: (id, deg) =>
     set((state) => {
@@ -203,6 +224,14 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   setCollisionPrefs: (prefs) =>
     set((s) => ({ collisionPrefs: { ...s.collisionPrefs, ...prefs } })),
 
+  setWeightConfig: (cfg) =>
+    set((s) => ({ weightConfig: { ...s.weightConfig, ...cfg } })),
+
+  setElectronics: (cfg) =>
+    set((s) => ({ electronics: { ...s.electronics, ...cfg } })),
+
+  setTorqueEnabled: (v) => set({ torqueEnabled: v }),
+
   setArcShown: (servoId, shown) =>
     set((s) => {
       if (servoId < 0 || servoId > 31) return s;
@@ -231,6 +260,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         : undefined,
       toolboxLayout: { ...useToolboxStore.getState().configs },
       uiPrefs: { ...useToolboxStore.getState().uiPrefs },
+      weightConfig: Object.keys(s.weightConfig).length > 0 ? { ...s.weightConfig } : undefined,
+      electronics: Object.keys(s.electronics).length > 0 ? { ...s.electronics } : undefined,
     };
   },
 
@@ -267,6 +298,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       globalServoTypeId: d.globalServoTypeId ?? null,
       servoCalibration: calib,
       pose: defaultPose(),
+      weightConfig: d.weightConfig ?? {},
+      electronics: d.electronics ?? {},
     });
     if (d.toolboxLayout) {
       useToolboxStore.getState().applyLayout(d.toolboxLayout);

@@ -9,6 +9,7 @@ import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { SequencerPanel } from "./ui/SequencerPanel";
+import { ProgramModal } from "./ui/ProgramModal";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
@@ -19,8 +20,10 @@ import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
+  const programsOpen = useToolboxStore((s) => s.uiPrefs.programsOpen ?? false);
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
   const setRightOpen = useToolboxStore((s) => s.setRightOpen);
+  const setProgramsOpen = useToolboxStore((s) => s.setProgramsOpen);
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
   const { openModal, setOpenModal, bootstrap } = useAuthStore();
   const user = useAuthStore((s) => s.user);
@@ -122,6 +125,7 @@ export default function App() {
       </main>
 
       <SequencerPanel />
+      <ProgramModal open={programsOpen} onClose={() => setProgramsOpen(false)} />
       <FloatingToolboxes />
     </div>
   );
