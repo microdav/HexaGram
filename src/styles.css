@@ -3114,48 +3114,148 @@ html, body, #root {
 }
 
 /* ── Performances électromécaniques ─────────────────────────────────── */
-.perf-section-title {
+.perf-section-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.perf-section-row + .perf-section-row {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.perf-dot {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.perf-section-label {
+  flex: 1;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 10px;
-  margin-bottom: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+}
+
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+.info-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.perf-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+  width: 240px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.perf-popover p { margin: 0 0 5px; }
+.perf-popover p:last-child { margin: 0; }
+.perf-popover code {
+  font-family: monospace;
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+.perf-pop-warn {
+  color: #fb923c;
+  font-style: italic;
+  font-size: 10px;
 }
 
 .perf-hint {
   font-size: 11px;
   color: var(--text-dim);
   font-style: italic;
+  margin-top: 4px;
 }
 
 .power-chart-svg {
   display: block;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
-.perf-stats {
+.perf-dual-stats {
   display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.perf-stat-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 4px;
   font-size: 11px;
   color: var(--text);
-  margin-top: 5px;
-  padding: 4px 6px;
+  white-space: nowrap;
+  padding: 3px 6px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
-.perf-stats span {
-  white-space: nowrap;
+.perf-legend-line {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.perf-legend-line--meca { background: var(--accent); }
+.perf-legend-line--elec { background: #60a5fa; }
+
+.perf-dot--meca { background: var(--accent); }
+.perf-dot--elec { background: #60a5fa; }
+
+.perf-stat-rowlabel {
+  color: var(--text-dim);
+  font-size: 10px;
+  flex-shrink: 0;
+  width: 32px;
 }
 
 .perf-stat-label {
   color: var(--text-dim);
-  margin-right: 2px;
+  margin-right: 1px;
 }
 
 .perf-note {
