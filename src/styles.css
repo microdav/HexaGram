@@ -807,9 +807,25 @@ html, body, #root {
   background: rgba(245, 197, 24, 0.08);
 }
 
+/* ── Topbar right group ─────────────────────────────────────────────── */
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.demo-badge {
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.8;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
 /* ── User button ────────────────────────────────────────────────────── */
 .user-button {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1130,6 +1146,61 @@ html, body, #root {
   max-width: 760px;
   width: 92vw;
   padding: 20px 22px 18px;
+}
+
+/* ── Auth modal (login / signup) — deux colonnes ──────────────────── */
+.modal-auth {
+  max-width: 700px;
+  width: 92vw;
+  overflow-x: hidden;
+}
+
+.auth-layout {
+  display: flex;
+  gap: 0;
+  min-width: 0;
+}
+
+.auth-form-col {
+  flex: 0 0 50%;
+  min-width: 0;
+  padding-right: 22px;
+  border-right: 1px solid var(--border);
+}
+
+.auth-robot-panel {
+  flex: 0 0 50%;
+  min-width: 0;
+  padding-left: 22px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.auth-robot-text {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+}
+
+.auth-cursor {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.1em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  animation: blink-cursor 0.75s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }
 
 /* ── Settings layout (tabs + content) ───────────────────────────────── */
@@ -2034,6 +2105,13 @@ html, body, #root {
 }
 .seq-name-select:hover { border-color: var(--accent); }
 .seq-name-select:focus { border-color: var(--accent); }
+
+.seq-demo-name {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 0 4px;
+}
 
 /* Options dropdown */
 .seq-options-wrap { position: relative; }

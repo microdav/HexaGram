@@ -5,6 +5,7 @@ import { useSequencerStore, MAX_FPS } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { SERVOS } from '../model/hexapod';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
@@ -67,6 +68,7 @@ export function SequencerPanel() {
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const activeSequenceId = useSavedSequencesStore((s) => s.activeSequenceId);
+  const user = useAuthStore((s) => s.user);
 
   const pose = useHexapodStore((s) => s.pose);
 
@@ -117,10 +119,11 @@ export function SequencerPanel() {
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  // Load sequences list on mount
+  // Load sequences list when user logs in
   useEffect(() => {
+    if (!user) return;
     useSavedSequencesStore.getState().list().catch(() => {});
-  }, []);
+  }, [user]);
 
   // Close options dropdown on outside click (menu is a portal)
   useEffect(() => {
@@ -424,15 +427,17 @@ export function SequencerPanel() {
                 ↩
               </button>
 
-              <button
-                type="button"
-                className="seq-btn"
-                onClick={handleExportJson}
-                disabled={steps.length === 0}
-                title="Exporter la séquence (JSON)"
-              >
-                ↓
-              </button>
+              {user && (
+                <button
+                  type="button"
+                  className="seq-btn"
+                  onClick={handleExportJson}
+                  disabled={steps.length === 0}
+                  title="Exporter la séquence (JSON)"
+                >
+                  ↓
+                </button>
+              )}
 
               <div className="seq-sep" />
 
@@ -481,94 +486,98 @@ export function SequencerPanel() {
 
             {/* Droite : gestion de la séquence */}
             <div className="seq-toolbar-right">
-              <button
-                type="button"
-                className="seq-btn seq-btn-save"
-                onClick={handleDirectSave}
-                disabled={steps.length === 0}
-                title={activeSequenceId ? `Enregistrer dans « ${sequenceName} »` : 'Enregistrer la séquence (nouveau nom)'}
-              >
-                💾
-              </button>
+              {user ? (
+                <>
+                  <button
+                    type="button"
+                    className="seq-btn seq-btn-save"
+                    onClick={handleDirectSave}
+                    disabled={steps.length === 0}
+                    title={activeSequenceId ? `Enregistrer dans « ${sequenceName} »` : 'Enregistrer la séquence (nouveau nom)'}
+                  >
+                    💾
+                  </button>
 
-              {/* Options dropdown — portal pour échapper au stacking context */}
-              <div className="seq-options-wrap">
-                <button
-                  ref={optionsBtnRef}
-                  type="button"
-                  className={`seq-btn${showOptions ? ' seq-btn-active' : ''}`}
-                  onClick={() => {
-                    if (!showOptions && optionsBtnRef.current) {
-                      setOptionsRect(optionsBtnRef.current.getBoundingClientRect());
-                    }
-                    setShowOptions((v) => !v);
-                  }}
-                  disabled={!activeSequenceId}
-                  title="Options de la séquence"
-                >
-                  ⋮
-                </button>
-              </div>
-              {showOptions && optionsRect && createPortal(
-                <div
-                  ref={optionsMenuRef}
-                  className="seq-options-menu seq-options-menu-portal"
-                  // eslint-disable-next-line react/forbid-component-props
-                  style={{
-                    '--om-bottom': `${window.innerHeight - optionsRect.top + 4}px`,
-                    '--om-right': `${window.innerWidth - optionsRect.right}px`,
-                  } as React.CSSProperties}
-                >
+                  {/* Options dropdown — portal pour échapper au stacking context */}
+                  <div className="seq-options-wrap">
+                    <button
+                      ref={optionsBtnRef}
+                      type="button"
+                      className={`seq-btn${showOptions ? ' seq-btn-active' : ''}`}
+                      onClick={() => {
+                        if (!showOptions && optionsBtnRef.current) {
+                          setOptionsRect(optionsBtnRef.current.getBoundingClientRect());
+                        }
+                        setShowOptions((v) => !v);
+                      }}
+                      disabled={!activeSequenceId}
+                      title="Options de la séquence"
+                    >
+                      ⋮
+                    </button>
+                  </div>
+                  {showOptions && optionsRect && createPortal(
+                    <div
+                      ref={optionsMenuRef}
+                      className="seq-options-menu seq-options-menu-portal"
+                      // eslint-disable-next-line react/forbid-component-props
+                      style={{
+                        '--om-bottom': `${window.innerHeight - optionsRect.top + 4}px`,
+                        '--om-right': `${window.innerWidth - optionsRect.right}px`,
+                      } as React.CSSProperties}
+                    >
+                      <button
+                        type="button"
+                        className="seq-options-item"
+                        onClick={() => { setShowOptions(false); setShowRenameModal(true); }}
+                      >
+                        Renommer
+                      </button>
+                      <button
+                        type="button"
+                        className="seq-options-item"
+                        onClick={handleDuplicate}
+                      >
+                        Dupliquer
+                      </button>
+                      <div className="seq-options-sep" />
+                      <button
+                        type="button"
+                        className="seq-options-item seq-options-item-danger"
+                        onClick={handleDelete}
+                      >
+                        Supprimer
+                      </button>
+                    </div>,
+                    document.body
+                  )}
+
+                  <div className="seq-sep" />
+
+                  <select
+                    className="seq-name-select"
+                    value={activeSequenceId ?? ''}
+                    onChange={(e) => handleSelectSequence(e.target.value)}
+                    title="Séquence active"
+                  >
+                    <option value="">—</option>
+                    {sequences.map((sq) => (
+                      <option key={sq.id} value={sq.id}>{sq.name}</option>
+                    ))}
+                  </select>
+
                   <button
                     type="button"
-                    className="seq-options-item"
-                    onClick={() => { setShowOptions(false); setShowRenameModal(true); }}
+                    className="seq-btn"
+                    onClick={() => { setIsNewSequence(true); setShowSaveModal(true); }}
+                    title="Nouvelle séquence (vide le séquenceur)"
                   >
-                    Renommer
+                    +
                   </button>
-                  <button
-                    type="button"
-                    className="seq-options-item"
-                    onClick={handleDuplicate}
-                  >
-                    Dupliquer
-                  </button>
-                  <div className="seq-options-sep" />
-                  <button
-                    type="button"
-                    className="seq-options-item seq-options-item-danger"
-                    onClick={handleDelete}
-                  >
-                    Supprimer
-                  </button>
-                </div>,
-                document.body
+                </>
+              ) : (
+                <span className="seq-demo-name">{sequenceName}</span>
               )}
-
-              <div className="seq-sep" />
-
-              {/* Select : séquence active */}
-              <select
-                className="seq-name-select"
-                value={activeSequenceId ?? ''}
-                onChange={(e) => handleSelectSequence(e.target.value)}
-                title="Séquence active"
-              >
-                <option value="">—</option>
-                {sequences.map((sq) => (
-                  <option key={sq.id} value={sq.id}>{sq.name}</option>
-                ))}
-              </select>
-
-              {/* Nouvelle séquence */}
-              <button
-                type="button"
-                className="seq-btn"
-                onClick={() => { setIsNewSequence(true); setShowSaveModal(true); }}
-                title="Nouvelle séquence (vide le séquenceur)"
-              >
-                +
-              </button>
             </div>
           </div>
 

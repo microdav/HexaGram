@@ -12,6 +12,9 @@ import { SequencerPanel } from "./ui/SequencerPanel";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
+import { useSequencerStore } from "./store/useSequencerStore";
+import { useHexapodStore } from "./store/useHexapodStore";
+import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
@@ -25,7 +28,15 @@ export default function App() {
   const loadProfile = useProfilesStore((s) => s.load);
   const clearProfiles = useProfilesStore((s) => s.clear);
 
-  useEffect(() => { bootstrap(); }, []);
+  useEffect(() => {
+    bootstrap().then(() => {
+      if (!useAuthStore.getState().user) {
+        useSequencerStore.getState().loadSteps(DEMO_STEPS, DEMO_SEQUENCE_NAME);
+        useHexapodStore.getState().setGravityEnabled(true);
+        useHexapodStore.getState().setGeometry({ legLayout: "linear" });
+      }
+    });
+  }, []);
 
   // Auto-save toolbox layout to the active profile after any move/minimize
   useEffect(() => {
@@ -61,7 +72,10 @@ export default function App() {
         <HexaLogo size={30} />
         <h1>HexaGram</h1>
         <span className="subtitle">hexapode 18 DOF</span>
-        <UserButton />
+        <div className="topbar-right">
+          {!user && <span className="demo-badge">Mode démo</span>}
+          <UserButton />
+        </div>
       </header>
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
       <InstallBanner />
