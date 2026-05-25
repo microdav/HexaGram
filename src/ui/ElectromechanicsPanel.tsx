@@ -261,25 +261,35 @@ export function ElectromechanicsContent() {
       ) : (
         <>
           <PowerChart meca={mecaSeries} elec={elecSeries} currentIdx={currentStepIndex} />
-          <div className="perf-dual-stats">
-            {mecaStats && (
-              <div className="perf-stat-row">
-                <span className="perf-legend-line perf-legend-line--meca" />
-                <span className="perf-stat-rowlabel">Méca.</span>
-                <span><span className="perf-stat-label">Min </span>{mecaStats.min.toFixed(2)} W</span>
-                <span><span className="perf-stat-label">Moy </span>{mecaStats.avg.toFixed(2)} W</span>
-                <span><span className="perf-stat-label">Max </span>{mecaStats.max.toFixed(2)} W</span>
-              </div>
-            )}
-            {elecStats && (
-              <div className="perf-stat-row">
-                <span className="perf-legend-line perf-legend-line--elec" />
-                <span className="perf-stat-rowlabel">Élec.</span>
-                <span><span className="perf-stat-label">Min </span>{elecStats.min.toFixed(2)} W</span>
-                <span><span className="perf-stat-label">Moy </span>{elecStats.avg.toFixed(2)} W</span>
-                <span><span className="perf-stat-label">Max </span>{elecStats.max.toFixed(2)} W</span>
-              </div>
-            )}
+          <div className="perf-table-wrap">
+            <table className="perf-table">
+              <thead>
+                <tr>
+                  <th>(W)</th>
+                  <th>Min</th>
+                  <th>Moy</th>
+                  <th>Max</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mecaStats && (
+                  <tr>
+                    <td><span className="perf-table-label"><span className="perf-legend-line perf-legend-line--meca" />Méca.</span></td>
+                    <td>{mecaStats.min.toFixed(2)}</td>
+                    <td>{mecaStats.avg.toFixed(2)}</td>
+                    <td>{mecaStats.max.toFixed(2)}</td>
+                  </tr>
+                )}
+                {elecStats && (
+                  <tr>
+                    <td><span className="perf-table-label"><span className="perf-legend-line perf-legend-line--elec" />Élec.</span></td>
+                    <td>{elecStats.min.toFixed(2)}</td>
+                    <td>{elecStats.avg.toFixed(2)}</td>
+                    <td>{elecStats.max.toFixed(2)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
           <div className="perf-note">Modèle statique · τ×ω (méca.) · V×I(ratio) (élec.)</div>
         </>

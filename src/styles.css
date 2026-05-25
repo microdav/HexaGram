@@ -3212,27 +3212,6 @@ html, body, #root {
   margin-top: 4px;
 }
 
-.perf-dual-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 5px;
-}
-
-.perf-stat-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text);
-  white-space: nowrap;
-  padding: 3px 6px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
 .perf-legend-line {
   display: inline-block;
   width: 12px;
@@ -3246,16 +3225,46 @@ html, body, #root {
 .perf-dot--meca { background: var(--accent); }
 .perf-dot--elec { background: #60a5fa; }
 
-.perf-stat-rowlabel {
-  color: var(--text-dim);
-  font-size: 10px;
-  flex-shrink: 0;
-  width: 32px;
+.perf-table-wrap {
+  margin-top: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg);
 }
 
-.perf-stat-label {
+.perf-table {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+
+.perf-table th {
   color: var(--text-dim);
-  margin-right: 1px;
+  font-size: 10px;
+  font-weight: 500;
+  text-align: right;
+  padding: 2px 6px 2px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.perf-table th:first-child { text-align: left; padding-left: 6px; }
+
+.perf-table td {
+  color: var(--text);
+  text-align: right;
+  padding: 3px 6px 3px 4px;
+  font-variant-numeric: tabular-nums;
+}
+.perf-table td:first-child { text-align: left; padding-left: 6px; }
+
+.perf-table tbody tr + tr td { border-top: 1px solid var(--border); }
+
+.perf-table-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 10px;
 }
 
 .perf-note {
