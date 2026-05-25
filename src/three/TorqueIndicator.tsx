@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { computeLegMounts } from "../model/hexapod";
-import { findServoType } from "../model/servoTypes";
+import { findServoType, type ServoSpec } from "../model/servoTypes";
 import {
   computeLegJoints,
   estimateTorques,
@@ -8,11 +8,13 @@ import {
   torqueRatio,
 } from "../model/torqueEstimator";
 import { useHexapodStore } from "../store/useHexapodStore";
+import { useProjectStore } from "../store/useProjectStore";
 import { useBodyTransform } from "../store/useBodyTransform";
 import { useSequencerStore } from "../store/useSequencerStore";
 
 const DEFAULT_MAX_KG_CM = 10;
 const SPHERE_SEGS = 8;
+const EMPTY_CUSTOM_SERVOS: ServoSpec[] = [];
 
 interface JointSphereProps {
   position: [number, number, number];
@@ -42,7 +44,8 @@ export function TorqueIndicator() {
 
   const pose = useHexapodStore((s) => s.pose);
   const geometry = useHexapodStore((s) => s.geometry);
-  const globalServoTypeId = useHexapodStore((s) => s.globalServoTypeId);
+  const globalServoTypeId = useProjectStore((s) => s.activeProject?.hardware.servoTypeId ?? null);
+  const customServoTypes = useProjectStore((s) => s.activeProject?.hardware.customServoTypes ?? EMPTY_CUSTOM_SERVOS);
   const weightConfig = useHexapodStore((s) => s.weightConfig);
   const torqueEnabled = useHexapodStore((s) => s.torqueEnabled);
 
@@ -52,7 +55,7 @@ export function TorqueIndicator() {
 
   const totalWeightG = weightConfig.totalWeightG ?? 0;
 
-  const servoSpec = globalServoTypeId ? findServoType(globalServoTypeId) : null;
+  const servoSpec = globalServoTypeId ? findServoType(globalServoTypeId, customServoTypes) : null;
   const maxKgCm =
     servoSpec?.torqueKgCm.v7_4 ??
     servoSpec?.torqueKgCm.v6 ??

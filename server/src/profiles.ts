@@ -11,6 +11,7 @@ function parseProfile(row: Record<string, unknown>) {
   return {
     id: row.id,
     userId: row.user_id,
+    projectId: row.project_id,
     name: row.name,
     data: JSON.parse(row.data as string),
     createdAt: row.created_at,
@@ -18,13 +19,29 @@ function parseProfile(row: Record<string, unknown>) {
   };
 }
 
-// GET /api/profiles  — liste (sans data)
+function ensureProjectOwnership(userId: string, projectId: string): boolean {
+  const row = db
+    .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
+    .get(projectId, userId);
+  return !!row;
+}
+
+// GET /api/profiles?projectId=...
 router.get("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const rows = db
     .prepare(
-      "SELECT id, name, created_at, updated_at FROM robot_profiles WHERE user_id = ? ORDER BY updated_at DESC"
+      "SELECT id, name, created_at, updated_at FROM robot_profiles WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC"
     )
-    .all(req.userId) as Record<string, unknown>[];
+    .all(req.userId, projectId) as Record<string, unknown>[];
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -35,8 +52,17 @@ router.get("/", (req: AuthRequest, res: Response): void => {
   );
 });
 
-// POST /api/profiles
+// POST /api/profiles  — body : { name, data, projectId }
 router.post("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.body?.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const parsed = CreateProfileSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
@@ -46,8 +72,8 @@ router.post("/", (req: AuthRequest, res: Response): void => {
   const id = uuidv4();
   const now = Date.now();
   db.prepare(
-    "INSERT INTO robot_profiles (id, user_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(id, req.userId, name, JSON.stringify(data), now, now);
+    "INSERT INTO robot_profiles (id, user_id, project_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, req.userId, projectId, name, JSON.stringify(data), now, now);
 
   const row = db.prepare("SELECT * FROM robot_profiles WHERE id = ?").get(id) as Record<string, unknown>;
   res.status(201).json(parseProfile(row));

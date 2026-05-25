@@ -37,14 +37,21 @@ export interface WeightConfig {
   totalWeightG?: number;
 }
 
+/**
+ * Legacy v1 — le matériel (servo global + électronique) est désormais
+ * porté par le projet (useProjectStore). Conservé en lecture pour les
+ * profils existants ; toujours sérialisé pour ne rien perdre.
+ */
 export interface ElectronicsConfig {
   servoControllerId?: string;
   commandElectronicsId?: string;
 }
 
 export interface RobotProfileData {
-  version: 1;
+  /** v1 : matériel dans le profil ; v2 : matériel au niveau projet. */
+  version: 1 | 2;
   description?: string;
+  /** Legacy v1 — conservé pour rétro-compat lecture ; nouveau code n'utilise plus ce champ. */
   globalServoTypeId?: string | null;
   geometry: HexapodGeometry;
   keyframes: Keyframe[];
@@ -59,6 +66,7 @@ export interface RobotProfileData {
   toolboxLayout?: Record<string, ToolboxConfig>;
   uiPrefs?: UiPrefs;
   weightConfig?: WeightConfig;
+  /** Legacy v1 — conservé pour rétro-compat lecture. */
   electronics?: ElectronicsConfig;
 }
 
@@ -80,11 +88,9 @@ interface HexapodState {
   /** Per-axis drag lock for the CoG handle. */
   cogAxisLock: { x: boolean; y: boolean; z: boolean };
   description: string;
-  globalServoTypeId: string | null;
   servoCalibration: Record<number, ServoCalibration>;
   collisionPrefs: CollisionPrefs;
   weightConfig: WeightConfig;
-  electronics: ElectronicsConfig;
   torqueEnabled: boolean;
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
@@ -103,11 +109,9 @@ interface HexapodState {
   setFootDragging: (v: boolean) => void;
   toggleCogAxisLock: (axis: "x" | "y" | "z") => void;
   setDescription: (d: string) => void;
-  setGlobalServoTypeId: (id: string | null) => void;
   setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
   setCollisionPrefs: (prefs: Partial<CollisionPrefs>) => void;
   setWeightConfig: (cfg: Partial<WeightConfig>) => void;
-  setElectronics: (cfg: Partial<ElectronicsConfig>) => void;
   setTorqueEnabled: (v: boolean) => void;
   applyPose: (pose: Pose) => void;
   serializeProfile: () => RobotProfileData;
@@ -134,11 +138,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   footDragging: false,
   cogAxisLock: { x: false, y: false, z: false },
   description: "",
-  globalServoTypeId: null,
   servoCalibration: {},
   collisionPrefs: { ...DEFAULT_COLLISION_PREFS },
   weightConfig: {},
-  electronics: {},
   torqueEnabled: false,
 
   setServoAngle: (id, deg) =>
@@ -217,8 +219,6 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   setDescription: (d) => set({ description: d }),
 
-  setGlobalServoTypeId: (id) => set({ globalServoTypeId: id }),
-
   setServoCalibrationAll: (calib) => set({ servoCalibration: calib }),
 
   setCollisionPrefs: (prefs) =>
@@ -226,9 +226,6 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   setWeightConfig: (cfg) =>
     set((s) => ({ weightConfig: { ...s.weightConfig, ...cfg } })),
-
-  setElectronics: (cfg) =>
-    set((s) => ({ electronics: { ...s.electronics, ...cfg } })),
 
   setTorqueEnabled: (v) => set({ torqueEnabled: v }),
 
@@ -243,9 +240,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   serializeProfile: (): RobotProfileData => {
     const s = get();
     return {
-      version: 1,
+      version: 2,
       description: s.description || undefined,
-      globalServoTypeId: s.globalServoTypeId ?? undefined,
       geometry: s.geometry,
       keyframes: s.keyframes,
       prefs: {
@@ -261,13 +257,12 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       toolboxLayout: { ...useToolboxStore.getState().configs },
       uiPrefs: { ...useToolboxStore.getState().uiPrefs },
       weightConfig: Object.keys(s.weightConfig).length > 0 ? { ...s.weightConfig } : undefined,
-      electronics: Object.keys(s.electronics).length > 0 ? { ...s.electronics } : undefined,
     };
   },
 
   applyProfile: (data: unknown) => {
     const d = data as RobotProfileData;
-    if (!d || d.version !== 1) return;
+    if (!d || (d.version !== 1 && d.version !== 2)) return;
     const calib: Record<number, ServoCalibration> = {};
     if (d.servoCalibration) {
       for (const [k, v] of Object.entries(d.servoCalibration)) {
@@ -295,11 +290,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       cogAxisLock: d.prefs.cogAxisLock ?? { x: false, y: false, z: false },
       collisionPrefs: { ...DEFAULT_COLLISION_PREFS, ...(d.prefs.collisionPrefs ?? {}) },
       description: d.description ?? "",
-      globalServoTypeId: d.globalServoTypeId ?? null,
       servoCalibration: calib,
       pose: defaultPose(),
       weightConfig: d.weightConfig ?? {},
-      electronics: d.electronics ?? {},
     });
     if (d.toolboxLayout) {
       useToolboxStore.getState().applyLayout(d.toolboxLayout);

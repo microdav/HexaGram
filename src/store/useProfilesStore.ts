@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "../api/client";
 import { useHexapodStore } from "./useHexapodStore";
+import { useProjectStore } from "./useProjectStore";
 
 export interface ProfileSummary {
   id: string;
@@ -22,15 +23,26 @@ interface ProfilesState {
   clear: () => void;
 }
 
+function activeProjectId(): string | null {
+  return useProjectStore.getState().activeProjectId;
+}
+
 export const useProfilesStore = create<ProfilesState>((set) => ({
   profiles: [],
   activeProfileId: null,
   loading: false,
 
   list: async () => {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      set({ profiles: [], loading: false });
+      return;
+    }
     set({ loading: true });
     try {
-      const profiles = await api.get<ProfileSummary[]>("/profiles");
+      const profiles = await api.get<ProfileSummary[]>(
+        `/profiles?projectId=${encodeURIComponent(projectId)}`
+      );
       set({ profiles, loading: false });
     } catch {
       set({ loading: false });
@@ -38,8 +50,10 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
   },
 
   save: async (name: string) => {
+    const projectId = activeProjectId();
+    if (!projectId) throw new Error("Aucun projet actif");
     const data = useHexapodStore.getState().serializeProfile();
-    const profile = await api.post<ProfileSummary>("/profiles", { name, data });
+    const profile = await api.post<ProfileSummary>("/profiles", { name, data, projectId });
     set((s) => ({
       profiles: [profile, ...s.profiles],
       activeProfileId: profile.id,

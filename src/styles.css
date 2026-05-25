@@ -3396,3 +3396,418 @@ html, body, #root {
   border-radius: 3px;
   flex-shrink: 0;
 }
+
+/* ── Project tab (onglet de nav) ─────────────────────────────────────── */
+.project-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-tab-label {
+  font-weight: 600;
+}
+
+.project-tab-name {
+  color: var(--text);
+  font-weight: 500;
+  font-style: normal;
+  font-size: 13px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-tab-name em {
+  color: var(--text-dim);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ── Project page (plein écran) ──────────────────────────────────────── */
+.project-page {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.pp-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 10px;
+}
+
+.pp-sidebar-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  padding: 0 2px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pp-sidebar-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-panel-2);
+  padding: 1px 7px;
+  border-radius: 9px;
+}
+
+.pp-project-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.pp-empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 16px 8px;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.pp-project-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pp-project-card:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pp-project-card.active {
+  border-color: var(--accent);
+  background: rgba(99, 179, 237, 0.08);
+}
+
+.pp-project-card:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.pp-card-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pp-card-active {
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(99, 179, 237, 0.15);
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.pp-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-card-stats {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 6px;
+}
+
+.pp-card-spinner {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.pp-new-btn {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* Main */
+.pp-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  min-width: 0;
+}
+
+.pp-no-project {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 60px 20px;
+}
+
+.pp-no-project h2 {
+  color: var(--text);
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+
+.pp-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.pp-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pp-header-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  color: var(--text);
+}
+
+.pp-header-desc {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.pp-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pp-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+
+.pp-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-dim);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-bottom-color 0.15s;
+}
+
+.pp-tab:hover { color: var(--text); }
+
+.pp-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.pp-section {
+  max-width: 800px;
+}
+
+.pp-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.pp-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Nouveau projet (formulaire inline) */
+.pp-new-form {
+  max-width: 520px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pp-new-form-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+/* Contenu (profils, séquences, programmes) */
+.pp-content-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pp-content-col {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pp-content-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.pp-content-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-panel-2);
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-weight: 600;
+}
+
+.pp-empty-mini {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.pp-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-panel-2);
+  border-radius: 4px;
+}
+
+.pp-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pp-item-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-item-date {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* ── Import (utilisé aussi dans onglet Import) ───────────────────────── */
+.import-section {
+  margin-top: 14px;
+}
+
+.import-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.import-section-all {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.import-section-all:hover { text-decoration: underline; }
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--bg-panel-2);
+}
+
+.import-list-empty {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.import-row input[type="checkbox"] {
+  margin: 0;
+}

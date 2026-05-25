@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { useProjectStore } from './useProjectStore';
 import type { SequencerStep } from './useSequencerStore';
 
 export interface SequenceSummary {
@@ -26,6 +27,11 @@ interface SavedSequencesState {
   duplicate: (id: string, newName: string) => Promise<SavedSequence>;
   remove: (id: string) => Promise<void>;
   setActiveSequenceId: (id: string | null) => void;
+  clear: () => void;
+}
+
+function activeProjectId(): string | null {
+  return useProjectStore.getState().activeProjectId;
 }
 
 export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
@@ -34,9 +40,16 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   loading: false,
 
   list: async () => {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      set({ sequences: [], loading: false });
+      return;
+    }
     set({ loading: true });
     try {
-      const sequences = await api.get<SequenceSummary[]>('/sequences');
+      const sequences = await api.get<SequenceSummary[]>(
+        `/sequences?projectId=${encodeURIComponent(projectId)}`
+      );
       set({ sequences, loading: false });
     } catch {
       set({ loading: false });
@@ -44,7 +57,9 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   },
 
   save: async (name, steps) => {
-    const seq = await api.post<SavedSequence>('/sequences', { name, steps });
+    const projectId = activeProjectId();
+    if (!projectId) throw new Error("Aucun projet actif");
+    const seq = await api.post<SavedSequence>('/sequences', { name, steps, projectId });
     set((s) => ({
       sequences: [seq, ...s.sequences],
       activeSequenceId: seq.id,
@@ -75,10 +90,13 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   },
 
   duplicate: async (id, newName) => {
+    const projectId = activeProjectId();
+    if (!projectId) throw new Error("Aucun projet actif");
     const original = await api.get<SavedSequence>(`/sequences/${id}`);
     const copy = await api.post<SavedSequence>('/sequences', {
       name: newName,
       steps: original.steps,
+      projectId,
     });
     set((s) => ({
       sequences: [copy, ...s.sequences],
@@ -96,4 +114,6 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   },
 
   setActiveSequenceId: (id) => set({ activeSequenceId: id }),
+
+  clear: () => set({ sequences: [], activeSequenceId: null }),
 }));

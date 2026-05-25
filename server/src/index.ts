@@ -4,6 +4,7 @@ import authRouter from "./auth";
 import profilesRouter from "./profiles";
 import sequencesRouter from "./sequences";
 import programsRouter from "./programs";
+import projectsRouter from "./projects";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -24,6 +25,7 @@ app.use(
 app.use(express.json());
 
 app.use("/api/auth", authRouter);
+app.use("/api/projects", projectsRouter);
 app.use("/api/profiles", profilesRouter);
 app.use("/api/sequences", sequencesRouter);
 app.use("/api/programs", programsRouter);

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { useProjectStore } from './useProjectStore';
 import type { Program, ProgramSummary } from '../model/program';
 
 type ProgramCreateData = Omit<Program, 'id' | 'createdAt' | 'updatedAt'>;
@@ -14,6 +15,11 @@ interface ProgramsState {
   load: (id: string) => Promise<Program>;
   update: (id: string, data: ProgramUpdateData) => Promise<Program>;
   remove: (id: string) => Promise<void>;
+  clear: () => void;
+}
+
+function activeProjectId(): string | null {
+  return useProjectStore.getState().activeProjectId;
 }
 
 export const useProgramsStore = create<ProgramsState>((set) => ({
@@ -21,9 +27,16 @@ export const useProgramsStore = create<ProgramsState>((set) => ({
   loading: false,
 
   list: async () => {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      set({ programs: [], loading: false });
+      return;
+    }
     set({ loading: true });
     try {
-      const programs = await api.get<ProgramSummary[]>('/programs');
+      const programs = await api.get<ProgramSummary[]>(
+        `/programs?projectId=${encodeURIComponent(projectId)}`
+      );
       set({ programs, loading: false });
     } catch {
       set({ loading: false });
@@ -31,7 +44,9 @@ export const useProgramsStore = create<ProgramsState>((set) => ({
   },
 
   create: async (data) => {
-    const program = await api.post<Program>('/programs', data);
+    const projectId = activeProjectId();
+    if (!projectId) throw new Error("Aucun projet actif");
+    const program = await api.post<Program>('/programs', { ...data, projectId });
     set((s) => ({ programs: [program, ...s.programs] }));
     return program;
   },
@@ -50,4 +65,6 @@ export const useProgramsStore = create<ProgramsState>((set) => ({
     await api.delete(`/programs/${id}`);
     set((s) => ({ programs: s.programs.filter((p) => p.id !== id) }));
   },
+
+  clear: () => set({ programs: [] }),
 }));

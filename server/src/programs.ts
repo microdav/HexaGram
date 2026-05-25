@@ -12,6 +12,7 @@ function parseProgram(row: Record<string, unknown>) {
   return {
     id: row.id,
     name: row.name,
+    projectId: row.project_id,
     profileId: row.profile_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -22,13 +23,29 @@ function parseProgram(row: Record<string, unknown>) {
   };
 }
 
-// GET /api/programs
+function ensureProjectOwnership(userId: string, projectId: string): boolean {
+  const row = db
+    .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
+    .get(projectId, userId);
+  return !!row;
+}
+
+// GET /api/programs?projectId=...
 router.get("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const rows = db
     .prepare(
-      "SELECT id, name, profile_id, created_at, updated_at FROM programs WHERE user_id = ? ORDER BY updated_at DESC"
+      "SELECT id, name, profile_id, created_at, updated_at FROM programs WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC"
     )
-    .all(req.userId) as Record<string, unknown>[];
+    .all(req.userId, projectId) as Record<string, unknown>[];
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -40,8 +57,17 @@ router.get("/", (req: AuthRequest, res: Response): void => {
   );
 });
 
-// POST /api/programs
+// POST /api/programs  — body : { name, profileId, steps, loop, initPose, initPoseName, projectId }
 router.post("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.body?.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const parsed = CreateProgramSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
@@ -52,8 +78,8 @@ router.post("/", (req: AuthRequest, res: Response): void => {
   const now = Date.now();
   const data = JSON.stringify({ initPose, initPoseName, steps, loop });
   db.prepare(
-    "INSERT INTO programs (id, user_id, profile_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, req.userId, profileId, name, data, now, now);
+    "INSERT INTO programs (id, user_id, project_id, profile_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, req.userId, projectId, profileId, name, data, now, now);
 
   const row = db.prepare("SELECT * FROM programs WHERE id = ?").get(id) as Record<string, unknown>;
   res.status(201).json(parseProgram(row));

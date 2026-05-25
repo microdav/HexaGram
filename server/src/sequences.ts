@@ -10,6 +10,7 @@ router.use(requireAuth);
 function parseSequence(row: Record<string, unknown>) {
   return {
     id: row.id,
+    projectId: row.project_id,
     name: row.name,
     steps: JSON.parse(row.steps as string),
     createdAt: row.created_at,
@@ -17,13 +18,29 @@ function parseSequence(row: Record<string, unknown>) {
   };
 }
 
-// GET /api/sequences
+function ensureProjectOwnership(userId: string, projectId: string): boolean {
+  const row = db
+    .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
+    .get(projectId, userId);
+  return !!row;
+}
+
+// GET /api/sequences?projectId=...
 router.get("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const rows = db
     .prepare(
-      "SELECT id, name, created_at, updated_at FROM sequences WHERE user_id = ? ORDER BY updated_at DESC"
+      "SELECT id, name, created_at, updated_at FROM sequences WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC"
     )
-    .all(req.userId) as Record<string, unknown>[];
+    .all(req.userId, projectId) as Record<string, unknown>[];
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -34,8 +51,17 @@ router.get("/", (req: AuthRequest, res: Response): void => {
   );
 });
 
-// POST /api/sequences
+// POST /api/sequences  — body : { name, steps, projectId }
 router.post("/", (req: AuthRequest, res: Response): void => {
+  const projectId = req.body?.projectId as string | undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId requis" });
+    return;
+  }
+  if (!ensureProjectOwnership(req.userId!, projectId)) {
+    res.status(404).json({ error: "Projet introuvable" });
+    return;
+  }
   const parsed = CreateSequenceSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
@@ -45,8 +71,8 @@ router.post("/", (req: AuthRequest, res: Response): void => {
   const id = uuidv4();
   const now = Date.now();
   db.prepare(
-    "INSERT INTO sequences (id, user_id, name, steps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(id, req.userId, name, JSON.stringify(steps), now, now);
+    "INSERT INTO sequences (id, user_id, project_id, name, steps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, req.userId, projectId, name, JSON.stringify(steps), now, now);
 
   const row = db.prepare("SELECT * FROM sequences WHERE id = ?").get(id) as Record<string, unknown>;
   res.status(201).json(parseSequence(row));

@@ -128,11 +128,14 @@ export function saveCustomServoType(spec: ServoSpec): void {
   } catch {}
 }
 
-export function getAllServoTypes(): ServoSpec[] {
-  return [...SERVO_CATALOG, ...loadCustomServoTypes()];
+export function getAllServoTypes(extra: ServoSpec[] = []): ServoSpec[] {
+  return [...SERVO_CATALOG, ...loadCustomServoTypes(), ...extra];
 }
 
-export function findServoType(id: string | null | undefined): ServoSpec | null {
+export function findServoType(
+  id: string | null | undefined,
+  extraCustom: ServoSpec[] = []
+): ServoSpec | null {
   if (!id) return null;
-  return getAllServoTypes().find((s) => s.id === id) ?? null;
+  return getAllServoTypes(extraCustom).find((s) => s.id === id) ?? null;
 }

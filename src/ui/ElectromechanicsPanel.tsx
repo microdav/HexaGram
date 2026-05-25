@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHexapodStore } from '../store/useHexapodStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useSequencerStore } from '../store/useSequencerStore';
 import { computeLegMounts } from '../model/hexapod';
 import { estimateTorques, ncmToKgcm } from '../model/torqueEstimator';
 import { computeBodyTransform } from '../model/kinematics';
-import { findServoType } from '../model/servoTypes';
+import { findServoType, type ServoSpec } from '../model/servoTypes';
 import type { HexapodGeometry } from '../model/hexapod';
 import type { Pose } from '../model/pose';
+
+const EMPTY_CUSTOM_SERVOS: ServoSpec[] = [];
 
 const DEG_TO_RAD = Math.PI / 180;
 const COL_MECA = 'var(--accent)';
@@ -151,7 +154,8 @@ function SectionTitle({ variant, label, children }: {
 export function ElectromechanicsContent() {
   const torqueEnabled = useHexapodStore(s => s.torqueEnabled);
   const setTorqueEnabled = useHexapodStore(s => s.setTorqueEnabled);
-  const globalServoTypeId = useHexapodStore(s => s.globalServoTypeId);
+  const globalServoTypeId = useProjectStore(s => s.activeProject?.hardware.servoTypeId ?? null);
+  const customServoTypes = useProjectStore(s => s.activeProject?.hardware.customServoTypes ?? EMPTY_CUSTOM_SERVOS);
   const totalWeightG = useHexapodStore(s => s.weightConfig.totalWeightG);
   const gravityEnabled = useHexapodStore(s => s.gravityEnabled);
   const geometry = useHexapodStore(s => s.geometry);
@@ -161,13 +165,13 @@ export function ElectromechanicsContent() {
   const stepDelay = useSequencerStore(s => s.stepDelay);
   const currentStepIndex = useSequencerStore(s => s.currentStepIndex);
 
-  const spec = useMemo(() => findServoType(globalServoTypeId), [globalServoTypeId]);
+  const spec = useMemo(() => findServoType(globalServoTypeId, customServoTypes), [globalServoTypeId, customServoTypes]);
 
   const torqueAvailable = !!(spec && totalWeightG && totalWeightG > 0);
   const torqueDisabledReason = !spec
-    ? 'Définissez un servo global dans le profil'
+    ? 'Définissez un servo global dans les paramètres du projet'
     : !totalWeightG
-    ? 'Définissez le poids total dans le profil (onglet Matériel)'
+    ? 'Définissez le poids total dans le profil (onglet Matériel) ou dans le projet'
     : null;
 
   const poses = useMemo(() => steps.map(s => s.pose), [steps]);

@@ -10,11 +10,16 @@ import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { SequencerPanel } from "./ui/SequencerPanel";
 import { ProgramPage } from "./ui/ProgramPage";
+import { ProjectTab } from "./ui/ProjectTab";
+import { ProjectPage } from "./ui/ProjectPage";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
 import { useSequencerStore } from "./store/useSequencerStore";
 import { useHexapodStore } from "./store/useHexapodStore";
+import { useProjectStore } from "./store/useProjectStore";
+import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
+import { useProgramsStore } from "./store/useProgramsStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 
 export default function App() {
@@ -30,6 +35,12 @@ export default function App() {
   const listProfiles = useProfilesStore((s) => s.list);
   const loadProfile = useProfilesStore((s) => s.load);
   const clearProfiles = useProfilesStore((s) => s.clear);
+  const clearSequences = useSavedSequencesStore((s) => s.clear);
+  const clearPrograms = useProgramsStore((s) => s.clear);
+  const listProjects = useProjectStore((s) => s.list);
+  const loadProject = useProjectStore((s) => s.load);
+  const clearProjects = useProjectStore((s) => s.clear);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   useEffect(() => {
     bootstrap().then(() => {
@@ -56,18 +67,54 @@ export default function App() {
     return () => { unsub(); clearTimeout(timer); };
   }, []);
 
+  // À la connexion : charger les projets et activer le dernier mis à jour
   useEffect(() => {
     if (!user) {
+      clearProjects();
       clearProfiles();
+      clearSequences();
+      clearPrograms();
       return;
     }
-    listProfiles().then(() => {
+    (async () => {
+      const list = await listProjects();
+      if (list.length === 0) {
+        // Aucun projet → bascule sur l'onglet Projet pour création
+        setActiveTab('projet');
+        return;
+      }
+      const latest = [...list].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      await loadProject(latest.id);
+    })();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Au changement de projet : charger profils/séquences/programmes + activer le dernier profil
+  useEffect(() => {
+    if (!user || !activeProjectId) return;
+    (async () => {
+      await listProfiles();
       const { profiles } = useProfilesStore.getState();
       if (profiles.length === 0) return;
       const latest = [...profiles].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      loadProfile(latest.id);
-    });
-  }, [user]);
+      await loadProfile(latest.id);
+    })();
+  }, [user, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Si l'utilisateur perd l'accès au projet alors qu'il était sur Conception/Programmation,
+  // on bascule sur l'onglet Projet pour qu'il puisse en choisir un.
+  useEffect(() => {
+    if (user && !activeProjectId && activeTab !== 'projet') {
+      setActiveTab('projet');
+    }
+  }, [user, activeProjectId, activeTab, setActiveTab]);
+
+  // Mode démo : si l'utilisateur se déconnecte alors qu'il était sur l'onglet Projet,
+  // on bascule sur Conception (l'onglet Projet n'est plus visible).
+  useEffect(() => {
+    if (!user && activeTab === 'projet') {
+      setActiveTab('conception');
+    }
+  }, [user, activeTab, setActiveTab]);
 
   return (
     <div className="app">
@@ -82,10 +129,13 @@ export default function App() {
       </header>
 
       <nav className="app-tabs">
+        {user && <ProjectTab />}
         <button
           type="button"
           className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}
           onClick={() => setActiveTab('conception')}
+          disabled={!!user && !activeProjectId}
+          title={!!user && !activeProjectId ? "Sélectionnez ou créez un projet d'abord" : ""}
         >
           Conception 3D
         </button>
@@ -93,6 +143,8 @@ export default function App() {
           type="button"
           className={`app-tab${activeTab === 'programmation' ? ' active' : ''}`}
           onClick={() => setActiveTab('programmation')}
+          disabled={!!user && !activeProjectId}
+          title={!!user && !activeProjectId ? "Sélectionnez ou créez un projet d'abord" : ""}
         >
           Programmation graphique
         </button>
@@ -101,6 +153,8 @@ export default function App() {
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
       <InstallBanner />
       <Toast />
+
+      {activeTab === 'projet' && user && <ProjectPage />}
 
       {activeTab === 'conception' && (
         <>

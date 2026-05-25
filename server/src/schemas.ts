@@ -63,8 +63,9 @@ const ElectronicsConfigSchema = z.object({
 });
 
 export const ProfileDataSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   description: z.string().optional(),
+  // Champs legacy (v1) — encore acceptés mais ignorés au niveau projet désormais
   globalServoTypeId: z.string().nullable().optional(),
   geometry: HexapodGeometrySchema,
   keyframes: z.array(KeyframeSchema),
@@ -180,3 +181,55 @@ export const UpdateProgramSchema = z.object({
 export type ProgramData = z.infer<typeof ProgramDataSchema>;
 export type CreateProgramInput = z.infer<typeof CreateProgramSchema>;
 export type UpdateProgramInput = z.infer<typeof UpdateProgramSchema>;
+
+// ── Projects ─────────────────────────────────────────────────────────────────
+
+const ServoSpecSchema = z.object({
+  id: z.string(),
+  brand: z.string(),
+  model: z.string(),
+  torqueKgCm: z.object({ v6: z.number().optional(), v7_4: z.number().optional(), v8_4: z.number().optional() }),
+  speedS60: z.object({ v6: z.number().optional(), v7_4: z.number().optional(), v8_4: z.number().optional() }),
+  voltageRange: z.tuple([z.number(), z.number()]),
+  currentMa: z.object({ idle: z.number(), stall: z.number() }),
+  weightG: z.number(),
+  dimensionsMm: z.object({ l: z.number(), w: z.number(), h: z.number() }),
+  pulseUs: z.object({ min: z.number(), center: z.number(), max: z.number() }),
+  deadbandUs: z.number(),
+  gearType: z.enum(["plastic", "metal", "titanium"]),
+  bearing: z.enum(["plain", "ball", "dual-ball"]),
+  connector: z.enum(["JR", "Futaba", "Hitec", "BUS"]),
+  notes: z.string().optional(),
+  custom: z.boolean().optional(),
+});
+
+export const ProjectHardwareSchema = z.object({
+  servoTypeId: z.string().nullable().optional(),
+  servoControllerId: z.string().nullable().optional(),
+  commandElectronicsId: z.string().nullable().optional(),
+  customServoTypes: z.array(ServoSpecSchema).optional(),
+});
+
+export const CreateProjectSchema = z.object({
+  name: z.string().min(1).max(80),
+  description: z.string().max(500).optional(),
+  hardware: ProjectHardwareSchema.optional(),
+});
+
+export const UpdateProjectSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(500).optional(),
+  hardware: ProjectHardwareSchema.optional(),
+});
+
+export const ImportProjectSchema = z.object({
+  sourceProjectId: z.string().min(1),
+  profileIds: z.array(z.string()).optional(),
+  sequenceIds: z.array(z.string()).optional(),
+  programIds: z.array(z.string()).optional(),
+});
+
+export type ProjectHardware = z.infer<typeof ProjectHardwareSchema>;
+export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
+export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
+export type ImportProjectInput = z.infer<typeof ImportProjectSchema>;
