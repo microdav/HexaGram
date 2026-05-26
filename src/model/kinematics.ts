@@ -315,28 +315,40 @@ export function computeBodyTransform(
     };
   }
 
+  // Ground-contact candidates: 6 foot tips + 8 chassis corners. The body can
+  // rest on its belly, flank, or a corner — not only on its feet.
+  const halfL = geometry.chassis.length / 2;
+  const halfH = geometry.chassis.height / 2;
+  const halfW = geometry.chassis.width / 2;
+  const chassisCornersBody: Vector3[] = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    chassisCornersBody.push(new Vector3(sx * halfL, sy * halfH, sz * halfW));
+  }
+  const candidatesBody = [...tipsBody, ...chassisCornersBody];
+  const NUM_TIPS = tipsBody.length;
+
   const state: SimState = { q: new Quaternion(), t: new Vector3() };
   let contactIndices: number[] = [];
   let stableOnEdge = false;
 
   for (let iter = 0; iter < MAX_ITER; iter++) {
-    const tipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+    const candsW = candidatesBody.map((p) => transformPoint(p, state.q, state.t));
     const cogW = transformPoint(cogBody, state.q, state.t);
 
     let minY = Infinity;
-    for (const p of tipsW) if (p.y < minY) minY = p.y;
+    for (const p of candsW) if (p.y < minY) minY = p.y;
 
-    let supportIdx = tipsW
+    let supportIdx = candsW
       .map((p, i) => (p.y < minY + SUPPORT_TOL ? i : -1))
       .filter((i) => i >= 0);
 
     if (supportIdx.length < 2) {
       // Force the next-lowest tip into support, level the implied triangle.
-      const sorted = tipsW
+      const sorted = candsW
         .map((p, i) => ({ y: p.y, i }))
         .sort((a, b) => a.y - b.y);
       const tri = [sorted[0].i, sorted[1].i, sorted[2].i];
-      const normal = fitPlaneNormal(tri.map((i) => tipsW[i]));
+      const normal = fitPlaneNormal(tri.map((i) => candsW[i]));
       const up = new Vector3(0, 1, 0);
       const angle = Math.acos(Math.max(-1, Math.min(1, normal.dot(up))));
       if (angle > LEVEL_EPS) {
@@ -347,7 +359,7 @@ export function computeBodyTransform(
     }
 
     if (supportIdx.length >= 3) {
-      const planeTips = supportIdx.map((i) => tipsW[i]);
+      const planeTips = supportIdx.map((i) => candsW[i]);
       const normal = fitPlaneNormal(planeTips);
       const up = new Vector3(0, 1, 0);
       const angle = Math.acos(Math.max(-1, Math.min(1, normal.dot(up))));
@@ -358,8 +370,8 @@ export function computeBodyTransform(
       }
 
       const hullPts: HullPoint[] = supportIdx.map((i) => ({
-        x: tipsW[i].x,
-        z: tipsW[i].z,
+        x: candsW[i].x,
+        z: candsW[i].z,
         idx: i,
       }));
       const hull = convexHull2D(hullPts);
@@ -381,8 +393,8 @@ export function computeBodyTransform(
     }
 
     if (supportIdx.length === 2) {
-      const a = tipsW[supportIdx[0]];
-      const b = tipsW[supportIdx[1]];
+      const a = candsW[supportIdx[0]];
+      const b = candsW[supportIdx[1]];
       const axis = new Vector3().subVectors(b, a);
       if (axis.lengthSq() < 1e-12) break;
       axis.normalize();
@@ -396,9 +408,9 @@ export function computeBodyTransform(
       // y-level (the edge tips a and b stay at y=a.y throughout the rotation
       // since they lie on the rotation axis — they're not yet lifted to y=0).
       let touchAngle = Infinity;
-      for (let i = 0; i < tipsW.length; i++) {
+      for (let i = 0; i < candsW.length; i++) {
         if (i === supportIdx[0] || i === supportIdx[1]) continue;
-        const rel = tipsW[i].clone().sub(a);
+        const rel = candsW[i].clone().sub(a);
         const para = axis.clone().multiplyScalar(rel.dot(axis));
         const perp = rel.clone().sub(para);
         const cross = new Vector3().crossVectors(axis, perp);
@@ -446,9 +458,9 @@ export function computeBodyTransform(
       }
 
       // CoG now balanced exactly over the edge.
-      const finalTipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+      const finalCandsW = candidatesBody.map((p) => transformPoint(p, state.q, state.t));
       let newMinY = Infinity;
-      for (const p of finalTipsW) if (p.y < newMinY) newMinY = p.y;
+      for (const p of finalCandsW) if (p.y < newMinY) newMinY = p.y;
       state.t.y += -newMinY;
       contactIndices = supportIdx;
       stableOnEdge = true;
@@ -456,17 +468,19 @@ export function computeBodyTransform(
     }
   }
 
-  const finalTipsW = tipsBody.map((p) => transformPoint(p, state.q, state.t));
+  const finalCandsW = candidatesBody.map((p) => transformPoint(p, state.q, state.t));
   const cogWorld = transformPoint(cogBody, state.q, state.t);
 
   const contacts: LegContact[] = [];
   const polyPts: HullPoint[] = [];
-  finalTipsW.forEach((p, i) => {
+  finalCandsW.forEach((p, i) => {
     if (p.y < CONTACT_THRESHOLD) {
-      contacts.push({
-        legIndex: mounts[i].index,
-        position: new Vector3(p.x, p.y, p.z),
-      });
+      if (i < NUM_TIPS) {
+        contacts.push({
+          legIndex: mounts[i].index,
+          position: new Vector3(p.x, p.y, p.z),
+        });
+      }
       polyPts.push({ x: p.x, z: p.z, idx: i });
     }
   });
