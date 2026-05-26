@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { DragEvent } from 'react';
-import { useSequencerStore, MAX_FPS } from '../store/useSequencerStore';
+import { useSequencerStore } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
@@ -72,7 +72,6 @@ export function SequencerPanel() {
   const sequenceName = useSequencerStore((s) => s.sequenceName);
   const showInterpolated = useSequencerStore((s) => s.showInterpolated);
 
-  const definedStepsCount = steps.filter((s) => s.type === 'defined').length;
   const displayedSteps = showInterpolated ? steps : steps.filter((s) => s.type !== 'interpolated');
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
@@ -445,15 +444,6 @@ export function SequencerPanel() {
 
               <div className="seq-sep" />
 
-              <button
-                type="button"
-                className="seq-btn seq-btn-generate"
-                onClick={() => useSequencerStore.getState().generateInterpolations()}
-                disabled={definedStepsCount < 2}
-                title={`Générer les étapes interpolées entre les ${definedStepsCount} étapes définies (${MAX_FPS} fps, délai ${stepDelay.toFixed(1)}s)`}
-              >
-                ↔ Générer
-              </button>
               <label className="seq-interp-toggle" title="Afficher / masquer les étapes interpolées dans le tableau">
                 <input
                   type="checkbox"

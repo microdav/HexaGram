@@ -86,6 +86,46 @@ function pushHistory(history: SequencerStep[][], steps: SequencerStep[]): Sequen
   return [...history.slice(-MAX_HISTORY + 1), steps];
 }
 
+// Reconstruit la liste complète (définies + interpolées avec bouclage) à partir des seules étapes définies.
+function buildInterpolated(defined: SequencerStep[], stepDelay: number): SequencerStep[] {
+  if (defined.length < 2) return defined.slice();
+  const insertCount = Math.max(0, Math.round(stepDelay * MAX_FPS) - 1);
+  const result: SequencerStep[] = [];
+  const stamp = Date.now();
+  for (let i = 0; i < defined.length - 1; i++) {
+    result.push(defined[i]);
+    const from = defined[i].pose;
+    const to = defined[i + 1].pose;
+    for (let f = 1; f <= insertCount; f++) {
+      const t = f / (insertCount + 1);
+      result.push({
+        id: `interp-${stamp}-${i}-${f}-${Math.random().toString(36).slice(2, 5)}`,
+        name: `↔ ${i + 1}.${f}`,
+        type: 'interpolated',
+        pose: from.map((angle, k) => angle + (to[k] - angle) * t),
+      });
+    }
+  }
+  result.push(defined[defined.length - 1]);
+  // Bouclage : interpolation entre la dernière et la première (la lecture revient à 0 via modulo)
+  const fromLast = defined[defined.length - 1].pose;
+  const toFirst = defined[0].pose;
+  for (let f = 1; f <= insertCount; f++) {
+    const t = f / (insertCount + 1);
+    result.push({
+      id: `interp-${stamp}-loop-${f}-${Math.random().toString(36).slice(2, 5)}`,
+      name: `↔ ${defined.length}.${f}`,
+      type: 'interpolated',
+      pose: fromLast.map((angle, k) => angle + (toFirst[k] - angle) * t),
+    });
+  }
+  return result;
+}
+
+function onlyDefined(steps: SequencerStep[]): SequencerStep[] {
+  return steps.filter((st) => !st.type || st.type === 'defined');
+}
+
 export const useSequencerStore = create<SequencerState>()(
   persist(
     (set, get) => ({
@@ -106,58 +146,78 @@ export const useSequencerStore = create<SequencerState>()(
       showInterpolated: false,
 
       addStep: (pose, name) =>
-        set((s) => ({
-          steps: [
-            ...s.steps,
-            {
-              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              name: name ?? `Étape ${s.steps.length + 1}`,
-              pose: pose.slice(),
-              type: 'defined',
-            },
-          ],
-          selectedStepIndex: s.steps.length,
-          history: pushHistory(s.history, s.steps),
-          future: [],
-        })),
+        set((s) => {
+          const defined = onlyDefined(s.steps);
+          const newStep: SequencerStep = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: name ?? `Étape ${defined.length + 1}`,
+            pose: pose.slice(),
+            type: 'defined',
+          };
+          const newDefined = [...defined, newStep];
+          const newSteps = buildInterpolated(newDefined, s.stepDelay);
+          return {
+            steps: newSteps,
+            selectedStepIndex: newSteps.findIndex((st) => st.id === newStep.id),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+          };
+        }),
 
       duplicateStep: (id) =>
         set((s) => {
-          const idx = s.steps.findIndex((st) => st.id === id);
+          const defined = onlyDefined(s.steps);
+          const idx = defined.findIndex((st) => st.id === id);
           if (idx === -1) return s;
-          const src = s.steps[idx];
+          const src = defined[idx];
           const copy: SequencerStep = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: `${src.name} (copie)`,
             pose: src.pose.slice(),
             type: 'defined',
           };
-          const next = s.steps.slice();
-          next.splice(idx + 1, 0, copy);
+          const newDefined = defined.slice();
+          newDefined.splice(idx + 1, 0, copy);
+          const newSteps = buildInterpolated(newDefined, s.stepDelay);
           return {
-            steps: next,
-            selectedStepIndex: idx + 1,
+            steps: newSteps,
+            selectedStepIndex: newSteps.findIndex((st) => st.id === copy.id),
             history: pushHistory(s.history, s.steps),
             future: [],
           };
         }),
 
       removeStep: (id) =>
-        set((s) => ({
-          steps: s.steps.filter((st) => st.id !== id),
-          history: pushHistory(s.history, s.steps),
-          future: [],
-          selectedStepIndex: -1,
-        })),
+        set((s) => {
+          const newDefined = onlyDefined(s.steps).filter((st) => st.id !== id);
+          return {
+            steps: buildInterpolated(newDefined, s.stepDelay),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+            selectedStepIndex: -1,
+          };
+        }),
 
       moveStep: (fromIdx, toIdx) =>
         set((s) => {
           if (fromIdx === toIdx) return s;
-          const next = s.steps.slice();
-          const [item] = next.splice(fromIdx, 1);
-          next.splice(toIdx, 0, item);
+          const moved = s.steps[fromIdx];
+          if (!moved || moved.type === 'interpolated') return s;
+          const defined = onlyDefined(s.steps);
+          const fromDef = defined.findIndex((st) => st.id === moved.id);
+          if (fromDef === -1) return s;
+          // Position cible dans les défined : compter les défined avant toIdx (en excluant le step déplacé).
+          let toDef = 0;
+          for (let i = 0; i < toIdx && i < s.steps.length; i++) {
+            const st = s.steps[i];
+            if ((!st.type || st.type === 'defined') && st.id !== moved.id) toDef++;
+          }
+          if (toDef > defined.length - 1) toDef = defined.length - 1;
+          const newDefined = defined.slice();
+          newDefined.splice(fromDef, 1);
+          newDefined.splice(toDef, 0, moved);
           return {
-            steps: next,
+            steps: buildInterpolated(newDefined, s.stepDelay),
             history: pushHistory(s.history, s.steps),
             future: [],
           };
@@ -166,7 +226,11 @@ export const useSequencerStore = create<SequencerState>()(
       reorderServos: (order) => set({ servoOrder: order }),
 
       setTransitionSpeed: (v) => set({ transitionSpeed: v }),
-      setStepDelay: (v) => set({ stepDelay: v }),
+      setStepDelay: (v) =>
+        set((s) => ({
+          stepDelay: v,
+          steps: buildInterpolated(onlyDefined(s.steps), v),
+        })),
       setPlaybackSpeed: (v) => set({ playbackSpeed: v }),
       setCurrentStepIndex: (i) => set({ currentStepIndex: i }),
       setSelectedStepIndex: (i) => set({ selectedStepIndex: i }),
@@ -224,54 +288,36 @@ export const useSequencerStore = create<SequencerState>()(
         })),
 
       updateStepPose: (id, pose) =>
-        set((s) => ({
-          steps: s.steps.map((st) => (st.id === id ? { ...st, pose: pose.slice() } : st)),
-          history: pushHistory(s.history, s.steps),
-          future: [],
-        })),
-
-      generateInterpolations: () =>
         set((s) => {
-          const defined = s.steps.filter((st) => !st.type || st.type === 'defined');
-          if (defined.length < 2) {
-            return {
-              steps: defined,
-              history: pushHistory(s.history, s.steps),
-              future: [],
-              selectedStepIndex: -1,
-            };
-          }
-          const insertCount = Math.max(0, Math.round(s.stepDelay * MAX_FPS) - 1);
-          const result: SequencerStep[] = [];
-          for (let i = 0; i < defined.length - 1; i++) {
-            result.push(defined[i]);
-            const from = defined[i].pose;
-            const to = defined[i + 1].pose;
-            for (let f = 1; f <= insertCount; f++) {
-              const t = f / (insertCount + 1);
-              result.push({
-                id: `interp-${Date.now()}-${i}-${f}-${Math.random().toString(36).slice(2, 5)}`,
-                name: `↔ ${i + 1}.${f}`,
-                type: 'interpolated',
-                pose: from.map((angle, k) => angle + (to[k] - angle) * t),
-              });
-            }
-          }
-          result.push(defined[defined.length - 1]);
+          const newDefined = onlyDefined(s.steps).map((st) =>
+            st.id === id ? { ...st, pose: pose.slice() } : st
+          );
           return {
-            steps: result,
+            steps: buildInterpolated(newDefined, s.stepDelay),
             history: pushHistory(s.history, s.steps),
             future: [],
-            selectedStepIndex: -1,
           };
         }),
 
-      convertToDefined: (id) =>
+      generateInterpolations: () =>
         set((s) => ({
-          steps: s.steps.map((st) => (st.id === id ? { ...st, type: 'defined' } : st)),
+          steps: buildInterpolated(onlyDefined(s.steps), s.stepDelay),
           history: pushHistory(s.history, s.steps),
           future: [],
+          selectedStepIndex: -1,
         })),
+
+      convertToDefined: (id) =>
+        set((s) => {
+          const converted = s.steps.map((st) =>
+            st.id === id ? { ...st, type: 'defined' as StepType } : st
+          );
+          return {
+            steps: buildInterpolated(onlyDefined(converted), s.stepDelay),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+          };
+        }),
 
       undo: () =>
         set((s) => {
@@ -295,16 +341,19 @@ export const useSequencerStore = create<SequencerState>()(
 
       loadSteps: (steps, name) => {
         _clearTimer();
-        set((s) => ({
-          steps: steps.map((st) => ({ ...st, type: st.type ?? 'defined' })),
-          sequenceName: name ?? s.sequenceName,
-          history: pushHistory(s.history, s.steps),
-          future: [],
-          selectedStepIndex: -1,
-          currentStepIndex: -1,
-          isPlaying: false,
-          isPaused: false,
-        }));
+        set((s) => {
+          const normalized = steps.map((st) => ({ ...st, type: st.type ?? 'defined' }));
+          return {
+            steps: buildInterpolated(onlyDefined(normalized), s.stepDelay),
+            sequenceName: name ?? s.sequenceName,
+            history: pushHistory(s.history, s.steps),
+            future: [],
+            selectedStepIndex: -1,
+            currentStepIndex: -1,
+            isPlaying: false,
+            isPaused: false,
+          };
+        });
       },
 
       exportJson: () => {

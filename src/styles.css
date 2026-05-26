@@ -2230,7 +2230,6 @@ html, body, #root {
 
 /* Bouton save séquence */
 .seq-btn-save { font-size: 12px; }
-.seq-btn-generate { width: auto; padding: 0 8px; white-space: nowrap; gap: 4px; display: inline-flex; align-items: center; }
 
 /* Select nom de séquence */
 .seq-name-select {

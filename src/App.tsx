@@ -47,9 +47,9 @@ export default function App() {
   useEffect(() => {
     bootstrap().then(() => {
       if (!useAuthStore.getState().user) {
-        useSequencerStore.getState().loadSteps(DEMO_STEPS, DEMO_SEQUENCE_NAME);
         useSequencerStore.getState().setTransitionSpeed(0.1);
         useSequencerStore.getState().setStepDelay(0.1);
+        useSequencerStore.getState().loadSteps(DEMO_STEPS, DEMO_SEQUENCE_NAME);
         useHexapodStore.getState().setGravityEnabled(true);
         useHexapodStore.getState().setGeometry({ legLayout: "linear" });
       }
