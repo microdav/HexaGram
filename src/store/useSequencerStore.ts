@@ -30,8 +30,9 @@ function _scheduleStep(idx: number) {
   const stepIdx = idx % s.steps.length;
   s.setCurrentStepIndex(stepIdx);
   useHexapodStore.getState().applyPose(s.steps[stepIdx].pose);
-  const { transitionSpeed, stepDelay } = useSequencerStore.getState();
-  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), (transitionSpeed + stepDelay) * 1000);
+  const { transitionSpeed, stepDelay, playbackSpeed } = useSequencerStore.getState();
+  const speed = playbackSpeed > 0 ? playbackSpeed : 1;
+  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), ((transitionSpeed + stepDelay) * 1000) / speed);
 }
 
 interface SequencerState {
@@ -39,6 +40,7 @@ interface SequencerState {
   servoOrder: number[];
   transitionSpeed: number;
   stepDelay: number;
+  playbackSpeed: number;
   currentStepIndex: number;
   selectedStepIndex: number;
   isPlaying: boolean;
@@ -57,6 +59,7 @@ interface SequencerState {
   reorderServos: (order: number[]) => void;
   setTransitionSpeed: (v: number) => void;
   setStepDelay: (v: number) => void;
+  setPlaybackSpeed: (v: number) => void;
   setCurrentStepIndex: (i: number) => void;
   setSelectedStepIndex: (i: number) => void;
   setIsPlaying: (v: boolean) => void;
@@ -90,6 +93,7 @@ export const useSequencerStore = create<SequencerState>()(
       servoOrder: DEFAULT_SERVO_ORDER,
       transitionSpeed: 0.5,
       stepDelay: 0.3,
+      playbackSpeed: 1,
       currentStepIndex: -1,
       selectedStepIndex: -1,
       isPlaying: false,
@@ -163,6 +167,7 @@ export const useSequencerStore = create<SequencerState>()(
 
       setTransitionSpeed: (v) => set({ transitionSpeed: v }),
       setStepDelay: (v) => set({ stepDelay: v }),
+      setPlaybackSpeed: (v) => set({ playbackSpeed: v }),
       setCurrentStepIndex: (i) => set({ currentStepIndex: i }),
       setSelectedStepIndex: (i) => set({ selectedStepIndex: i }),
       setIsPlaying: (v) => set({ isPlaying: v }),
@@ -349,6 +354,7 @@ export const useSequencerStore = create<SequencerState>()(
         servoOrder: s.servoOrder,
         transitionSpeed: s.transitionSpeed,
         stepDelay: s.stepDelay,
+        playbackSpeed: s.playbackSpeed,
         panelHeight: s.panelHeight,
         sequenceName: s.sequenceName,
         showInterpolated: s.showInterpolated,

@@ -1964,6 +1964,18 @@ html, body, #root {
   opacity: 0.85;
   margin-top: 4px;
 }
+.seq-speed-select {
+  background: var(--bg-panel, var(--bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.toolbox-inline .seq-speed-select { height: 18px; font-size: 10px; padding: 0 3px; }
 
 /* Mode compact (ancré dans le séquenceur) */
 .toolbox-inline {
