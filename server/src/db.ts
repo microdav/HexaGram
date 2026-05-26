@@ -97,6 +97,12 @@ addColumnIfMissing("robot_profiles", "project_id", "TEXT");
 addColumnIfMissing("sequences",      "project_id", "TEXT");
 addColumnIfMissing("programs",       "project_id", "TEXT");
 addColumnIfMissing("projects",       "preferences", "TEXT NOT NULL DEFAULT '{}'");
+// Vignettes pré-générées (PNG dataURL) + empreinte du contexte de rendu.
+// Si l'empreinte ne matche pas le contexte courant côté client, la vignette
+// est ignorée et régénérée à la volée. Pour les steps de séquence, ces
+// champs sont portés par chaque step à l'intérieur du JSON `steps`.
+addColumnIfMissing("poses",          "thumbnail",         "TEXT");
+addColumnIfMissing("poses",          "thumbnail_context", "TEXT");
 
 // ── Migration des données existantes vers un projet par utilisateur ─────────
 

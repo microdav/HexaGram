@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import type { Pose } from '../model/pose';
+import type { HexapodGeometry } from '../model/hexapod';
 
 interface ThumbnailEntry {
   version: number;
   /** Hash compact de la pose au moment de la capture. Sert à détecter les éditions de step. */
   poseHash: string;
+  /** Empreinte du contexte de rendu (geometry/gravité/transparence/caméra) au moment de la capture. */
+  context: string;
   dataUrl: string;
 }
 
@@ -21,14 +24,53 @@ export function hashPose(pose: Pose): string {
   return pose.map((a) => Math.round(a * 10)).join('_');
 }
 
+/**
+ * Empreinte stable du contexte de rendu : tout ce qui influe sur le visuel
+ * d'une vignette en dehors de la pose elle-même.
+ *   - géométrie (châssis, segments, COG, legLayout)
+ *   - gravityEnabled / bodyTransparent
+ *   - viewDirection (caméra figée des vignettes)
+ * Sert à valider les vignettes persistées au backend lors de l'hydratation.
+ */
+export function computeThumbnailContext(
+  geometry: HexapodGeometry,
+  gravityEnabled: boolean,
+  bodyTransparent: boolean,
+  viewDirection: readonly [number, number, number],
+): string {
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  return JSON.stringify({
+    cl: r(geometry.chassis.length),
+    cw: r(geometry.chassis.width),
+    ch: r(geometry.chassis.height),
+    sc: r(geometry.segments.coxa),
+    sf: r(geometry.segments.femur),
+    st: r(geometry.segments.tibia),
+    cx: r(geometry.cog.x),
+    cy: r(geometry.cog.y),
+    cz: r(geometry.cog.z),
+    ll: geometry.legLayout ?? 'star',
+    g: gravityEnabled ? 1 : 0,
+    t: bodyTransparent ? 1 : 0,
+    v: [r(viewDirection[0]), r(viewDirection[1]), r(viewDirection[2])],
+  });
+}
+
 interface PoseThumbnailState {
   /** Bumpé à chaque invalidation globale (geometry/cameraDirection stable). */
   version: number;
+  /**
+   * Empreinte du contexte de rendu courant (publié par PoseThumbnailRenderer).
+   * `null` tant que le renderer n'a pas démarré.
+   */
+  currentContext: string | null;
   /** Cache stepId → entrée. Si version ne correspond plus à `version`, le cache est périmé. */
   thumbnails: Record<string, ThumbnailEntry>;
   /** File d'attente : étapes à rendre. La tête (index 0) est le job actif. */
   queue: ThumbnailJob[];
 
+  /** Met à jour l'empreinte courante (PoseThumbnailRenderer). */
+  setCurrentContext: (context: string) => void;
   /** Demande la génération d'un thumbnail pour le step (no-op si déjà à jour ou en file). */
   request: (stepId: string, pose: Pose) => void;
   /** Appelé par le renderer offscreen quand une vignette a été capturée. */
@@ -39,12 +81,24 @@ interface PoseThumbnailState {
   getValid: (stepId: string, poseHash?: string) => string | null;
   /** Supprime une entrée précise (ex. lors d'une suppression de step). */
   remove: (stepId: string) => void;
+  /**
+   * Injecte une vignette persistée (provenance backend) dans le cache.
+   * No-op si l'empreinte de contexte ne matche pas le contexte courant.
+   * Retourne `true` si la vignette a été injectée.
+   */
+  seed: (stepId: string, pose: Pose, dataUrl: string, context: string) => boolean;
 }
 
 export const usePoseThumbnailStore = create<PoseThumbnailState>((set, get) => ({
   version: 0,
+  currentContext: null,
   thumbnails: {},
   queue: [],
+
+  setCurrentContext: (context) => {
+    if (get().currentContext === context) return;
+    set({ currentContext: context });
+  },
 
   request: (stepId, pose) => {
     const s = get();
@@ -66,9 +120,10 @@ export const usePoseThumbnailStore = create<PoseThumbnailState>((set, get) => ({
       const nextQueue = s.queue.filter((j) => !(j.stepId === stepId && j.version === version));
       // On ne range pas un résultat périmé dans le cache.
       if (!job || version !== s.version) return { queue: nextQueue };
+      const context = s.currentContext ?? '';
       return {
         queue: nextQueue,
-        thumbnails: { ...s.thumbnails, [stepId]: { version, poseHash: job.poseHash, dataUrl } },
+        thumbnails: { ...s.thumbnails, [stepId]: { version, poseHash: job.poseHash, context, dataUrl } },
       };
     }),
 
@@ -100,4 +155,20 @@ export const usePoseThumbnailStore = create<PoseThumbnailState>((set, get) => ({
         queue: s.queue.filter((j) => j.stepId !== stepId),
       };
     }),
+
+  seed: (stepId, pose, dataUrl, context) => {
+    const s = get();
+    if (!s.currentContext || s.currentContext !== context) return false;
+    const poseHash = hashPose(pose);
+    const existing = s.thumbnails[stepId];
+    // Si on a déjà une entrée à jour pour ce step + pose, on ne touche pas.
+    if (existing && existing.version === s.version && existing.poseHash === poseHash) return true;
+    set({
+      thumbnails: {
+        ...s.thumbnails,
+        [stepId]: { version: s.version, poseHash, context, dataUrl },
+      },
+    });
+    return true;
+  },
 }));

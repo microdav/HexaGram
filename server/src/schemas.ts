@@ -103,6 +103,10 @@ const SequencerStepSchema = z.object({
   pose: z.array(z.number()),
   type: z.string().optional(),
   sourcePoseId: z.string().nullable().optional(),
+  /** Vignette PNG pré-générée (dataURL). Optionnelle. */
+  thumbnail: z.string().nullable().optional(),
+  /** Empreinte du contexte de rendu utilisé pour générer la vignette. */
+  thumbnailContext: z.string().nullable().optional(),
 });
 
 export const CreateSequenceSchema = z.object({
@@ -130,12 +134,16 @@ export const CreatePoseSchema = z.object({
   angles: z.array(z.number()),
   profileId: z.string().nullable().optional(),
   position: z.number().int().nonnegative().optional(),
+  thumbnail: z.string().nullable().optional(),
+  thumbnailContext: z.string().nullable().optional(),
 });
 
 export const UpdatePoseSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   angles: z.array(z.number()).optional(),
   position: z.number().int().nonnegative().optional(),
+  thumbnail: z.string().nullable().optional(),
+  thumbnailContext: z.string().nullable().optional(),
 });
 
 export const ReorderPosesSchema = z.object({

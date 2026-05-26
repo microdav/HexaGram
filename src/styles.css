@@ -3183,6 +3183,91 @@ html, body, #root {
   background: rgba(245, 197, 24, 0.06);
 }
 
+.seq-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.seq-picker-item-thumb {
+  width: 48px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.seq-picker-item-thumb .pose-thumb {
+  max-width: 100%;
+  max-height: 100%;
+}
+.seq-picker-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Init picker tabs */
+.init-picker-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.init-picker-tab {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.init-picker-tab:hover { color: var(--text); }
+.init-picker-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Init picker — grille de poses enregistrées */
+.picker-poses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 12px 0;
+  padding-right: 2px;
+}
+.picker-pose-card {
+  cursor: pointer;
+}
+
+/* Init block — vignette de la pose sélectionnée */
+.flow-init-row { align-items: center; }
+.flow-init-thumb {
+  width: 56px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.flow-init-thumb .pose-thumb {
+  max-width: 100%;
+  max-height: 100%;
+}
+
 .ggt-preview-row {
   display: flex;
   align-items: center;

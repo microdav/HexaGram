@@ -218,13 +218,16 @@ export default function App() {
 
           <SequencerPanel />
           <FloatingToolboxes />
-          {/* Renderer offscreen partagé : vignettes du séquenceur ET de la toolbox Poses. */}
-          <PoseThumbnailRenderer />
           <PoseConflictModal />
         </>
       )}
 
       {activeTab === 'programmation' && <ProgramPage />}
+
+      {/* Renderer offscreen partagé : vignettes du séquenceur, de la toolbox Poses,
+          et du bloc Init en Programmation graphique. Doit rester monté quel que
+          soit l'onglet actif pour pouvoir générer des vignettes à la volée. */}
+      <PoseThumbnailRenderer />
     </div>
   );
 }

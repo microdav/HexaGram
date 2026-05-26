@@ -2,9 +2,11 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import { useProgramsStore } from "../store/useProgramsStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
+import { useSavedPosesStore } from "../store/useSavedPosesStore";
 import { useProfilesStore } from "../store/useProfilesStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import { useToastStore } from "../store/useToastStore";
+import { PoseThumbnail } from "./PoseThumbnail";
 import type { Pose } from "../model/pose";
 import type { Program, ProgramStep, LoopTarget } from "../model/program";
 import type { SequencerStep } from "../store/useSequencerStore";
@@ -39,6 +41,8 @@ export function ProgramPage() {
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const listSequences = useSavedSequencesStore((s) => s.list);
   const loadSequence = useSavedSequencesStore((s) => s.load);
+  const savedPoses = useSavedPosesStore((s) => s.poses);
+  const listSavedPoses = useSavedPosesStore((s) => s.list);
   const sequencerSteps = useSequencerStore((s) => s.steps);
   const showToast = useToastStore((s) => s.show);
 
@@ -50,7 +54,9 @@ export function ProgramPage() {
   const [showAddOptions, setShowAddOptions] = useState(false);
 
   type PickerTarget = 'init' | 'add-step';
+  type InitPickerMode = 'pose' | 'step';
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>('add-step');
+  const [initPickerMode, setInitPickerMode] = useState<InitPickerMode>('pose');
   const [showSeqPicker, setShowSeqPicker] = useState(false);
   const [pickerSeqId, setPickerSeqId] = useState<string | null>(null);
   const [pickerSteps, setPickerSteps] = useState<SequencerStep[]>([]);
@@ -59,6 +65,7 @@ export function ProgramPage() {
   useEffect(() => {
     listPrograms();
     listSequences();
+    listSavedPoses().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -76,6 +83,7 @@ export function ProgramPage() {
     setPickerTarget(target);
     setPickerSeqId(null);
     setPickerSteps([]);
+    setInitPickerMode('pose');
     setShowSeqPicker(true);
     setShowAddOptions(false);
   }, []);
@@ -88,6 +96,13 @@ export function ProgramPage() {
       if (!draft) return;
       patch({ steps: [...draft.steps, { id: newStepId(), type: 'ref', sequenceId: pickerSeqId!, sequenceName: seqName }] });
     }
+    setShowSeqPicker(false);
+  };
+
+  const handlePickerSavedPose = (poseId: string) => {
+    const sp = savedPoses.find((p) => p.id === poseId);
+    if (!sp) return;
+    patch({ initPose: sp.angles.slice(), initPoseName: sp.name });
     setShowSeqPicker(false);
   };
 
@@ -248,7 +263,14 @@ export function ProgramPage() {
                 <div className="flow-block flow-block-init">
                   <div className="flow-block-label">🏠 Init</div>
                   {draft.initPose ? (
-                    <div className="flow-row">
+                    <div className="flow-row flow-init-row">
+                      <div className="flow-init-thumb">
+                        <PoseThumbnail
+                          id={`program-init-${draft.id ?? 'new'}`}
+                          pose={draft.initPose}
+                          alt={draft.initPoseName}
+                        />
+                      </div>
                       <span className="flow-init-name">{draft.initPoseName}</span>
                       <button type="button" className="btn btn-sm flow-btn-right" onClick={() => openPicker('init')}>
                         Changer
@@ -259,7 +281,7 @@ export function ProgramPage() {
                     <div className="flow-row">
                       <span className="flow-hint">Pose au lancement</span>
                       <button type="button" className="btn btn-sm flow-btn-right" onClick={() => openPicker('init')}>
-                        Choisir un step…
+                        Choisir une pose…
                       </button>
                     </div>
                   )}
@@ -355,31 +377,78 @@ export function ProgramPage() {
       {/* Picker de step */}
       <Modal open={showSeqPicker} onClose={() => setShowSeqPicker(false)}>
         <h3 className="modal-title">
-          {pickerTarget === 'init' ? "Choisir le step d'init" : "Ajouter une séquence"}
+          {pickerTarget === 'init' ? "Choisir la pose d'init" : "Ajouter une séquence"}
         </h3>
 
-        <label className="modal-field">
-          <span>Séquence</span>
-          <select className="flow-select picker-seq-select" value={pickerSeqId ?? ""} onChange={(e) => setPickerSeqId(e.target.value || null)}>
-            <option value="">— choisir une séquence —</option>
-            {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-
-        {pickerTarget === 'init' && pickerSeqId && (
-          <div className="seq-picker-list">
-            {pickerLoading ? (
-              <p className="picker-msg">Chargement…</p>
-            ) : pickerSteps.length === 0 ? (
-              <p className="picker-msg">Aucun step défini</p>
-            ) : (
-              pickerSteps.map((step) => (
-                <button key={step.id} type="button" className="seq-picker-item" onClick={() => handlePickerStep(step, step.pose)}>
-                  {step.name}
-                </button>
-              ))
-            )}
+        {pickerTarget === 'init' && (
+          <div className="init-picker-tabs">
+            <button
+              type="button"
+              className={`init-picker-tab${initPickerMode === 'pose' ? ' active' : ''}`}
+              onClick={() => setInitPickerMode('pose')}
+            >
+              Pose enregistrée
+            </button>
+            <button
+              type="button"
+              className={`init-picker-tab${initPickerMode === 'step' ? ' active' : ''}`}
+              onClick={() => setInitPickerMode('step')}
+            >
+              Step d'une séquence
+            </button>
           </div>
+        )}
+
+        {pickerTarget === 'init' && initPickerMode === 'pose' ? (
+          savedPoses.length === 0 ? (
+            <p className="picker-msg">Aucune pose enregistrée. Utilisez la toolbox « Poses » pour en créer.</p>
+          ) : (
+            <div className="picker-poses-grid">
+              {savedPoses.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="pose-card picker-pose-card"
+                  onClick={() => handlePickerSavedPose(p.id)}
+                  title={`Choisir « ${p.name} »`}
+                >
+                  <div className="pose-card-thumb">
+                    <PoseThumbnail id={p.id} pose={p.angles} alt={p.name} />
+                  </div>
+                  <div className="pose-card-label">{p.name}</div>
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <>
+            <label className="modal-field">
+              <span>Séquence</span>
+              <select className="flow-select picker-seq-select" value={pickerSeqId ?? ""} onChange={(e) => setPickerSeqId(e.target.value || null)}>
+                <option value="">— choisir une séquence —</option>
+                {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+
+            {pickerTarget === 'init' && pickerSeqId && (
+              <div className="seq-picker-list">
+                {pickerLoading ? (
+                  <p className="picker-msg">Chargement…</p>
+                ) : pickerSteps.length === 0 ? (
+                  <p className="picker-msg">Aucun step défini</p>
+                ) : (
+                  pickerSteps.map((step) => (
+                    <button key={step.id} type="button" className="seq-picker-item" onClick={() => handlePickerStep(step, step.pose)}>
+                      <div className="seq-picker-item-thumb">
+                        <PoseThumbnail id={step.id} pose={step.pose} alt={step.name} />
+                      </div>
+                      <span className="seq-picker-item-name">{step.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <div className="modal-actions">

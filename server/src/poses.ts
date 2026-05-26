@@ -19,6 +19,8 @@ function parsePose(row: Record<string, unknown>) {
     name: row.name,
     angles: JSON.parse(row.angles as string),
     position: row.position,
+    thumbnail: (row.thumbnail as string | null) ?? null,
+    thumbnailContext: (row.thumbnail_context as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -75,12 +77,12 @@ router.post("/", (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
     return;
   }
-  const { name, angles, profileId, position } = parsed.data;
+  const { name, angles, profileId, position, thumbnail, thumbnailContext } = parsed.data;
   const id = uuidv4();
   const now = Date.now();
   const pos = position ?? nextPosition(req.userId!, projectId);
   db.prepare(
-    "INSERT INTO poses (id, user_id, project_id, profile_id, name, angles, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO poses (id, user_id, project_id, profile_id, name, angles, position, thumbnail, thumbnail_context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     id,
     req.userId,
@@ -89,6 +91,8 @@ router.post("/", (req: AuthRequest, res: Response): void => {
     name,
     JSON.stringify(angles),
     pos,
+    thumbnail ?? null,
+    thumbnailContext ?? null,
     now,
     now
   );
@@ -111,14 +115,27 @@ router.put("/:id", (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
     return;
   }
-  const { name, angles, position } = parsed.data;
+  const { name, angles, position, thumbnail, thumbnailContext } = parsed.data;
   const now = Date.now();
   const newName = name ?? (existing.name as string);
-  const newAngles = angles ? JSON.stringify(angles) : (existing.angles as string);
+  // Si les angles changent, la vignette est invalidée tant qu'une nouvelle n'est
+  // pas fournie (sinon elle correspondrait à une pose obsolète).
+  const anglesChanged = angles !== undefined;
+  const newAngles = anglesChanged ? JSON.stringify(angles) : (existing.angles as string);
   const newPosition = position ?? (existing.position as number);
+  const newThumb = thumbnail !== undefined
+    ? thumbnail
+    : anglesChanged
+      ? null
+      : (existing.thumbnail as string | null);
+  const newThumbCtx = thumbnailContext !== undefined
+    ? thumbnailContext
+    : anglesChanged
+      ? null
+      : (existing.thumbnail_context as string | null);
   db.prepare(
-    "UPDATE poses SET name = ?, angles = ?, position = ?, updated_at = ? WHERE id = ? AND user_id = ?"
-  ).run(newName, newAngles, newPosition, now, req.params.id, req.userId);
+    "UPDATE poses SET name = ?, angles = ?, position = ?, thumbnail = ?, thumbnail_context = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  ).run(newName, newAngles, newPosition, newThumb, newThumbCtx, now, req.params.id, req.userId);
 
   const row = db.prepare("SELECT * FROM poses WHERE id = ?").get(req.params.id) as Record<string, unknown>;
   res.json(parsePose(row));

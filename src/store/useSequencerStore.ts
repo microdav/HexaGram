@@ -19,6 +19,13 @@ export interface SequencerStep {
    * "rompre le lien".
    */
   sourcePoseId?: string | null;
+  /**
+   * Vignette PNG (dataURL) persistée avec la séquence. Hydrate le cache de
+   * vignettes à l'ouverture, évitant un re-rendu offscreen systématique.
+   * `thumbnailContext` permet d'invalider si le contexte de rendu a changé.
+   */
+  thumbnail?: string | null;
+  thumbnailContext?: string | null;
 }
 
 /** Conflit en attente : un step lié à une pose source vient d'être édité. */

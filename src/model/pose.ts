@@ -31,6 +31,13 @@ export interface SavedPose {
   angles: Pose;
   /** Ordre dans la grille de la toolbox. */
   position: number;
+  /**
+   * Vignette PNG (dataURL) générée côté client et persistée pour réutilisation.
+   * Validée à l'hydratation via `thumbnailContext` ; ignorée si le contexte
+   * de rendu actuel (géométrie/gravité/transparence/caméra) a changé.
+   */
+  thumbnail?: string | null;
+  thumbnailContext?: string | null;
   createdAt: number;
   updatedAt: number;
 }

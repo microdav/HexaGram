@@ -4,6 +4,9 @@ import { api } from '../api/client';
 import { useAuthStore } from './useAuthStore';
 import { useProjectStore } from './useProjectStore';
 import { useProfilesStore } from './useProfilesStore';
+import { useHexapodStore } from './useHexapodStore';
+import { usePhotoSpaceStore } from './usePhotoSpaceStore';
+import { usePoseThumbnailStore, computeThumbnailContext, hashPose } from './usePoseThumbnailStore';
 import type { Pose, SavedPose } from '../model/pose';
 
 interface SavedPosesState {
@@ -27,6 +30,74 @@ function newId(): string {
   return `pose-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Empreinte du contexte de rendu courant — utilisée pour valider / persister les vignettes. */
+function currentRenderContext(): string {
+  const hex = useHexapodStore.getState();
+  return computeThumbnailContext(
+    hex.geometry,
+    hex.gravityEnabled,
+    hex.bodyTransparent,
+    usePhotoSpaceStore.getState().viewDirection,
+  );
+}
+
+/** Hydrate le cache de vignettes avec les poses persistées dont le contexte matche. */
+function hydrateThumbnails(poses: SavedPose[]): void {
+  const ctx = currentRenderContext();
+  const seed = usePoseThumbnailStore.getState().seed;
+  for (const p of poses) {
+    if (!p.thumbnail || !p.thumbnailContext) continue;
+    if (p.thumbnailContext !== ctx) continue;
+    seed(p.id, p.angles, p.thumbnail, p.thumbnailContext);
+  }
+}
+
+/**
+ * Souscription paresseuse : à la première initialisation backend, on observe les
+ * vignettes générées et on PUT côté serveur celles qui concernent une pose
+ * enregistrée. Debounce léger pour éviter d'envoyer une rafale.
+ */
+let _thumbSubscribed = false;
+const _lastPersistedHash: Record<string, string> = {};
+const _pendingPersist: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function ensureThumbnailPersistSubscription(): void {
+  if (_thumbSubscribed) return;
+  _thumbSubscribed = true;
+  usePoseThumbnailStore.subscribe((state, prev) => {
+    if (state.thumbnails === prev.thumbnails) return;
+    if (!isBackend()) return;
+    const poses = useSavedPosesStore.getState().poses;
+    for (const p of poses) {
+      const entry = state.thumbnails[p.id];
+      if (!entry) continue;
+      if (entry.version !== state.version) continue;
+      if (entry.poseHash !== hashPose(p.angles)) continue;
+      const dedupKey = `${entry.context}:${entry.poseHash}`;
+      if (_lastPersistedHash[p.id] === dedupKey) continue;
+      _lastPersistedHash[p.id] = dedupKey;
+      clearTimeout(_pendingPersist[p.id]);
+      _pendingPersist[p.id] = setTimeout(() => {
+        delete _pendingPersist[p.id];
+        api
+          .put(`/poses/${p.id}`, { thumbnail: entry.dataUrl, thumbnailContext: entry.context })
+          .then(() => {
+            useSavedPosesStore.setState((s) => ({
+              poses: s.poses.map((pp) =>
+                pp.id === p.id
+                  ? { ...pp, thumbnail: entry.dataUrl, thumbnailContext: entry.context }
+                  : pp,
+              ),
+            }));
+          })
+          .catch(() => {
+            delete _lastPersistedHash[p.id];
+          });
+      }, 600);
+    }
+  });
+}
+
 function uniqueName(base: string, existing: SavedPose[]): string {
   const names = new Set(existing.map((p) => p.name));
   if (!names.has(base)) return base;
@@ -43,16 +114,22 @@ export const useSavedPosesStore = create<SavedPosesState>()(
 
       list: async () => {
         if (!isBackend()) return;
+        ensureThumbnailPersistSubscription();
         const projectId = useProjectStore.getState().activeProjectId!;
         set({ loading: true });
         try {
           const poses = await api.get<SavedPose[]>(
             `/poses?projectId=${encodeURIComponent(projectId)}`
           );
-          set({
-            poses: poses.slice().sort((a, b) => a.position - b.position),
-            loading: false,
-          });
+          const sorted = poses.slice().sort((a, b) => a.position - b.position);
+          set({ poses: sorted, loading: false });
+          // Marque ces poses comme déjà persistées pour éviter un PUT inutile.
+          for (const p of sorted) {
+            if (p.thumbnail && p.thumbnailContext) {
+              _lastPersistedHash[p.id] = `${p.thumbnailContext}:${hashPose(p.angles)}`;
+            }
+          }
+          hydrateThumbnails(sorted);
         } catch {
           set({ loading: false });
         }
@@ -65,6 +142,7 @@ export const useSavedPosesStore = create<SavedPosesState>()(
         const position = get().poses.length;
         const now = Date.now();
         if (isBackend()) {
+          ensureThumbnailPersistSubscription();
           const projectId = useProjectStore.getState().activeProjectId!;
           const created = await api.post<SavedPose>('/poses', {
             name: finalName,
@@ -113,9 +191,13 @@ export const useSavedPosesStore = create<SavedPosesState>()(
           } catch { /* keep local change */ }
         }
         const now = Date.now();
+        // La vignette persistée correspond aux anciens angles → invalidée.
+        delete _lastPersistedHash[id];
         set((s) => ({
           poses: s.poses.map((p) =>
-            p.id === id ? { ...p, angles: angles.slice(), updatedAt: now } : p
+            p.id === id
+              ? { ...p, angles: angles.slice(), thumbnail: null, thumbnailContext: null, updatedAt: now }
+              : p
           ),
         }));
       },
@@ -126,6 +208,9 @@ export const useSavedPosesStore = create<SavedPosesState>()(
             await api.delete(`/poses/${id}`);
           } catch { /* still remove locally */ }
         }
+        delete _lastPersistedHash[id];
+        clearTimeout(_pendingPersist[id]);
+        delete _pendingPersist[id];
         set((s) => ({
           poses: s.poses
             .filter((p) => p.id !== id)

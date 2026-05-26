@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useHexapodStore } from '../store/useHexapodStore';
-import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
+import { usePoseThumbnailStore, computeThumbnailContext } from '../store/usePoseThumbnailStore';
 import { usePhotoSpaceStore } from '../store/usePhotoSpaceStore';
 import { MiniHexapod, computeThumbnailCameraPos } from './MiniHexapod';
 
@@ -72,6 +72,15 @@ export function PoseThumbnailRenderer() {
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const viewDirection = usePhotoSpaceStore((s) => s.viewDirection);
   const invalidateAll = usePoseThumbnailStore((s) => s.invalidateAll);
+  const setCurrentContext = usePoseThumbnailStore((s) => s.setCurrentContext);
+
+  // Publie l'empreinte du contexte de rendu courant — utilisée pour valider
+  // les vignettes hydratées depuis le backend.
+  useEffect(() => {
+    setCurrentContext(
+      computeThumbnailContext(geometry, gravityEnabled, bodyTransparent, viewDirection)
+    );
+  }, [geometry, gravityEnabled, bodyTransparent, viewDirection, setCurrentContext]);
 
   // Invalidation globale sur changement de géométrie / gravité / transparence.
   const lastGeometryRef = useRef(geometry);
