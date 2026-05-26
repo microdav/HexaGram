@@ -13,6 +13,8 @@ import { SERVOS } from '../model/hexapod';
 import { ToolboxSlot } from './ToolboxSlot';
 import { PoseThumbnail } from './PoseThumbnail';
 import { POSE_DRAG_MIME } from './PosesPanel';
+import { SequenceExportModal } from './SequenceExportModal';
+import { SequenceImportModal } from './SequenceImportModal';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
 
@@ -62,6 +64,10 @@ export function SequencerPanel() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Export / Import modals
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const steps = useSequencerStore((s) => s.steps);
   const servoOrder = useSequencerStore((s) => s.servoOrder);
@@ -148,16 +154,8 @@ export function SequencerPanel() {
     }
   }, [showRenameModal, sequenceName]);
 
-  const handleExportJson = () => {
-    const json = useSequencerStore.getState().exportJson();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hexagram-seq-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleOpenExport = () => setShowExportModal(true);
+  const handleOpenImport = () => setShowImportModal(true);
 
   // Save sequence to backend
   const handleSaveSequence = async () => {
@@ -388,6 +386,12 @@ export function SequencerPanel() {
         </div>
       )}
 
+      {/* ── Export sequence modal ────────────────────────── */}
+      <SequenceExportModal open={showExportModal} onClose={() => setShowExportModal(false)} />
+
+      {/* ── Import sequence modal ────────────────────────── */}
+      <SequenceImportModal open={showImportModal} onClose={() => setShowImportModal(false)} />
+
       {/* ── Rename modal ────────────────────────────────── */}
       {showRenameModal && (
         <div className="seq-modal-backdrop" onClick={() => setShowRenameModal(false)}>
@@ -466,15 +470,25 @@ export function SequencerPanel() {
               </button>
 
               {user && (
-                <button
-                  type="button"
-                  className="seq-btn"
-                  onClick={handleExportJson}
-                  disabled={steps.length === 0}
-                  title="Exporter la séquence (JSON)"
-                >
-                  ↓
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="seq-btn"
+                    onClick={handleOpenExport}
+                    disabled={steps.length === 0}
+                    title="Exporter la séquence (JSON, visualisation par étape)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="seq-btn"
+                    onClick={handleOpenImport}
+                    title="Importer une séquence (coller un JSON)"
+                  >
+                    ↓
+                  </button>
+                </>
               )}
 
               <div className="seq-sep" />

@@ -2425,6 +2425,180 @@ html, body, #root {
   font-weight: 600;
 }
 .seq-modal-btn-primary:hover { background: #e6b800; border-color: #e6b800; color: #1a1a1a; }
+.seq-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Export sequence modal ───────────────────────────────── */
+.seq-export-modal {
+  width: 92vw;
+  max-width: 1100px;
+  height: 82vh;
+  padding: 14px 16px;
+}
+.seq-export-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.seq-export-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.seq-export-allcheck,
+.seq-export-step-allcheck {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.seq-export-step-allcheck {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.seq-export-selcount {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.seq-export-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+  min-height: 0;
+}
+.seq-export-empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px;
+  font-size: 12px;
+}
+.seq-export-row {
+  display: flex;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  align-items: stretch;
+}
+.seq-export-thumb {
+  flex: 0 0 20%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.seq-export-thumb .pose-thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--bg-panel);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.seq-export-thumb .pose-thumb-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-panel);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.seq-export-thumb-name {
+  font-size: 11px;
+  color: var(--text);
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.seq-export-code {
+  flex: 1 1 80%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+}
+.seq-export-code-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.seq-export-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 1px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1.5;
+}
+.seq-export-line:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.seq-export-line.selected {
+  background: rgba(245, 197, 24, 0.10);
+}
+.seq-export-line input[type="checkbox"] {
+  margin: 4px 0 0 0;
+  flex: 0 0 auto;
+}
+.seq-export-line-num {
+  flex: 0 0 26px;
+  color: var(--text-dim);
+  text-align: right;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.seq-export-line code {
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Import sequence modal ───────────────────────────────── */
+.seq-import-modal {
+  width: 80vw;
+  max-width: 700px;
+}
+.seq-import-help {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.seq-import-help strong {
+  color: var(--text);
+}
+.seq-import-textarea {
+  width: 100%;
+  height: 320px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  padding: 8px;
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.seq-import-textarea:focus { border-color: var(--accent); }
 
 /* ── StepInfoPanel : overlay 3D bas-droit ────────────────── */
 .step-info-panel {
