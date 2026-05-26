@@ -1821,6 +1821,33 @@ html, body, #root {
   box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 24px rgba(245, 197, 24, 0.06);
 }
 
+/* Zone de dépôt pour une pose enregistrée glissée depuis la toolbox Poses */
+.sequencer-panel.seq-pose-drop-zone .seq-panel-handle {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: rgba(245, 197, 24, 0.22);
+  color: var(--accent);
+}
+.sequencer-panel.open.seq-pose-drop-zone .sequencer-content {
+  box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 32px rgba(245, 197, 24, 0.10);
+}
+.sequencer-panel.open.seq-pose-drop-zone .sequencer-content::after {
+  content: "Lâchez ici pour ajouter une étape liée à la pose";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 17, 21, 0.92);
+  color: var(--accent);
+  padding: 10px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 50;
+}
+
 /* Bord de redimensionnement */
 .seq-resize-handle {
   flex: 0 0 5px;
@@ -1878,6 +1905,7 @@ html, body, #root {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 /* ── Toolbar ─────────────────────────────────────────────── */
@@ -3906,4 +3934,242 @@ html, body, #root {
   font-size: 11px;
   font-family: 'Courier New', monospace;
   color: var(--text);
+}
+
+/* ── Toolbox Poses ──────────────────────────────────────────────────────── */
+.poses-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.poses-save-btn {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--accent);
+  color: #1a1a1a;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.poses-save-btn:hover { background: var(--accent-hover); }
+.poses-empty {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 12px 4px;
+  line-height: 1.4;
+}
+.poses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.pose-card {
+  position: relative;
+  background: var(--bg-panel-2);
+  border: 1px solid rgba(245, 197, 24, 0.45);
+  border-radius: 4px;
+  padding: 4px;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: border-color 0.15s, transform 0.1s, background 0.15s;
+}
+.pose-card:hover {
+  border-color: var(--accent);
+  background: #2a2e38;
+}
+.pose-card:active { cursor: grabbing; }
+.pose-card.dragging { opacity: 0.4; }
+.pose-card.drag-over {
+  border-color: var(--accent-hover);
+  background: rgba(245, 197, 24, 0.12);
+}
+.pose-card-thumb {
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #15171c;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pose-card-thumb .pose-thumb {
+  max-width: 100%;
+  max-height: 100%;
+}
+.pose-card-label {
+  font-size: 10px;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  line-height: 1.2;
+}
+.pose-card-rename {
+  font-size: 10px;
+  width: 100%;
+  padding: 1px 3px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  text-align: center;
+}
+.pose-card-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-dim);
+  border: none;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.pose-card:hover .pose-card-del { display: flex; }
+.pose-card-del:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ── Modal de conflit pose↔step ──────────────────────────────────────────── */
+.pose-conflict-modal {
+  min-width: 360px;
+  max-width: 480px;
+}
+.pose-conflict-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 6px 0 14px;
+}
+.pose-conflict-body strong { color: var(--accent); }
+.pose-conflict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pose-conflict-actions .seq-modal-btn { width: 100%; text-align: left; }
+
+/* ── ConfirmDialog global ───────────────────────────────────────────────── */
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: confirm-fade-in 0.12s ease-out;
+}
+@keyframes confirm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.confirm-dialog {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 22px;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.confirm-dialog.confirm-dialog-danger {
+  border-color: rgba(217, 83, 79, 0.6);
+}
+.confirm-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.confirm-dialog.confirm-dialog-danger .confirm-dialog-title { color: var(--danger); }
+.confirm-dialog-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.confirm-dialog-body p { margin: 0 0 6px; }
+.confirm-dialog-body p:last-child { margin-bottom: 0; }
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-dialog-btn {
+  padding: 7px 16px;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.confirm-dialog-btn:hover {
+  background: var(--bg);
+  border-color: var(--text-dim);
+}
+.confirm-dialog-btn-primary {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.confirm-dialog-btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.confirm-dialog-btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.confirm-dialog-btn-danger:hover {
+  background: #e36561;
+  border-color: #e36561;
+}
+.confirm-dialog-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Indicateur visuel : step lié à une pose enregistrée */
+.seq-step-link-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 3px;
+  cursor: help;
+}
+.seq-step-col.linked .seq-step-thumb-row {
+  outline: 1px solid rgba(245, 197, 24, 0.4);
+  outline-offset: -1px;
 }

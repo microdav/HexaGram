@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from 'react';
-import type { SequencerStep } from '../store/useSequencerStore';
+import type { Pose } from '../model/pose';
 import { usePoseThumbnailStore, hashPose } from '../store/usePoseThumbnailStore';
 
 interface PoseThumbnailProps {
-  step: SequencerStep;
+  /** Identifiant unique pour le cache (id d'étape séquenceur ou id de pose enregistrée). */
+  id: string;
+  pose: Pose;
+  alt?: string;
 }
 
 /**
@@ -11,13 +14,13 @@ interface PoseThumbnailProps {
  * l'image dès qu'elle est disponible. La taille d'affichage est gérée en CSS
  * (.pose-thumb).
  */
-export function PoseThumbnail({ step }: PoseThumbnailProps) {
-  const poseHash = useMemo(() => hashPose(step.pose), [step.pose]);
+export function PoseThumbnail({ id, pose, alt }: PoseThumbnailProps) {
+  const poseHash = useMemo(() => hashPose(pose), [pose]);
 
   // S'abonner au cache via un sélecteur force un re-render quand la vignette
-  // du step arrive ou quand la version (cameraDir / geometry) change.
+  // arrive ou quand la version (cameraDir / geometry) change.
   const dataUrl = usePoseThumbnailStore((s) => {
-    const entry = s.thumbnails[step.id];
+    const entry = s.thumbnails[id];
     if (!entry) return null;
     if (entry.version !== s.version) return null;
     if (entry.poseHash !== poseHash) return null;
@@ -27,11 +30,11 @@ export function PoseThumbnail({ step }: PoseThumbnailProps) {
 
   useEffect(() => {
     if (dataUrl) return;
-    request(step.id, step.pose);
-  }, [dataUrl, request, step.id, step.pose]);
+    request(id, pose);
+  }, [dataUrl, request, id, pose]);
 
   if (!dataUrl) {
     return <div className="pose-thumb pose-thumb-placeholder" aria-label="Génération en cours" />;
   }
-  return <img className="pose-thumb" src={dataUrl} alt={`Pose ${step.name}`} draggable={false} />;
+  return <img className="pose-thumb" src={dataUrl} alt={alt ?? 'Pose'} draggable={false} />;
 }

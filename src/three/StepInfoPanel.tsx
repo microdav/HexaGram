@@ -109,7 +109,9 @@ export function StepInfoPanel() {
 
   const handleSavePose = (e: React.MouseEvent<HTMLButtonElement>) => {
     const pose = useHexapodStore.getState().pose;
-    useSequencerStore.getState().updateStepPose(step.id, pose);
+    // Si le step est lié à une pose enregistrée, requestStepPoseUpdate lève
+    // un PendingPoseConflict que l'utilisateur arbitre via le modal.
+    useSequencerStore.getState().requestStepPoseUpdate(step.id, pose);
     // Réinitialise l'historique local à la pose enregistrée
     localHistory.current = [(pose as Pose).slice() as Pose];
     localHistoryIdx.current = 0;

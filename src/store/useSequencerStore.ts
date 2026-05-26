@@ -11,6 +11,21 @@ export interface SequencerStep {
   name: string;
   pose: Pose;
   type: StepType;
+  /**
+   * Si défini : l'étape "réfère" à une pose enregistrée (useSavedPosesStore).
+   * Quand la pose source est modifiée, tous les steps avec ce sourcePoseId
+   * sont mis à jour (propagation). Quand l'utilisateur modifie un step lié,
+   * un PendingPoseConflict est levé pour proposer "modifier la source" /
+   * "rompre le lien".
+   */
+  sourcePoseId?: string | null;
+}
+
+/** Conflit en attente : un step lié à une pose source vient d'être édité. */
+export interface PendingPoseConflict {
+  stepId: string;
+  sourcePoseId: string;
+  newPose: Pose;
 }
 
 export const MAX_FPS = 40;
@@ -51,8 +66,9 @@ interface SequencerState {
   panelHeight: number;
   sequenceName: string;
   showInterpolated: boolean;
+  pendingPoseConflict: PendingPoseConflict | null;
 
-  addStep: (pose: Pose, name?: string) => void;
+  addStep: (pose: Pose, name?: string, sourcePoseId?: string | null) => void;
   duplicateStep: (id: string) => void;
   removeStep: (id: string) => void;
   moveStep: (fromIdx: number, toIdx: number) => void;
@@ -72,6 +88,18 @@ interface SequencerState {
   toggleShowInterpolated: () => void;
   updateStepName: (id: string, name: string) => void;
   updateStepPose: (id: string, pose: Pose) => void;
+  /**
+   * Demande la mise à jour de la pose d'un step. Si le step est lié à une
+   * pose source, un PendingPoseConflict est levé au lieu d'appliquer
+   * directement ; sinon, comportement identique à updateStepPose.
+   */
+  requestStepPoseUpdate: (id: string, pose: Pose) => void;
+  /** Rompt le lien step → pose source (le step devient indépendant). */
+  unlinkStep: (id: string) => void;
+  /** Propage les nouveaux angles d'une pose source à tous les steps liés. */
+  propagatePoseChange: (sourcePoseId: string, angles: Pose) => void;
+  /** Met fin au conflit (annulation ou résolution). */
+  clearPendingPoseConflict: () => void;
   generateInterpolations: () => void;
   convertToDefined: (id: string) => void;
   undo: () => void;
@@ -144,8 +172,9 @@ export const useSequencerStore = create<SequencerState>()(
       panelHeight: 258,
       sequenceName: 'Séquence',
       showInterpolated: false,
+      pendingPoseConflict: null,
 
-      addStep: (pose, name) =>
+      addStep: (pose, name, sourcePoseId) =>
         set((s) => {
           const defined = onlyDefined(s.steps);
           const newStep: SequencerStep = {
@@ -153,6 +182,7 @@ export const useSequencerStore = create<SequencerState>()(
             name: name ?? `Étape ${defined.length + 1}`,
             pose: pose.slice(),
             type: 'defined',
+            sourcePoseId: sourcePoseId ?? null,
           };
           const newDefined = [...defined, newStep];
           const newSteps = buildInterpolated(newDefined, s.stepDelay);
@@ -175,6 +205,7 @@ export const useSequencerStore = create<SequencerState>()(
             name: `${src.name} (copie)`,
             pose: src.pose.slice(),
             type: 'defined',
+            sourcePoseId: src.sourcePoseId ?? null,
           };
           const newDefined = defined.slice();
           newDefined.splice(idx + 1, 0, copy);
@@ -298,6 +329,43 @@ export const useSequencerStore = create<SequencerState>()(
             future: [],
           };
         }),
+
+      requestStepPoseUpdate: (id, pose) => {
+        const s = get();
+        const step = s.steps.find((st) => st.id === id);
+        if (!step) return;
+        if (step.sourcePoseId) {
+          // Step lié à une pose : on lève un conflit, l'utilisateur arbitre.
+          set({
+            pendingPoseConflict: {
+              stepId: id,
+              sourcePoseId: step.sourcePoseId,
+              newPose: pose.slice(),
+            },
+          });
+          return;
+        }
+        get().updateStepPose(id, pose);
+      },
+
+      unlinkStep: (id) =>
+        set((s) => ({
+          steps: s.steps.map((st) =>
+            st.id === id ? { ...st, sourcePoseId: null } : st
+          ),
+        })),
+
+      propagatePoseChange: (sourcePoseId, angles) =>
+        set((s) => {
+          const newDefined = onlyDefined(s.steps).map((st) =>
+            st.sourcePoseId === sourcePoseId ? { ...st, pose: angles.slice() } : st
+          );
+          return {
+            steps: buildInterpolated(newDefined, s.stepDelay),
+          };
+        }),
+
+      clearPendingPoseConflict: () => set({ pendingPoseConflict: null }),
 
       generateInterpolations: () =>
         set((s) => ({

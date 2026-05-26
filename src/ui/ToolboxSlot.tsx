@@ -9,6 +9,7 @@ import { SequencerControlsContent } from './SequencerControlsContent';
 import { ElectromechanicsContent } from './ElectromechanicsPanel';
 import { WalkSpeedContent } from './WalkSpeedPanel';
 import { PhotoSpaceContent } from './PhotoSpacePanel';
+import { PosesContent } from './PosesPanel';
 
 const ServoLeft = () => <ServoGroupContent side="left" />;
 const ServoRight = () => <ServoGroupContent side="right" />;
@@ -23,6 +24,7 @@ const REGISTRY: Record<string, { title: string; Content: ComponentType }> = {
   electromechanics:  { title: 'Performances électroméca.', Content: ElectromechanicsContent },
   'walk-speed':      { title: 'Vitesse de déplacement',       Content: WalkSpeedContent },
   'photo-space':     { title: 'Espace photo',                 Content: PhotoSpaceContent },
+  poses:             { title: 'Poses',                        Content: PosesContent },
 };
 
 function InsertMarker({ active }: { active: boolean }) {

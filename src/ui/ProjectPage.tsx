@@ -4,6 +4,7 @@ import { useProfilesStore } from "../store/useProfilesStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useProgramsStore } from "../store/useProgramsStore";
 import { useToastStore } from "../store/useToastStore";
+import { confirmDialog } from "../store/useConfirmStore";
 import { api } from "../api/client";
 import {
   SERVO_CATALOG,
@@ -584,7 +585,15 @@ function ContentPanel() {
                 <span className="pp-item-date">maj {fmt(p.updatedAt)}</span>
               </div>
               <button type="button" className="btn btn-sm btn-danger"
-                onClick={() => confirm(`Supprimer le profil "${p.name}" ?`) && removeProfile(p.id)}>✕</button>
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: 'Supprimer le profil',
+                    message: `Voulez-vous vraiment supprimer le profil « ${p.name} » ?`,
+                    confirmLabel: 'Supprimer',
+                    variant: 'danger',
+                  });
+                  if (ok) removeProfile(p.id);
+                }}>✕</button>
             </div>
           ))}
         </div>
@@ -603,7 +612,15 @@ function ContentPanel() {
                 <span className="pp-item-date">maj {fmt(s.updatedAt)}</span>
               </div>
               <button type="button" className="btn btn-sm btn-danger"
-                onClick={() => confirm(`Supprimer la séquence "${s.name}" ?`) && removeSequence(s.id)}>✕</button>
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: 'Supprimer la séquence',
+                    message: `Voulez-vous vraiment supprimer la séquence « ${s.name} » ?`,
+                    confirmLabel: 'Supprimer',
+                    variant: 'danger',
+                  });
+                  if (ok) removeSequence(s.id);
+                }}>✕</button>
             </div>
           ))}
         </div>
@@ -622,7 +639,15 @@ function ContentPanel() {
                 <span className="pp-item-date">maj {fmt(p.updatedAt)}</span>
               </div>
               <button type="button" className="btn btn-sm btn-danger"
-                onClick={() => confirm(`Supprimer le programme "${p.name}" ?`) && removeProgram(p.id)}>✕</button>
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: 'Supprimer le programme',
+                    message: `Voulez-vous vraiment supprimer le programme « ${p.name} » ?`,
+                    confirmLabel: 'Supprimer',
+                    variant: 'danger',
+                  });
+                  if (ok) removeProgram(p.id);
+                }}>✕</button>
             </div>
           ))}
         </div>
@@ -859,7 +884,16 @@ export function ProjectPage() {
 
   const handleDelete = async () => {
     if (!activeProject) return;
-    if (!confirm(`Supprimer définitivement le projet "${activeProject.name}" et toutes ses données (profils, séquences, programmes) ?`)) return;
+    const ok = await confirmDialog({
+      title: 'Supprimer le projet',
+      message: [
+        `Voulez-vous vraiment supprimer définitivement le projet « ${activeProject.name} » ?`,
+        'Toutes ses données (profils, séquences, programmes, poses) seront perdues.',
+      ],
+      confirmLabel: 'Supprimer définitivement',
+      variant: 'danger',
+    });
+    if (!ok) return;
     const name = activeProject.name;
     await removeProject(activeProject.id);
     showToast(`Projet « ${name} » supprimé`);

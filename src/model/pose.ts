@@ -15,3 +15,22 @@ export interface Keyframe {
   pose: Pose;
   createdAt: number;
 }
+
+/**
+ * Pose enregistrée dans le projet (table `poses` côté backend, persist local en démo).
+ * Réutilisable par drag-and-drop dans le séquenceur ; un step créé garde un
+ * `sourcePoseId` pointant ici, ce qui permet la propagation (lien) ou la rupture.
+ */
+export interface SavedPose {
+  id: string;
+  /** null en mode démo (pas de projet). */
+  projectId: string | null;
+  /** Profil robot actif au moment de l'enregistrement (null en démo). */
+  profileId: string | null;
+  name: string;
+  angles: Pose;
+  /** Ordre dans la grille de la toolbox. */
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+}

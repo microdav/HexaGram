@@ -101,6 +101,8 @@ const SequencerStepSchema = z.object({
   id: z.string(),
   name: z.string(),
   pose: z.array(z.number()),
+  type: z.string().optional(),
+  sourcePoseId: z.string().nullable().optional(),
 });
 
 export const CreateSequenceSchema = z.object({
@@ -120,6 +122,28 @@ export type CreateProfileInput = z.infer<typeof CreateProfileSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 export type CreateSequenceInput = z.infer<typeof CreateSequenceSchema>;
 export type UpdateSequenceInput = z.infer<typeof UpdateSequenceSchema>;
+
+// ── Poses ────────────────────────────────────────────────────────────────────
+
+export const CreatePoseSchema = z.object({
+  name: z.string().min(1).max(80),
+  angles: z.array(z.number()),
+  profileId: z.string().nullable().optional(),
+  position: z.number().int().nonnegative().optional(),
+});
+
+export const UpdatePoseSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  angles: z.array(z.number()).optional(),
+  position: z.number().int().nonnegative().optional(),
+});
+
+export const ReorderPosesSchema = z.object({
+  order: z.array(z.string()),
+});
+
+export type CreatePoseInput = z.infer<typeof CreatePoseSchema>;
+export type UpdatePoseInput = z.infer<typeof UpdatePoseSchema>;
 
 // ── Programs ─────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,9 @@ import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { SequencerPanel } from "./ui/SequencerPanel";
+import { PoseConflictModal } from "./ui/PoseConflictModal";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
 import { ProjectTab } from "./ui/ProjectTab";
 import { ProjectPage } from "./ui/ProjectPage";
@@ -167,6 +170,7 @@ export default function App() {
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
       <InstallBanner />
       <Toast />
+      <ConfirmDialog />
 
       {activeTab === 'projet' && user && <ProjectPage />}
 
@@ -214,6 +218,9 @@ export default function App() {
 
           <SequencerPanel />
           <FloatingToolboxes />
+          {/* Renderer offscreen partagé : vignettes du séquenceur ET de la toolbox Poses. */}
+          <PoseThumbnailRenderer />
+          <PoseConflictModal />
         </>
       )}
 

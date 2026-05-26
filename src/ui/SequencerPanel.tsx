@@ -5,12 +5,14 @@ import { useSequencerStore } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
+import { useSavedPosesStore } from '../store/useSavedPosesStore';
+import { confirmDialog } from '../store/useConfirmStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
 import { SERVOS } from '../model/hexapod';
 import { ToolboxSlot } from './ToolboxSlot';
 import { PoseThumbnail } from './PoseThumbnail';
-import { PoseThumbnailRenderer } from '../three/PoseThumbnailRenderer';
+import { POSE_DRAG_MIME } from './PosesPanel';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
 
@@ -34,6 +36,9 @@ export function SequencerPanel() {
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
   const [dragColFrom, setDragColFrom] = useState<number | null>(null);
   const [dragColOver, setDragColOver] = useState<number | null>(null);
+  // Drag d'une pose enregistrée depuis la toolbox Poses vers le séquenceur
+  const [posedragActive, setPosedragActive] = useState(false);
+  const posedragCounter = useRef(0);
 
   // Sequence save/new modal
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -76,6 +81,7 @@ export function SequencerPanel() {
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const activeSequenceId = useSavedSequencesStore((s) => s.activeSequenceId);
+  const savedPoses = useSavedPosesStore((s) => s.poses);
   const user = useAuthStore((s) => s.user);
 
   const pose = useHexapodStore((s) => s.pose);
@@ -87,14 +93,20 @@ export function SequencerPanel() {
     useSavedSequencesStore.getState().list().catch(() => {});
   }, [user]);
 
-  // Nettoyage du cache de vignettes pour les steps disparus de la séquence.
+  // Nettoyage du cache de vignettes pour les steps/poses disparus.
+  // Le cache est partagé entre les steps du séquenceur et les poses enregistrées :
+  // on ne supprime une entrée que si elle ne correspond plus à AUCUN des deux,
+  // sinon on entrerait dans une boucle générer → cleanup → régénérer.
   useEffect(() => {
-    const liveIds = new Set(steps.map((s) => s.id));
+    const liveIds = new Set<string>([
+      ...steps.map((s) => s.id),
+      ...savedPoses.map((p) => p.id),
+    ]);
     const cached = usePoseThumbnailStore.getState().thumbnails;
     for (const id of Object.keys(cached)) {
       if (!liveIds.has(id)) usePoseThumbnailStore.getState().remove(id);
     }
-  }, [steps]);
+  }, [steps, savedPoses]);
 
   // Close options dropdown on outside click (menu is a portal)
   useEffect(() => {
@@ -215,7 +227,13 @@ export function SequencerPanel() {
   const handleDelete = async () => {
     setShowOptions(false);
     if (!activeSequenceId) return;
-    if (!window.confirm(`Supprimer la séquence « ${sequenceName} » ?`)) return;
+    const ok = await confirmDialog({
+      title: 'Supprimer la séquence',
+      message: `Voulez-vous vraiment supprimer la séquence « ${sequenceName} » ?`,
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await useSavedSequencesStore.getState().remove(activeSequenceId);
       useSequencerStore.getState().setSequenceName('Séquence');
@@ -295,6 +313,46 @@ export function SequencerPanel() {
     document.addEventListener('mouseup', onUp);
   }, []);
 
+  // Drop d'une pose enregistrée → nouvelle étape liée
+  const hasPoseInDrag = (e: DragEvent<HTMLDivElement>): boolean => {
+    for (const t of Array.from(e.dataTransfer.types)) {
+      if (t === POSE_DRAG_MIME) return true;
+    }
+    return false;
+  };
+
+  const onPoseDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    if (!hasPoseInDrag(e)) return;
+    e.preventDefault();
+    posedragCounter.current++;
+    setPosedragActive(true);
+    if (!seqOpen) setSequencerOpen(true);
+  };
+
+  const onPoseDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!hasPoseInDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onPoseDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!hasPoseInDrag(e)) return;
+    posedragCounter.current = Math.max(0, posedragCounter.current - 1);
+    if (posedragCounter.current === 0) setPosedragActive(false);
+  };
+
+  const onPoseDrop = (e: DragEvent<HTMLDivElement>) => {
+    const poseId = e.dataTransfer.getData(POSE_DRAG_MIME);
+    posedragCounter.current = 0;
+    setPosedragActive(false);
+    if (!poseId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const sp = useSavedPosesStore.getState().getById(poseId);
+    if (!sp) return;
+    useSequencerStore.getState().addStep(sp.angles, sp.name, sp.id);
+  };
+
   const handleStepClick = (colIdx: number) => {
     const step = steps[colIdx];
     if (!step) return;
@@ -307,9 +365,6 @@ export function SequencerPanel() {
 
   return (
     <>
-      {/* Renderer offscreen pour les vignettes de pose (monté seulement quand le séquenceur est ouvert) */}
-      {seqOpen && <PoseThumbnailRenderer />}
-
       {/* ── Save sequence modal ──────────────────────────── */}
       {showSaveModal && (
         <div className="seq-modal-backdrop" onClick={() => setShowSaveModal(false)}>
@@ -356,9 +411,13 @@ export function SequencerPanel() {
       )}
 
       <div
-        className={`sequencer-panel${seqOpen ? ' open' : ''}${isResizing ? ' resizing' : ''}${isDraggingToSeq ? ' seq-drop-zone' : ''}`}
+        className={`sequencer-panel${seqOpen ? ' open' : ''}${isResizing ? ' resizing' : ''}${isDraggingToSeq ? ' seq-drop-zone' : ''}${posedragActive ? ' seq-pose-drop-zone' : ''}`}
         // eslint-disable-next-line react/forbid-component-props
         style={{ '--seq-panel-h': `${panelHeight}px` } as React.CSSProperties}
+        onDragEnter={onPoseDragEnter}
+        onDragOver={onPoseDragOver}
+        onDragLeave={onPoseDragLeave}
+        onDrop={onPoseDrop}
       >
 
         {/* ── Onglet / poignée ──────────────────────────── */}
@@ -598,10 +657,14 @@ export function SequencerPanel() {
               {displayedSteps.map((step) => {
                 const colIdx = steps.indexOf(step);
                 const isInterp = step.type === 'interpolated';
+                const isLinked = !!step.sourcePoseId;
+                const linkedPoseName = isLinked
+                  ? savedPoses.find((p) => p.id === step.sourcePoseId)?.name
+                  : null;
                 return (
                   <div
                     key={step.id}
-                    className={`seq-step-col${isInterp ? ' interpolated' : ''}${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
+                    className={`seq-step-col${isInterp ? ' interpolated' : ''}${isLinked ? ' linked' : ''}${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
                     draggable={!isInterp}
                     onDragStart={isInterp ? undefined : (e) => onColDragStart(e, colIdx)}
                     onDragOver={(e) => onColDragOver(e, colIdx)}
@@ -612,14 +675,22 @@ export function SequencerPanel() {
                       className={`seq-step-thumb-row${isInterp ? ' is-interp' : ''}`}
                       onClick={() => !isInterp && handleStepClick(colIdx)}
                     >
-                      {!isInterp && <PoseThumbnail step={step} />}
+                      {!isInterp && <PoseThumbnail id={step.id} pose={step.pose} alt={`Pose ${step.name}`} />}
                     </div>
                     <div className="seq-hdr-cell seq-step-hdr">
                       <span
                         className="seq-step-name"
                         title={step.name}
                         onClick={() => handleStepClick(colIdx)}
-                      >{step.name}</span>
+                      >
+                        {isLinked && (
+                          <span
+                            className="seq-step-link-badge"
+                            title={linkedPoseName ? `Liée à la pose « ${linkedPoseName} »` : 'Pose source supprimée'}
+                          >🔗</span>
+                        )}
+                        {step.name}
+                      </span>
                       <span className="seq-step-actions">
                         <button
                           type="button"
@@ -657,6 +728,14 @@ export function SequencerPanel() {
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={() => { useSequencerStore.getState().duplicateStep(step.id); setStepMenuId(null); }}
                             >Dupliquer</button>
+                          )}
+                          {isLinked && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={() => { useSequencerStore.getState().unlinkStep(step.id); setStepMenuId(null); }}
+                              title="L'étape devient indépendante de la pose source"
+                            >Rompre le lien</button>
                           )}
                           <button
                             type="button"
