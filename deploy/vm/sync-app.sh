@@ -31,11 +31,12 @@ systemctl reload caddy
 
 echo "=== 4. Smoke test ==="
 sleep 1
-# Header Host pour que Caddy route vers le bloc hexagram.davidlardy.com,
-# -k pour ignorer la verif du cert vu qu'on tape localhost en HTTPS interne.
-curl -fsSk -H "Host: hexagram.davidlardy.com" \
-  -o /dev/null -w "GET https://localhost/ (Host: hexagram.davidlardy.com) -> %{http_code}\n" \
-  https://localhost/
+# --resolve : tape 127.0.0.1 mais envoie SNI=hexagram.davidlardy.com pour que
+# Caddy serve le bon vhost avec le bon cert (un simple -H "Host:" garde
+# SNI=localhost et provoque une alerte TLS interne).
+curl -fsS --resolve "hexagram.davidlardy.com:443:127.0.0.1" \
+  -o /dev/null -w "GET https://hexagram.davidlardy.com/ -> %{http_code}\n" \
+  https://hexagram.davidlardy.com/
 
 echo
 echo "Sync hexagram OK."
