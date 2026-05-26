@@ -16,6 +16,11 @@ export const DEFAULT_HARDWARE: ProjectHardware = {
   customServoTypes: [],
 };
 
+export interface ProjectPreferences {
+  /** Direction caméra (vecteur regard→caméra normalisé) pour les vignettes du séquenceur. */
+  photoSpaceViewDirection?: [number, number, number];
+}
+
 export interface ProjectCounts {
   profiles: number;
   sequences: number;
@@ -36,6 +41,7 @@ export interface Project {
   name: string;
   description: string;
   hardware: ProjectHardware;
+  preferences: ProjectPreferences;
   createdAt: number;
   updatedAt: number;
   counts?: ProjectCounts;
@@ -50,8 +56,9 @@ interface ProjectsState {
   list: () => Promise<ProjectSummary[]>;
   create: (name: string, description?: string, hardware?: Partial<ProjectHardware>) => Promise<Project>;
   load: (id: string) => Promise<Project>;
-  update: (id: string, patch: { name?: string; description?: string; hardware?: ProjectHardware }) => Promise<Project>;
+  update: (id: string, patch: { name?: string; description?: string; hardware?: ProjectHardware; preferences?: ProjectPreferences }) => Promise<Project>;
   updateHardware: (patch: Partial<ProjectHardware>) => Promise<void>;
+  updatePreferences: (patch: Partial<ProjectPreferences>) => Promise<void>;
   remove: (id: string) => Promise<void>;
   importFrom: (
     sourceProjectId: string,
@@ -68,6 +75,10 @@ function normalizeHardware(raw: Partial<ProjectHardware> | undefined): ProjectHa
     commandElectronicsId: raw?.commandElectronicsId ?? null,
     customServoTypes: raw?.customServoTypes ?? [],
   };
+}
+
+function normalizePreferences(raw: ProjectPreferences | undefined): ProjectPreferences {
+  return { ...(raw ?? {}) };
 }
 
 export const useProjectStore = create<ProjectsState>((set, get) => ({
@@ -94,6 +105,7 @@ export const useProjectStore = create<ProjectsState>((set, get) => ({
     if (hardware) body.hardware = normalizeHardware(hardware);
     const project = await api.post<Project>("/projects", body);
     project.hardware = normalizeHardware(project.hardware);
+    project.preferences = normalizePreferences(project.preferences);
     set((s) => ({
       projects: [
         {
@@ -115,6 +127,7 @@ export const useProjectStore = create<ProjectsState>((set, get) => ({
   load: async (id) => {
     const project = await api.get<Project>(`/projects/${id}`);
     project.hardware = normalizeHardware(project.hardware);
+    project.preferences = normalizePreferences(project.preferences);
     set({ activeProjectId: id, activeProject: project });
     return project;
   },
@@ -122,6 +135,7 @@ export const useProjectStore = create<ProjectsState>((set, get) => ({
   update: async (id, patch) => {
     const project = await api.put<Project>(`/projects/${id}`, patch);
     project.hardware = normalizeHardware(project.hardware);
+    project.preferences = normalizePreferences(project.preferences);
     set((s) => ({
       projects: s.projects.map((p) =>
         p.id === id
@@ -144,6 +158,13 @@ export const useProjectStore = create<ProjectsState>((set, get) => ({
     if (!current) return;
     const newHardware = { ...current.hardware, ...patch };
     await get().update(current.id, { hardware: newHardware });
+  },
+
+  updatePreferences: async (patch) => {
+    const current = get().activeProject;
+    if (!current) return;
+    // Le backend fusionne ; on n'envoie que le patch.
+    await get().update(current.id, { preferences: patch });
   },
 
   remove: async (id) => {

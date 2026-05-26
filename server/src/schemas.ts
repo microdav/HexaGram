@@ -210,16 +210,23 @@ export const ProjectHardwareSchema = z.object({
   customServoTypes: z.array(ServoSpecSchema).optional(),
 });
 
+export const ProjectPreferencesSchema = z.object({
+  /** Direction caméra (vecteur regard→caméra normalisé) pour les vignettes du séquenceur. */
+  photoSpaceViewDirection: z.tuple([z.number(), z.number(), z.number()]).optional(),
+});
+
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional(),
   hardware: ProjectHardwareSchema.optional(),
+  preferences: ProjectPreferencesSchema.optional(),
 });
 
 export const UpdateProjectSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   description: z.string().max(500).optional(),
   hardware: ProjectHardwareSchema.optional(),
+  preferences: ProjectPreferencesSchema.optional(),
 });
 
 export const ImportProjectSchema = z.object({
@@ -230,6 +237,7 @@ export const ImportProjectSchema = z.object({
 });
 
 export type ProjectHardware = z.infer<typeof ProjectHardwareSchema>;
+export type ProjectPreferences = z.infer<typeof ProjectPreferencesSchema>;
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
 export type ImportProjectInput = z.infer<typeof ImportProjectSchema>;

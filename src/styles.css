@@ -3811,3 +3811,88 @@ html, body, #root {
 .import-row input[type="checkbox"] {
   margin: 0;
 }
+
+/* ── Pose thumbnails (séquenceur) ───────────────────────────────────────── */
+/* Hauteur partagée entre la vignette dans les step-cols et le spacer dans la
+ * colonne sticky des libellés ; modifier ici met à jour les deux. */
+.seq-step-thumb-row,
+.seq-step-thumb-row-spacer {
+  flex: 0 0 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+}
+.seq-step-thumb-row { cursor: pointer; }
+.seq-step-thumb-row.is-interp { background: transparent; cursor: default; }
+.seq-step-col.active .seq-step-thumb-row {
+  background: rgba(245, 197, 24, 0.18);
+}
+
+.pose-thumb {
+  width: 100%;
+  height: 100%;
+  max-width: 64px;
+  max-height: 54px;
+  object-fit: contain;
+  display: block;
+  border-radius: 3px;
+  background: #15171c;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.pose-thumb-placeholder {
+  width: 64px;
+  height: 54px;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Renderer offscreen : hors-écran mais monté pour conserver son contexte WebGL */
+.pose-thumb-renderer {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ── Toolbox Espace photo ──────────────────────────────────────────────── */
+.photo-space-hint {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.photo-space-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.photo-space-actions .btn {
+  width: 100%;
+  text-align: center;
+}
+.photo-space-coords {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.photo-space-coords-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.photo-space-coords code {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: var(--text);
+}

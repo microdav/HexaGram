@@ -20,6 +20,7 @@ import { useHexapodStore } from "./store/useHexapodStore";
 import { useProjectStore } from "./store/useProjectStore";
 import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
+import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
   const loadProject = useProjectStore((s) => s.load);
   const clearProjects = useProjectStore((s) => s.clear);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeProject = useProjectStore((s) => s.activeProject);
 
   useEffect(() => {
     bootstrap().then(() => {
@@ -101,6 +103,16 @@ export default function App() {
       await loadProfile(latest.id);
     })();
   }, [user, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Au chargement d'un projet : applique sa direction caméra "Espace photo".
+  // Pas de projet (ex. mode démo) → on garde la valeur persistée localement
+  // (localStorage) au lieu de la remettre au défaut.
+  useEffect(() => {
+    if (!activeProject) return;
+    usePhotoSpaceStore.getState().applyFromProject(
+      activeProject.preferences.photoSpaceViewDirection ?? null
+    );
+  }, [activeProject]);
 
   // Si l'utilisateur perd l'accès au projet alors qu'il était sur Conception/Programmation,
   // on bascule sur l'onglet Projet pour qu'il puisse en choisir un.

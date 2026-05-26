@@ -7,6 +7,7 @@ import { ServoGroupContent } from './ServoPanel';
 import { SimulationContent } from './SimulationPanel';
 import { SequencerControlsContent } from './SequencerControlsContent';
 import { ElectromechanicsContent } from './ElectromechanicsPanel';
+import { PhotoSpaceContent } from './PhotoSpacePanel';
 
 const ServoLeft = () => <ServoGroupContent side="left" />;
 const ServoRight = () => <ServoGroupContent side="right" />;
@@ -19,6 +20,7 @@ const REGISTRY: Record<string, { title: string; Content: ComponentType }> = {
   'servos-right':    { title: 'Servos droite',                Content: ServoRight },
   'seq-ctrl':        { title: 'Lecture',                      Content: SequencerControlsContent },
   electromechanics:  { title: 'Performances électroméca.', Content: ElectromechanicsContent },
+  'photo-space':     { title: 'Espace photo',                 Content: PhotoSpaceContent },
 };
 
 function InsertMarker({ active }: { active: boolean }) {

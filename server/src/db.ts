@@ -84,6 +84,7 @@ function addColumnIfMissing(table: string, column: string, definition: string): 
 addColumnIfMissing("robot_profiles", "project_id", "TEXT");
 addColumnIfMissing("sequences",      "project_id", "TEXT");
 addColumnIfMissing("programs",       "project_id", "TEXT");
+addColumnIfMissing("projects",       "preferences", "TEXT NOT NULL DEFAULT '{}'");
 
 // ── Migration des données existantes vers un projet par utilisateur ─────────
 

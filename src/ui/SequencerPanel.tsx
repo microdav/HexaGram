@@ -6,8 +6,11 @@ import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
 import { SERVOS } from '../model/hexapod';
 import { ToolboxSlot } from './ToolboxSlot';
+import { PoseThumbnail } from './PoseThumbnail';
+import { PoseThumbnailRenderer } from '../three/PoseThumbnailRenderer';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
 
@@ -84,6 +87,15 @@ export function SequencerPanel() {
     if (!user) return;
     useSavedSequencesStore.getState().list().catch(() => {});
   }, [user]);
+
+  // Nettoyage du cache de vignettes pour les steps disparus de la séquence.
+  useEffect(() => {
+    const liveIds = new Set(steps.map((s) => s.id));
+    const cached = usePoseThumbnailStore.getState().thumbnails;
+    for (const id of Object.keys(cached)) {
+      if (!liveIds.has(id)) usePoseThumbnailStore.getState().remove(id);
+    }
+  }, [steps]);
 
   // Close options dropdown on outside click (menu is a portal)
   useEffect(() => {
@@ -296,6 +308,9 @@ export function SequencerPanel() {
 
   return (
     <>
+      {/* Renderer offscreen pour les vignettes de pose (monté seulement quand le séquenceur est ouvert) */}
+      {seqOpen && <PoseThumbnailRenderer />}
+
       {/* ── Save sequence modal ──────────────────────────── */}
       {showSaveModal && (
         <div className="seq-modal-backdrop" onClick={() => setShowSaveModal(false)}>
@@ -571,6 +586,7 @@ export function SequencerPanel() {
 
               {/* Sticky servo labels column */}
               <div className="seq-sticky-labels">
+                <div className="seq-step-thumb-row seq-step-thumb-row-spacer" aria-hidden="true" />
                 <div className="seq-hdr-cell seq-labels-hdr">Servo</div>
                 {servoOrder.map((servoId, orderIdx) => (
                   <div
@@ -602,6 +618,12 @@ export function SequencerPanel() {
                     onDrop={(e) => onColDrop(e, colIdx)}
                     onDragEnd={onColDragEnd}
                   >
+                    <div
+                      className={`seq-step-thumb-row${isInterp ? ' is-interp' : ''}`}
+                      onClick={() => !isInterp && handleStepClick(colIdx)}
+                    >
+                      {!isInterp && <PoseThumbnail step={step} />}
+                    </div>
                     <div className="seq-hdr-cell seq-step-hdr">
                       <span
                         className="seq-step-name"
@@ -667,6 +689,7 @@ export function SequencerPanel() {
 
               {/* Add-step column */}
               <div className="seq-add-col">
+                <div className="seq-step-thumb-row seq-step-thumb-row-spacer" aria-hidden="true" />
                 <div className="seq-hdr-cell">
                   <button
                     type="button"

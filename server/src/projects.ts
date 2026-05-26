@@ -17,8 +17,14 @@ interface ProjectRow {
   name: string;
   description: string | null;
   hardware: string;
+  preferences: string | null;
   created_at: number;
   updated_at: number;
+}
+
+function safeParseJson(raw: string | null | undefined, fallback: unknown = {}): unknown {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
 }
 
 function parseProject(row: ProjectRow) {
@@ -27,6 +33,7 @@ function parseProject(row: ProjectRow) {
     name: row.name,
     description: row.description ?? "",
     hardware: JSON.parse(row.hardware),
+    preferences: safeParseJson(row.preferences, {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -77,7 +84,7 @@ router.post("/", (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
     return;
   }
-  const { name, description, hardware } = parsed.data;
+  const { name, description, hardware, preferences } = parsed.data;
   const id = uuidv4();
   const now = Date.now();
   const hardwareJson = JSON.stringify(hardware ?? {
@@ -86,9 +93,10 @@ router.post("/", (req: AuthRequest, res: Response): void => {
     commandElectronicsId: null,
     customServoTypes: [],
   });
+  const preferencesJson = JSON.stringify(preferences ?? {});
   db.prepare(
-    "INSERT INTO projects (id, user_id, name, description, hardware, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, req.userId, name, description ?? null, hardwareJson, now, now);
+    "INSERT INTO projects (id, user_id, name, description, hardware, preferences, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, req.userId, name, description ?? null, hardwareJson, preferencesJson, now, now);
 
   const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow;
   res.status(201).json(parseProject(row));
@@ -120,17 +128,23 @@ router.put("/:id", (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
     return;
   }
-  const { name, description, hardware } = parsed.data;
+  const { name, description, hardware, preferences } = parsed.data;
   const now = Date.now();
   const newName = name ?? existing.name;
   const newDescription = description !== undefined ? description : existing.description;
   const newHardware = hardware !== undefined
     ? JSON.stringify(hardware)
     : existing.hardware;
+  // Fusion partielle : un patch preferences ne remplace pas le bloc entier.
+  let newPreferences = existing.preferences ?? "{}";
+  if (preferences !== undefined) {
+    const merged = { ...(safeParseJson(existing.preferences, {}) as Record<string, unknown>), ...preferences };
+    newPreferences = JSON.stringify(merged);
+  }
 
   db.prepare(
-    "UPDATE projects SET name = ?, description = ?, hardware = ?, updated_at = ? WHERE id = ? AND user_id = ?"
-  ).run(newName, newDescription, newHardware, now, req.params.id, req.userId);
+    "UPDATE projects SET name = ?, description = ?, hardware = ?, preferences = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  ).run(newName, newDescription, newHardware, newPreferences, now, req.params.id, req.userId);
 
   const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(req.params.id) as ProjectRow;
   res.json(parseProject(row));

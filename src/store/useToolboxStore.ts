@@ -63,6 +63,7 @@ const DEFAULTS: Record<string, ToolboxConfig> = {
   cog:              { panel: 'left',  order: 1, minimized: false, floatPos: { x: 280, y: 300 } },
   simulation:       { panel: 'left',  order: 2, minimized: false, floatPos: { x: 280, y: 480 } },
   electromechanics: { panel: 'left',  order: 3, minimized: false, floatPos: { x: 280, y: 480 } },
+  'photo-space':    { panel: 'left',  order: 4, minimized: true,  floatPos: { x: 280, y: 600 } },
   'servos-left':    { panel: 'right', order: 0, minimized: false, floatPos: { x: 900, y: 120 } },
   'servos-right':   { panel: 'right', order: 1, minimized: false, floatPos: { x: 900, y: 320 } },
   'seq-ctrl':       { panel: null,    order: 0, minimized: false, floatPos: { x: Math.round(window.innerWidth / 2 - 100), y: 60 } },
