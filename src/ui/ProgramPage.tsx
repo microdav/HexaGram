@@ -4,6 +4,7 @@ import { useProgramsStore } from "../store/useProgramsStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useSavedPosesStore } from "../store/useSavedPosesStore";
 import { useProfilesStore } from "../store/useProfilesStore";
+import { useProjectStore } from "../store/useProjectStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import { useToastStore } from "../store/useToastStore";
 import { PoseThumbnail } from "./PoseThumbnail";
@@ -36,8 +37,11 @@ export function ProgramPage() {
   const createProgram = useProgramsStore((s) => s.create);
   const updateProgram = useProgramsStore((s) => s.update);
   const removeProgram = useProgramsStore((s) => s.remove);
+  const selectedId = useProgramsStore((s) => s.selectedProgramId);
+  const setSelectedId = useProgramsStore((s) => s.setSelectedProgramId);
 
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const listSequences = useSavedSequencesStore((s) => s.list);
   const loadSequence = useSavedSequencesStore((s) => s.load);
@@ -47,7 +51,6 @@ export function ProgramPage() {
   const showToast = useToastStore((s) => s.show);
 
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -62,11 +65,31 @@ export function ProgramPage() {
   const [pickerSteps, setPickerSteps] = useState<SequencerStep[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
 
+  // Listes nécessaires à la page. Programmes/séquences sont projet-scopées :
+  // on relance le list quand activeProjectId devient disponible (App.tsx liste
+  // déjà les programmes mais ce hook reste robuste si l'utilisateur navigue).
   useEffect(() => {
+    if (!activeProjectId) return;
     listPrograms();
     listSequences();
     listSavedPoses().catch(() => {});
-  }, []);
+  }, [activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync selectedId (store, alimenté par App au démarrage depuis le slug URL)
+  // → draft : charge le programme correspondant. Si l'ID n'est plus valide,
+  // on nettoie la sélection.
+  useEffect(() => {
+    if (!selectedId) {
+      setDraft(null);
+      return;
+    }
+    if (draft?.id === selectedId) return;
+    let cancelled = false;
+    loadProgram(selectedId)
+      .then((p) => { if (!cancelled) setDraft(p); })
+      .catch(() => { if (!cancelled) setSelectedId(null); });
+    return () => { cancelled = true; };
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!pickerSeqId) { setPickerSteps([]); return; }
@@ -106,12 +129,11 @@ export function ProgramPage() {
     setShowSeqPicker(false);
   };
 
-  const handleSelect = async (id: string) => {
+  const handleSelect = (id: string) => {
     setSelectedId(id);
     setConfirmDelete(false);
     setShowAddOptions(false);
-    const prog = await loadProgram(id);
-    setDraft(prog);
+    // L'effet [selectedId] charge le draft.
   };
 
   const handleNew = () => {

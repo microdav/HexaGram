@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Scene } from "./three/Scene";
 import { MirrorPanel } from "./ui/MirrorPanel";
 import { UserButton } from "./ui/UserButton";
@@ -25,6 +25,7 @@ import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
+import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
 
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
@@ -46,8 +47,24 @@ export default function App() {
   const clearProjects = useProjectStore((s) => s.clear);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProject = useProjectStore((s) => s.activeProject);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const profiles = useProfilesStore((s) => s.profiles);
+  const programs = useProgramsStore((s) => s.programs);
+  const selectedProgramId = useProgramsStore((s) => s.selectedProgramId);
+  const listPrograms = useProgramsStore((s) => s.list);
+  const setSelectedProgramId = useProgramsStore((s) => s.setSelectedProgramId);
+  // True une fois la résolution initiale projet/profil terminée — sert à
+  // éviter qu'un effet réactif bascule sur l'onglet Projet pendant la phase
+  // de chargement (où activeProjectId est encore null).
+  const [projectsResolved, setProjectsResolved] = useState(false);
 
   useEffect(() => {
+    // L'URL est source de vérité au démarrage pour l'onglet actif :
+    // permet à un hard refresh de rester sur la même vue.
+    const initial = getInitialUrlState();
+    if (initial.tab && initial.tab !== useToolboxStore.getState().uiPrefs.activeTab) {
+      useToolboxStore.getState().setActiveTab(initial.tab);
+    }
     bootstrap().then(() => {
       if (!useAuthStore.getState().user) {
         useSequencerStore.getState().setTransitionSpeed(0.1);
@@ -58,6 +75,9 @@ export default function App() {
       }
     });
   }, []);
+
+  // Garde-fou : si le login de l'URL ne correspond pas à l'utilisateur connecté,
+  // l'URL sera réécrite par l'effet de sync. Pas de redirection forcée.
 
   // Auto-save toolbox layout to the active profile after any move/minimize
   useEffect(() => {
@@ -74,36 +94,57 @@ export default function App() {
     return () => { unsub(); clearTimeout(timer); };
   }, []);
 
-  // À la connexion : charger les projets et activer le dernier mis à jour
+  // À la connexion : charger les projets et activer celui de l'URL (slug)
+  // si trouvé, sinon le dernier mis à jour
   useEffect(() => {
     if (!user) {
       clearProjects();
       clearProfiles();
       clearSequences();
       clearPrograms();
+      setProjectsResolved(false);
       return;
     }
     (async () => {
-      const list = await listProjects();
-      if (list.length === 0) {
-        // Aucun projet → bascule sur l'onglet Projet pour création
-        setActiveTab('projet');
-        return;
+      try {
+        const list = await listProjects();
+        if (list.length === 0) {
+          // Aucun projet → bascule sur l'onglet Projet pour création
+          setActiveTab('projet');
+          return;
+        }
+        const desiredSlug = getInitialUrlState().project;
+        const target = (desiredSlug && list.find((p) => slugify(p.name) === desiredSlug))
+          || [...list].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        await loadProject(target.id);
+      } finally {
+        setProjectsResolved(true);
       }
-      const latest = [...list].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      await loadProject(latest.id);
     })();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Au changement de projet : charger profils/séquences/programmes + activer le dernier profil
+  // Au changement de projet : charger profils + activer le profil de l'URL
+  // (slug) si trouvé, sinon le dernier mis à jour. Liste aussi les programmes
+  // pour que le slug programme de l'URL puisse être résolu côté ProgramPage.
   useEffect(() => {
     if (!user || !activeProjectId) return;
     (async () => {
       await listProfiles();
       const { profiles } = useProfilesStore.getState();
-      if (profiles.length === 0) return;
-      const latest = [...profiles].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      await loadProfile(latest.id);
+      if (profiles.length > 0) {
+        const desiredSlug = getInitialUrlState().profile;
+        const target = (desiredSlug && profiles.find((p) => slugify(p.name) === desiredSlug))
+          || [...profiles].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        await loadProfile(target.id);
+      }
+      // Liste des programmes côté projet (et résolution du slug URL → ID)
+      await listPrograms();
+      const { programs: progs } = useProgramsStore.getState();
+      const desiredProgSlug = getInitialUrlState().program;
+      if (desiredProgSlug) {
+        const match = progs.find((p) => slugify(p.name) === desiredProgSlug);
+        if (match) setSelectedProgramId(match.id);
+      }
     })();
   }, [user, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -119,11 +160,13 @@ export default function App() {
 
   // Si l'utilisateur perd l'accès au projet alors qu'il était sur Conception/Programmation,
   // on bascule sur l'onglet Projet pour qu'il puisse en choisir un.
+  // On attend que la résolution initiale soit terminée pour ne pas réagir
+  // au moment où activeProjectId est encore null pendant le chargement.
   useEffect(() => {
-    if (user && !activeProjectId && activeTab !== 'projet') {
+    if (projectsResolved && user && !activeProjectId && activeTab !== 'projet') {
       setActiveTab('projet');
     }
-  }, [user, activeProjectId, activeTab, setActiveTab]);
+  }, [projectsResolved, user, activeProjectId, activeTab, setActiveTab]);
 
   // Mode démo : si l'utilisateur se déconnecte alors qu'il était sur l'onglet Projet,
   // on bascule sur Conception (l'onglet Projet n'est plus visible).
@@ -132,6 +175,21 @@ export default function App() {
       setActiveTab('conception');
     }
   }, [user, activeTab, setActiveTab]);
+
+  // Sync de l'état → URL (replaceState : pas d'entrées d'historique).
+  // URL : /{userLogin}/{projectSlug}/{tab}/{profileSlug?}/{programSlug?}
+  // En mode démo l'URL est juste "/".
+  useEffect(() => {
+    const profile = profiles.find((p) => p.id === activeProfileId);
+    const program = programs.find((p) => p.id === selectedProgramId);
+    writeUrlState({
+      userLogin: user?.login ?? null,
+      projectName: user ? activeProject?.name ?? null : null,
+      tab: activeTab,
+      profileName: profile?.name ?? null,
+      programName: program?.name ?? null,
+    });
+  }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs]);
 
   return (
     <div className="app">

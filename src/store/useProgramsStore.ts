@@ -8,6 +8,7 @@ type ProgramUpdateData = Partial<ProgramCreateData>;
 
 interface ProgramsState {
   programs: ProgramSummary[];
+  selectedProgramId: string | null;
   loading: boolean;
 
   list: () => Promise<void>;
@@ -15,6 +16,7 @@ interface ProgramsState {
   load: (id: string) => Promise<Program>;
   update: (id: string, data: ProgramUpdateData) => Promise<Program>;
   remove: (id: string) => Promise<void>;
+  setSelectedProgramId: (id: string | null) => void;
   clear: () => void;
 }
 
@@ -24,6 +26,7 @@ function activeProjectId(): string | null {
 
 export const useProgramsStore = create<ProgramsState>((set) => ({
   programs: [],
+  selectedProgramId: null,
   loading: false,
 
   list: async () => {
@@ -63,8 +66,13 @@ export const useProgramsStore = create<ProgramsState>((set) => ({
 
   remove: async (id) => {
     await api.delete(`/programs/${id}`);
-    set((s) => ({ programs: s.programs.filter((p) => p.id !== id) }));
+    set((s) => ({
+      programs: s.programs.filter((p) => p.id !== id),
+      selectedProgramId: s.selectedProgramId === id ? null : s.selectedProgramId,
+    }));
   },
 
-  clear: () => set({ programs: [] }),
+  setSelectedProgramId: (id) => set({ selectedProgramId: id }),
+
+  clear: () => set({ programs: [], selectedProgramId: null }),
 }));
