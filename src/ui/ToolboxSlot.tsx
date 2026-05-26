@@ -7,6 +7,7 @@ import { ServoGroupContent } from './ServoPanel';
 import { SimulationContent } from './SimulationPanel';
 import { SequencerControlsContent } from './SequencerControlsContent';
 import { ElectromechanicsContent } from './ElectromechanicsPanel';
+import { WalkSpeedContent } from './WalkSpeedPanel';
 import { PhotoSpaceContent } from './PhotoSpacePanel';
 
 const ServoLeft = () => <ServoGroupContent side="left" />;
@@ -20,6 +21,7 @@ const REGISTRY: Record<string, { title: string; Content: ComponentType }> = {
   'servos-right':    { title: 'Servos droite',                Content: ServoRight },
   'seq-ctrl':        { title: 'Lecture',                      Content: SequencerControlsContent },
   electromechanics:  { title: 'Performances électroméca.', Content: ElectromechanicsContent },
+  'walk-speed':      { title: 'Vitesse de déplacement',       Content: WalkSpeedContent },
   'photo-space':     { title: 'Espace photo',                 Content: PhotoSpaceContent },
 };
 
