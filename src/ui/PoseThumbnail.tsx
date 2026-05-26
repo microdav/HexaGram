@@ -26,12 +26,17 @@ export function PoseThumbnail({ id, pose, alt }: PoseThumbnailProps) {
     if (entry.poseHash !== poseHash) return null;
     return entry.dataUrl;
   });
+  // S'abonner explicitement à `version` : si invalidateAll() vide la file alors
+  // qu'un request() avait déjà été émis (typiquement au boot du mode démo, où
+  // loadSteps puis setGeometry s'enchaînent), le selector dataUrl reste null
+  // et l'effet ne se redéclencherait pas sans cette dépendance.
+  const version = usePoseThumbnailStore((s) => s.version);
   const request = usePoseThumbnailStore((s) => s.request);
 
   useEffect(() => {
     if (dataUrl) return;
     request(id, pose);
-  }, [dataUrl, request, id, pose]);
+  }, [dataUrl, request, id, pose, version]);
 
   if (!dataUrl) {
     return <div className="pose-thumb pose-thumb-placeholder" aria-label="Génération en cours" />;
