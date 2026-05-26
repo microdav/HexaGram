@@ -1,9 +1,14 @@
 # HexaGram — bloc à fusionner dans /etc/caddy/Caddyfile sur la VM.
 #
+# Préalables :
+#   • DNS A record `hexagram.davidlardy.com` -> IP publique Freebox
+#   • Ports 80 et 443 forwardés sur la VM (déjà en place pour micromoney)
+#   • Caddy provisionne le cert Let's Encrypt automatiquement (HTTP-01)
+#
 # IMPORTANT : tous les blocs doivent utiliser handle{} pour que
 # try_files (file_server) n'intercepte pas les requêtes /api/*.
 
-:6503 {
+hexagram.davidlardy.com {
     encode zstd gzip
 
     handle /api/* {
@@ -19,5 +24,6 @@
     header {
         X-Content-Type-Options nosniff
         Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000"
     }
 }

@@ -134,4 +134,4 @@ Remove-Item $TarballApp    -ErrorAction SilentlyContinue
 Remove-Item $TarballServer -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] === Deploy OK en $("{0:N1}s" -f $totalSw.Elapsed.TotalSeconds) -> http://192.168.1.141:6503 ===" -ForegroundColor Green
+Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] === Deploy OK en $("{0:N1}s" -f $totalSw.Elapsed.TotalSeconds) -> https://hexagram.davidlardy.com ===" -ForegroundColor Green

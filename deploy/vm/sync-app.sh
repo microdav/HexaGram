@@ -3,7 +3,8 @@
 # Idempotent. Lance via : sudo bash /tmp/hexagram-sync-app.sh
 #
 # Pre-requis : /tmp/hexagram-dist.tar.gz transfere prealablement par scp,
-# et /etc/caddy/Caddyfile contient deja le bloc :6503 (voir Caddyfile.hexagram).
+# et /etc/caddy/Caddyfile contient deja le bloc hexagram.davidlardy.com
+# (voir Caddyfile.hexagram).
 
 set -euo pipefail
 
@@ -30,7 +31,11 @@ systemctl reload caddy
 
 echo "=== 4. Smoke test ==="
 sleep 1
-curl -fsS -o /dev/null -w "GET http://localhost:6503/ -> %{http_code}\n" http://localhost:6503/
+# Header Host pour que Caddy route vers le bloc hexagram.davidlardy.com,
+# -k pour ignorer la verif du cert vu qu'on tape localhost en HTTPS interne.
+curl -fsSk -H "Host: hexagram.davidlardy.com" \
+  -o /dev/null -w "GET https://localhost/ (Host: hexagram.davidlardy.com) -> %{http_code}\n" \
+  https://localhost/
 
 echo
 echo "Sync hexagram OK."
