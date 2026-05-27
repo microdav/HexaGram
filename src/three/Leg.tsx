@@ -75,6 +75,11 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const servoIdOf = (k: JointKey): number => servoIndex(mount.index, k);
 
   const onEnter = (k: JointKey) => {
+    // Pendant un glisser (pied ou centre de gravité), le survol d'une
+    // articulation ne doit pas révéler son arc — le raycaster continue
+    // sinon de déclencher le survol et c'est gênant (PC comme tablette).
+    const st = useHexapodStore.getState();
+    if (st.footDragging || st.cogDragging) return;
     counts.current[k] += 1;
     const t = timers.current[k];
     if (t != null) {
