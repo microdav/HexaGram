@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { api } from '../api/client';
 import { useProjectStore } from './useProjectStore';
 import { useHexapodStore } from './useHexapodStore';
 import { usePhotoSpaceStore } from './usePhotoSpaceStore';
 import { usePoseThumbnailStore, computeThumbnailContext } from './usePoseThumbnailStore';
-import type { SequencerStep } from './useSequencerStore';
+import { useSequencerStore, type SequencerStep } from './useSequencerStore';
 
 export interface SequenceSummary {
   id: string;
@@ -73,7 +74,9 @@ function hydrateSequenceThumbnails(steps: SequencerStep[]): void {
   }
 }
 
-export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
+export const useSavedSequencesStore = create<SavedSequencesState>()(
+  persist(
+    (set, get) => ({
   sequences: [],
   activeSequenceId: null,
   loading: false,
@@ -89,7 +92,26 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
       const sequences = await api.get<SequenceSummary[]>(
         `/sequences?projectId=${encodeURIComponent(projectId)}`
       );
-      set({ sequences, loading: false });
+      // Réconcilie l'id actif avec la liste et le séquenceur, pour garder grille
+      // et select cohérents au hard refresh :
+      //  1) l'id persisté est gardé s'il existe dans le projet ;
+      //  2) sinon on le retrouve via le nom de séquence persisté du séquenceur
+      //     (la phase non authentifiée du démarrage déclenche un clear() qui
+      //     efface l'id avant que list() ne tourne) ;
+      //  3) si aucune séquence ne correspond, le séquenceur ne doit afficher
+      //     aucune étape (sinon grille pleine alors que le select est sur « — »).
+      const seqStore = useSequencerStore.getState();
+      let activeId = sequences.some((sq) => sq.id === get().activeSequenceId)
+        ? get().activeSequenceId
+        : null;
+      if (!activeId) {
+        const name = seqStore.sequenceName;
+        activeId = (name && sequences.find((sq) => sq.name === name)?.id) || null;
+      }
+      if (!activeId && seqStore.steps.length > 0) {
+        seqStore.loadSteps([], 'Séquence');
+      }
+      set({ sequences, loading: false, activeSequenceId: activeId });
     } catch {
       set({ loading: false });
     }
@@ -160,4 +182,12 @@ export const useSavedSequencesStore = create<SavedSequencesState>((set) => ({
   setActiveSequenceId: (id) => set({ activeSequenceId: id }),
 
   clear: () => set({ sequences: [], activeSequenceId: null }),
-}));
+    }),
+    {
+      name: 'hexagram-saved-sequences',
+      // On ne persiste que l'id actif : la liste est rechargée du backend à
+      // chaque session (et revalidée dans list()).
+      partialize: (s) => ({ activeSequenceId: s.activeSequenceId }),
+    }
+  )
+);

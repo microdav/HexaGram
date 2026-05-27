@@ -9,6 +9,7 @@ import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { confirmDialog } from '../store/useConfirmStore';
 import { guardStepEdit } from '../store/stepEditGuard';
 import { useAuthStore } from '../store/useAuthStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
 import { SERVOS } from '../model/hexapod';
 import { ToolboxSlot } from './ToolboxSlot';
@@ -90,15 +91,19 @@ export function SequencerPanel() {
   const activeSequenceId = useSavedSequencesStore((s) => s.activeSequenceId);
   const savedPoses = useSavedPosesStore((s) => s.poses);
   const user = useAuthStore((s) => s.user);
+  const projectId = useProjectStore((s) => s.activeProjectId);
 
   const pose = useHexapodStore((s) => s.pose);
 
 
-  // Load sequences list when user logs in
+  // Recharge la liste quand on est connecté avec un projet actif. On dépend
+  // de projectId (et pas seulement de user) car au hard refresh le projet de
+  // l'URL n'est résolu qu'après la connexion : sans cette dépendance, list()
+  // tournerait à vide (projet null) et les séquences n'apparaîtraient jamais.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !projectId) return;
     useSavedSequencesStore.getState().list().catch(() => {});
-  }, [user]);
+  }, [user, projectId]);
 
   // Nettoyage du cache de vignettes pour les steps/poses disparus.
   // Le cache est partagé entre les steps du séquenceur et les poses enregistrées :
