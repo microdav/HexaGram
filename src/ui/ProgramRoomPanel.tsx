@@ -4,6 +4,7 @@ import { PoseThumbnail } from "./PoseThumbnail";
 import { useProgramRunStore, CAM_CORNERS } from "../store/useProgramRunStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
+import { useProjectStore } from "../store/useProjectStore";
 import { resolveProgramKeyframes, type ProgramKeyframe } from "../model/programPlayback";
 import type { Program } from "../model/program";
 
@@ -50,18 +51,38 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
   const [keyframes, setKeyframes] = useState<ProgramKeyframe[]>([]);
   const signature = programSignature(program);
   useEffect(() => {
-    if (!program) { setKeyframes([]); return; }
+    const setRestPose = useProgramRunStore.getState().setRestPose;
+    if (!program) { setKeyframes([]); setRestPose(null); return; }
+    // Pose Init disponible immédiatement (synchrone) si définie : évite le flash
+    // « pose par défaut → Init » avant la résolution asynchrone des séquences.
+    setRestPose(program.initPose ?? null);
     let cancelled = false;
     const getSequence = useSavedSequencesStore.getState().getSequence;
     resolveProgramKeyframes(program, getSequence)
-      .then((kf) => { if (!cancelled) setKeyframes(kf); })
-      .catch(() => { if (!cancelled) setKeyframes([]); });
+      .then((kf) => {
+        if (cancelled) return;
+        setKeyframes(kf);
+        // Pose de repos = pose/étape sélectionnée pour INIT (sinon 1re keyframe).
+        setRestPose(program.initPose ?? kf[0]?.pose ?? null);
+      })
+      .catch(() => { if (!cancelled) { setKeyframes([]); setRestPose(null); } });
     return () => { cancelled = true; };
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Arrêt à la sortie de la page : sinon le timer module-level continuerait de
   // piloter la pose globale après avoir quitté l'onglet Programmation.
   useEffect(() => () => { useProgramRunStore.getState().stop(); }, []);
+
+  // Persistance projet de la position de départ : à la fin d'un drag du robot.
+  const isDraggingRobot = useProgramRunStore((s) => s.isDraggingRobot);
+  const wasDraggingRobot = useRef(false);
+  useEffect(() => {
+    if (wasDraggingRobot.current && !isDraggingRobot) {
+      const { startX, startZ } = useProgramRunStore.getState();
+      useProjectStore.getState().updatePreferences({ roomStartPos: { x: startX, z: startZ } }).catch(() => {});
+    }
+    wasDraggingRobot.current = isDraggingRobot;
+  }, [isDraggingRobot]);
 
   const resizeStartRef = useRef<{ x: number; w: number } | null>(null);
 
@@ -101,6 +122,9 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
   const camDragRef = useRef<{ x: number; y: number } | null>(null);
   const handleCamDragStart = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest(".room-cam-overlay")) return; // pas sur les boutons
+    // Si un drag du robot vient de démarrer (handler 3D sur la cible), ne pas
+    // pivoter la caméra — le pointerdown 3D s'exécute avant ce handler DOM.
+    if (useProgramRunStore.getState().isDraggingRobot) return;
     camDragRef.current = { x: e.clientX, y: e.clientY };
     const onMove = (ev: PointerEvent) => {
       if (!camDragRef.current) return;
@@ -133,6 +157,21 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
       : -1;
   const playheadPct = n > 1 ? ((playPos + 0.5) / n) * 100 : 50;
   const activeIdx = playPos >= 0 ? Math.round(playPos) : -1;
+
+  // Label de groupe = nom de la séquence/étape source (jaune, étendu sur ses vignettes).
+  const groupLabel = (stepIndex: number): string => {
+    if (stepIndex < 0) return "Init";
+    const s = program?.steps[stepIndex];
+    if (!s) return `Étape ${stepIndex + 1}`;
+    return s.type === "ref" ? s.sequenceName || "Séquence" : s.name;
+  };
+  // Regroupe les keyframes consécutives de même étape.
+  const groups: { label: string; items: { k: ProgramKeyframe; i: number }[] }[] = [];
+  keyframes.forEach((k, i) => {
+    const last = groups[groups.length - 1];
+    if (last && last.items[0].k.stepIndex === k.stepIndex) last.items.push({ k, i });
+    else groups.push({ label: groupLabel(k.stepIndex), items: [{ k, i }] });
+  });
 
   return (
     <div className="program-room-panel" style={{ width: panelWidth }}>
@@ -202,21 +241,24 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
         </div>
       </div>
 
-      {/* Frise : vignettes des keyframes + curseur de progression vertical */}
+      {/* Frise : vignettes groupées par séquence (label jaune) + curseur de progression */}
       {n > 0 && (
         <div className="program-room-timeline">
           <div className="room-timeline-track">
-            {keyframes.map((k, i) => (
-              <div
-                key={`${k.id}-${i}`}
-                className={
-                  "room-timeline-cell" +
-                  (i > 0 && k.stepIndex !== keyframes[i - 1].stepIndex ? " step-start" : "") +
-                  (i === activeIdx ? " active" : "")
-                }
-                title={k.name}
-              >
-                <PoseThumbnail id={k.id} pose={k.pose} alt={k.name} />
+            {groups.map((g, gi) => (
+              <div key={gi} className="room-timeline-group" style={{ flexGrow: g.items.length }}>
+                <div className="room-timeline-grouplabel" title={g.label}>{g.label}</div>
+                <div className="room-timeline-cells">
+                  {g.items.map(({ k, i }) => (
+                    <div
+                      key={`${k.id}-${i}`}
+                      className={"room-timeline-cell" + (i === activeIdx ? " active" : "")}
+                      title={k.name}
+                    >
+                      <PoseThumbnail id={k.id} pose={k.pose} alt={k.name} />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
             {playPos >= 0 && (

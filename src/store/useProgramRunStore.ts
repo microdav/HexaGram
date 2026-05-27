@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Program, LoopTarget } from "../model/program";
+import type { Pose } from "../model/pose";
 import {
   resolveProgramKeyframes,
   buildPlaybackFrames,
@@ -44,6 +45,15 @@ interface ProgramRunState {
   /** Caméra de la salle : azimut (deg) sur l'ellipse murale + hauteur (m). */
   camAzimuthDeg: number;
   camHeight: number;
+  /** Position de départ du robot au sol (persistée) + drag en cours. */
+  startX: number;
+  startZ: number;
+  isDraggingRobot: boolean;
+  /**
+   * Pose affichée au repos (hors lecture) dans la salle et l'écran conception :
+   * 1re keyframe du programme (Init). Non persistée — recalculée par le panneau.
+   */
+  restPose: Pose | null;
 
   run: (program: Pick<Program, "initPose" | "steps" | "loop">) => Promise<void>;
   stop: () => void;
@@ -52,10 +62,17 @@ interface ProgramRunState {
   setCamAzimuth: (deg: number) => void;
   nudgeCamAzimuth: (deltaDeg: number) => void;
   setCamHeight: (h: number) => void;
+  setStartPos: (x: number, z: number) => void;
+  setDraggingRobot: (v: boolean) => void;
+  setRestPose: (p: Pose | null) => void;
 }
 
 export const CAM_HEIGHT_MIN = 0.6;
 export const CAM_HEIGHT_MAX = 2.3;
+/** Demi-dimensions utiles de la salle pour borner la position de départ. */
+const START_MARGIN = 0.5;
+const START_MAX_X = 2.5 - START_MARGIN;
+const START_MAX_Z = 4 - START_MARGIN;
 /** Azimuts des 4 coins (deg) : avant-droite, avant-gauche, arrière-gauche, arrière-droite. */
 export const CAM_CORNERS = { avD: 45, avG: 135, arG: 225, arD: 315 };
 
@@ -106,6 +123,10 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
       panelOpen: true,
       camAzimuthDeg: 52,
       camHeight: 1.6,
+      startX: 0,
+      startZ: 0,
+      isDraggingRobot: false,
+      restPose: null,
 
       run: async (program) => {
         _clearTimer();
@@ -178,6 +199,13 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
         set((s) => ({ camAzimuthDeg: ((s.camAzimuthDeg + deltaDeg) % 360 + 360) % 360 })),
       setCamHeight: (h) =>
         set({ camHeight: Math.max(CAM_HEIGHT_MIN, Math.min(CAM_HEIGHT_MAX, h)) }),
+      setStartPos: (x, z) =>
+        set({
+          startX: Math.max(-START_MAX_X, Math.min(START_MAX_X, x)),
+          startZ: Math.max(-START_MAX_Z, Math.min(START_MAX_Z, z)),
+        }),
+      setDraggingRobot: (v) => set({ isDraggingRobot: v }),
+      setRestPose: (p) => set({ restPose: p }),
     }),
     {
       name: "hexagram-program-run",
@@ -186,6 +214,8 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
         panelOpen: s.panelOpen,
         camAzimuthDeg: s.camAzimuthDeg,
         camHeight: s.camHeight,
+        startX: s.startX,
+        startZ: s.startZ,
       }),
     },
   ),

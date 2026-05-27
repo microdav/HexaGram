@@ -12,6 +12,8 @@ interface ContactMarkersProps {
   cogInside: boolean;
   cogDynamic: Vector3;
   cogDynamicInside: boolean;
+  /** Vue « salle » : ne garder que les marqueurs bleus de pieds au sol. */
+  contactsOnly?: boolean;
 }
 
 const CONTACT_COLOR = "#1e3a8a";
@@ -276,6 +278,7 @@ export function ContactMarkers({
   cogInside,
   cogDynamic,
   cogDynamicInside,
+  contactsOnly = false,
 }: ContactMarkersProps) {
   const cogColor = cogInside ? COG_STABLE : COG_UNSTABLE;
 
@@ -294,10 +297,14 @@ export function ContactMarkers({
         </group>
       ))}
 
-      <PolygonOutline polygon={supportPolygon} color={cogColor} />
-      <CogVerticalLine cogWorld={cogWorld} color={cogColor} />
-      <CogDragHandle cogWorld={cogWorld} cogColor={cogColor} />
-      <DynamicCogMarker cogDynamic={cogDynamic} cogDynamicInside={cogDynamicInside} />
+      {!contactsOnly && (
+        <>
+          <PolygonOutline polygon={supportPolygon} color={cogColor} />
+          <CogVerticalLine cogWorld={cogWorld} color={cogColor} />
+          <CogDragHandle cogWorld={cogWorld} cogColor={cogColor} />
+          <DynamicCogMarker cogDynamic={cogDynamic} cogDynamicInside={cogDynamicInside} />
+        </>
+      )}
     </>
   );
 }

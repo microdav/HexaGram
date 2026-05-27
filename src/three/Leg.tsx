@@ -3,7 +3,7 @@ import { PerspectiveCamera, Quaternion, Vector3 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import { degToRad } from "../model/servo";
-import { servoIndex } from "../model/pose";
+import { servoIndex, type Pose } from "../model/pose";
 import { mirrorLegOf, useHexapodStore } from "../store/useHexapodStore";
 import { useToolboxStore } from "../store/useToolboxStore";
 import { SERVOS, computeLegMounts, type LegMount } from "../model/hexapod";
@@ -15,6 +15,13 @@ interface LegProps {
   mount: LegMount;
   /** Ensemble des segments en collision pour cette patte (0=coxa, 1=fémur, 2=tibia) */
   collidingSegs?: Set<number>;
+  /**
+   * Vue « salle » : patte non interactive — aucun arc de servo, aucun handler de
+   * survol/drag (sinon le survol modifierait l'état d'arcs global de la Conception).
+   */
+  clean?: boolean;
+  /** Pose en remplacement de la pose globale (affichage au repos dans la salle). */
+  pose?: Pose | null;
 }
 
 const HEXAPOD_YELLOW = "#f5c518";
@@ -38,8 +45,9 @@ interface DragStart {
   bodyQuat: Quaternion; // body world quaternion at drag start
 }
 
-export function Leg({ mount, collidingSegs }: LegProps) {
-  const pose = useHexapodStore((s) => s.pose);
+export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = null }: LegProps) {
+  const globalPose = useHexapodStore((s) => s.pose);
+  const pose = poseOverride ?? globalPose;
   const segs = useHexapodStore((s) => s.geometry.segments);
   const setServoAngle = useHexapodStore((s) => s.setServoAngle);
   const arcShownMask = useHexapodStore((s) => s.arcShownMask);
@@ -292,30 +300,47 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const femurColor = collidingSegs?.has(1) ? COLLISION_RED : HEXAPOD_YELLOW;
   const tibiaColor = collidingSegs?.has(2) ? COLLISION_RED : HEXAPOD_YELLOW;
 
+  // En vue salle (`clean`), la patte est purement décorative : pas de handlers
+  // (sinon mutation de l'état d'arcs global) ni d'arcs de servo.
+  const jointHandlers = (k: JointKey) =>
+    clean
+      ? {}
+      : {
+          onPointerOver: (e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); onEnter(k); },
+          onPointerOut: (e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); onLeave(k); },
+          onPointerDown: (e: ThreeEvent<PointerEvent>) => { lastPointerType.current = e.pointerType; },
+          onClick: (e: ThreeEvent<MouseEvent>) => onJointClick(k, e),
+        };
+  const footHandlers = clean
+    ? {}
+    : {
+        onPointerOver: onFootPointerOver,
+        onPointerOut: onFootPointerOut,
+        onPointerDown: onFootPointerDown,
+      };
+  const jointColor = (show: boolean) => (!clean && show ? JOINT_HOVER_COLOR : JOINT_COLOR);
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <group position={mount.position} rotation={[0, degToRad(mount.yawDeg), 0]}>
       {/* Coxa joint + arc (rotation around Y) */}
-      <mesh
-        onPointerOver={(e) => { e.stopPropagation(); onEnter("coxa"); }}
-        onPointerOut={(e)  => { e.stopPropagation(); onLeave("coxa"); }}
-        onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-        onClick={(e) => onJointClick("coxa", e)}
-      >
+      <mesh {...jointHandlers("coxa")}>
         <sphereGeometry args={[jointR, 16, 16]} />
-        <meshStandardMaterial color={showCoxa ? JOINT_HOVER_COLOR : JOINT_COLOR} />
+        <meshStandardMaterial color={jointColor(showCoxa)} />
       </mesh>
-      <ServoArc
-        axis="Y"
-        minDeg={coxaDef.minDeg}
-        maxDeg={coxaDef.maxDeg}
-        currentDeg={coxaDeg}
-        radius={coxaArcR}
-        visible={showCoxa}
-        onEnter={() => onEnter("coxa")}
-        onLeave={() => onLeave("coxa")}
-        onAngle={(d) => setServoAngle(coxaId, d)}
-      />
+      {!clean && (
+        <ServoArc
+          axis="Y"
+          minDeg={coxaDef.minDeg}
+          maxDeg={coxaDef.maxDeg}
+          currentDeg={coxaDeg}
+          radius={coxaArcR}
+          visible={showCoxa}
+          onEnter={() => onEnter("coxa")}
+          onLeave={() => onLeave("coxa")}
+          onAngle={(d) => setServoAngle(coxaId, d)}
+        />
+      )}
 
       <group rotation={[0, degToRad(coxaDeg), 0]}>
         <mesh position={[segs.coxa / 2, 0, 0]}>
@@ -324,26 +349,23 @@ export function Leg({ mount, collidingSegs }: LegProps) {
         </mesh>
         <group position={[segs.coxa, 0, 0]}>
           {/* Femur joint + arc (rotation around Z) */}
-          <mesh
-            onPointerOver={(e) => { e.stopPropagation(); onEnter("femur"); }}
-            onPointerOut={(e)  => { e.stopPropagation(); onLeave("femur"); }}
-            onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-            onClick={(e) => onJointClick("femur", e)}
-          >
+          <mesh {...jointHandlers("femur")}>
             <sphereGeometry args={[jointR, 16, 16]} />
-            <meshStandardMaterial color={showFemur ? JOINT_HOVER_COLOR : JOINT_COLOR} />
+            <meshStandardMaterial color={jointColor(showFemur)} />
           </mesh>
-          <ServoArc
-            axis="Z"
-            minDeg={femurDef.minDeg}
-            maxDeg={femurDef.maxDeg}
-            currentDeg={femurDeg}
-            radius={femurArcR}
-            visible={showFemur}
-            onEnter={() => onEnter("femur")}
-            onLeave={() => onLeave("femur")}
-            onAngle={(d) => setServoAngle(femurId, d)}
-          />
+          {!clean && (
+            <ServoArc
+              axis="Z"
+              minDeg={femurDef.minDeg}
+              maxDeg={femurDef.maxDeg}
+              currentDeg={femurDeg}
+              radius={femurArcR}
+              visible={showFemur}
+              onEnter={() => onEnter("femur")}
+              onLeave={() => onLeave("femur")}
+              onAngle={(d) => setServoAngle(femurId, d)}
+            />
+          )}
 
           <group rotation={[0, 0, degToRad(femurDeg)]}>
             <mesh position={[segs.femur / 2, 0, 0]}>
@@ -352,26 +374,23 @@ export function Leg({ mount, collidingSegs }: LegProps) {
             </mesh>
             <group position={[segs.femur, 0, 0]}>
               {/* Tibia joint + arc (knee, rotation around Z) */}
-              <mesh
-                onPointerOver={(e) => { e.stopPropagation(); onEnter("tibia"); }}
-                onPointerOut={(e)  => { e.stopPropagation(); onLeave("tibia"); }}
-                onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-                onClick={(e) => onJointClick("tibia", e)}
-              >
+              <mesh {...jointHandlers("tibia")}>
                 <sphereGeometry args={[jointR, 16, 16]} />
-                <meshStandardMaterial color={showTibia ? JOINT_HOVER_COLOR : JOINT_COLOR} />
+                <meshStandardMaterial color={jointColor(showTibia)} />
               </mesh>
-              <ServoArc
-                axis="Z"
-                minDeg={tibiaDef.minDeg}
-                maxDeg={tibiaDef.maxDeg}
-                currentDeg={tibiaDeg}
-                radius={tibiaArcR}
-                visible={showTibia}
-                onEnter={() => onEnter("tibia")}
-                onLeave={() => onLeave("tibia")}
-                onAngle={(d) => setServoAngle(tibiaId, d)}
-              />
+              {!clean && (
+                <ServoArc
+                  axis="Z"
+                  minDeg={tibiaDef.minDeg}
+                  maxDeg={tibiaDef.maxDeg}
+                  currentDeg={tibiaDeg}
+                  radius={tibiaArcR}
+                  visible={showTibia}
+                  onEnter={() => onEnter("tibia")}
+                  onLeave={() => onLeave("tibia")}
+                  onAngle={(d) => setServoAngle(tibiaId, d)}
+                />
+              )}
 
               <group rotation={[0, 0, degToRad(tibiaDeg)]}>
                 <mesh position={[segs.tibia / 2, 0, 0]}>
@@ -379,14 +398,9 @@ export function Leg({ mount, collidingSegs }: LegProps) {
                   <meshStandardMaterial color={tibiaColor} emissive={collidingSegs?.has(2) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(2) ? 0.4 : 0} />
                 </mesh>
                 {/* Foot tip — draggable */}
-                <mesh
-                  position={[segs.tibia, 0, 0]}
-                  onPointerOver={onFootPointerOver}
-                  onPointerOut={onFootPointerOut}
-                  onPointerDown={onFootPointerDown}
-                >
+                <mesh position={[segs.tibia, 0, 0]} {...footHandlers}>
                   <sphereGeometry args={[footR, 12, 12]} />
-                  <meshStandardMaterial color={footColor} />
+                  <meshStandardMaterial color={clean ? FOOT_NORMAL : footColor} />
                 </mesh>
               </group>
             </group>

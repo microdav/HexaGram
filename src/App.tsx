@@ -25,6 +25,7 @@ import { useProjectStore } from "./store/useProjectStore";
 import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
+import { useProgramRunStore } from "./store/useProgramRunStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
 import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
@@ -214,6 +215,9 @@ export default function App() {
     usePhotoSpaceStore.getState().applyFromProject(
       activeProject.preferences.photoSpaceViewDirection ?? null
     );
+    // Position de départ du robot dans la salle d'exécution (préférence projet).
+    const rsp = activeProject.preferences.roomStartPos;
+    if (rsp) useProgramRunStore.getState().setStartPos(rsp.x, rsp.z);
   }, [activeProject]);
 
   // Si l'utilisateur perd l'accès au projet alors qu'il était sur Conception/Programmation,

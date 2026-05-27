@@ -1,10 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   CanvasTexture,
   RepeatWrapping,
   SRGBColorSpace,
   DoubleSide,
 } from "three";
+import { RenderTexture, PerspectiveCamera, Grid } from "@react-three/drei";
+import { Hexapod } from "./Hexapod";
+import { useProgramRunStore } from "../store/useProgramRunStore";
 
 // Salle ≈ 5 m (X) × 8 m (Z), murs hauteur 2,5 m. Le robot (~0,34 m) évolue au sol (y=0).
 export const ROOM_W = 5; // largeur (axe X)
@@ -368,6 +371,189 @@ function makeAbstract(hue: number): DrawFn {
   };
 }
 
+// ── Poste de travail (bureau + ordinateur 2 écrans) contre le mur avant ───────
+const DESK_W = 1.8;
+const DESK_D = 0.55;
+const DESK_H = 0.72;
+const DESK_TOP = 0.04;
+const DESK_Z = ROOM_D / 2 - 0.08 - DESK_D / 2; // contre le mur z=+4
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** Maquette de l'écran « Programme » (flux init → étapes → boucle). */
+const drawProgramScreen: DrawFn = (ctx, w, h) => {
+  ctx.fillStyle = "#15171c";
+  ctx.fillRect(0, 0, w, h);
+  // Barre de titre
+  ctx.fillStyle = "#1d2026";
+  ctx.fillRect(0, 0, w, 30);
+  ctx.fillStyle = "#f5c518";
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillText("PROGRAMME — Eve lève-toi et marche", 12, 20);
+  // Barre latérale
+  ctx.fillStyle = "#1a1d23";
+  ctx.fillRect(0, 30, 96, h - 30);
+  ctx.fillStyle = "#2a2e37";
+  roundRect(ctx, 8, 44, 80, 22, 5); ctx.fill();
+  ctx.fillStyle = "#c9ccd2";
+  ctx.font = "10px sans-serif";
+  ctx.fillText("Programmes", 12, 58);
+  // Flux d'étapes
+  const cx = 96 + (w - 96) / 2;
+  const bw = 200;
+  const blocks: [string, string][] = [
+    ["🏠 INIT", "#3b82f6"],
+    ["📋 ÉTAPE 1 — Ripple", "#f5c518"],
+    ["📋 ÉTAPE 2 — Tripod", "#f5c518"],
+    ["🔄 BOUCLE → Étape 2", "#a855f7"],
+  ];
+  let by = 52;
+  const bh = 40;
+  blocks.forEach(([label, color], i) => {
+    ctx.fillStyle = "#20242c";
+    roundRect(ctx, cx - bw / 2, by, bw, bh, 8); ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    roundRect(ctx, cx - bw / 2, by, bw, bh, 8); ctx.stroke();
+    ctx.fillStyle = "#e6e8ec";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(label, cx - bw / 2 + 14, by + 25);
+    if (i < blocks.length - 1) {
+      ctx.fillStyle = "#5a6070";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("↓", cx - 5, by + bh + 16);
+    }
+    by += bh + 22;
+  });
+};
+
+/** Matériau de l'écran « Programme » (texture mockup ; flip horizontal car l'écran fait face à -Z). */
+function ProgramScreenMat() {
+  const tex = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 320;
+    drawProgramScreen(c.getContext("2d")!, 512, 320);
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    t.wrapS = RepeatWrapping;
+    t.center.set(0.5, 0.5);
+    t.repeat.x = -1;
+    return t;
+  }, []);
+  return <meshBasicMaterial map={tex} toneMapped={false} />;
+}
+
+/** Matériau de l'écran « Conception 3D » : rendu live du robot (même pose). */
+function DesignScreenMat() {
+  const isRunning = useProgramRunStore((s) => s.isRunning);
+  const restPose = useProgramRunStore((s) => s.restPose);
+  return (
+    <meshBasicMaterial toneMapped={false}>
+      <RenderTexture attach="map" width={512} height={384} anisotropy={8}>
+        <PerspectiveCamera makeDefault fov={42} position={[0.42, 0.3, 0.5]} onUpdate={(c) => c.lookAt(0, 0.02, 0)} />
+        <color attach="background" args={["#15171c"]} />
+        <ambientLight intensity={0.7} />
+        <directionalLight position={[2, 3, 2]} intensity={1.0} />
+        <Grid
+          args={[1.5, 1.5]}
+          cellSize={0.05}
+          cellThickness={0.5}
+          cellColor="#2a2f3a"
+          sectionSize={0.25}
+          sectionThickness={1}
+          sectionColor="#3a4150"
+          fadeDistance={3.5}
+          fadeStrength={1}
+          infiniteGrid
+        />
+        {(isRunning || restPose) && <Hexapod clean pose={isRunning ? undefined : restPose} />}
+      </RenderTexture>
+    </meshBasicMaterial>
+  );
+}
+
+/** Un moniteur (pied + dalle), écran tourné vers la pièce (-Z). */
+function Monitor({ position, screen }: { position: [number, number, number]; screen: ReactNode }) {
+  // La dalle est en Z=0 et fait face à la pièce (-Z). Socle + mât sont placés
+  // DERRIÈRE (Z positif, vers le mur) pour ne pas passer devant l'écran.
+  return (
+    <group position={position}>
+      {/* Socle */}
+      <mesh position={[0, 0.01, 0.05]} castShadow>
+        <boxGeometry args={[0.22, 0.02, 0.16]} />
+        <meshStandardMaterial color="#15171c" roughness={0.5} />
+      </mesh>
+      {/* Mât (derrière la dalle) */}
+      <mesh position={[0, 0.15, 0.06]} castShadow>
+        <boxGeometry args={[0.045, 0.3, 0.045]} />
+        <meshStandardMaterial color="#15171c" roughness={0.5} />
+      </mesh>
+      {/* Dalle face à la pièce */}
+      <group position={[0, 0.32, 0]} rotation={[0, Math.PI, 0]}>
+        <mesh position={[0, 0, -0.013]} castShadow>
+          <boxGeometry args={[0.6, 0.37, 0.025]} />
+          <meshStandardMaterial color="#0c0c0e" roughness={0.4} />
+        </mesh>
+        <mesh>
+          <planeGeometry args={[0.56, 0.33]} />
+          {screen}
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function Workstation() {
+  const baseY = DESK_H + DESK_TOP / 2;
+  const legX = DESK_W / 2 - 0.06;
+  const legZ = DESK_D / 2 - 0.06;
+  const legs: [number, number][] = [
+    [-legX, -legZ], [legX, -legZ], [-legX, legZ], [legX, legZ],
+  ];
+  return (
+    <group>
+      {/* Plateau */}
+      <mesh position={[0, DESK_H, DESK_Z]} castShadow receiveShadow>
+        <boxGeometry args={[DESK_W, DESK_TOP, DESK_D]} />
+        <meshStandardMaterial color="#6b4f34" roughness={0.6} />
+      </mesh>
+      {/* Pieds */}
+      {legs.map(([px, pz], i) => (
+        <mesh key={i} position={[px, DESK_H / 2, DESK_Z + pz]} castShadow>
+          <boxGeometry args={[0.05, DESK_H, 0.05]} />
+          <meshStandardMaterial color="#4a3722" roughness={0.7} />
+        </mesh>
+      ))}
+      {/* Écrans : programme (gauche) + conception 3D live (droite) */}
+      <Monitor position={[-0.46, baseY, DESK_Z + 0.05]} screen={<ProgramScreenMat />} />
+      <Monitor position={[0.46, baseY, DESK_Z + 0.05]} screen={<DesignScreenMat />} />
+      {/* Clavier + souris */}
+      <mesh position={[0, baseY + 0.01, DESK_Z - 0.16]} castShadow>
+        <boxGeometry args={[0.42, 0.02, 0.14]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.6} />
+      </mesh>
+      <mesh position={[0.32, baseY + 0.012, DESK_Z - 0.15]} castShadow>
+        <boxGeometry args={[0.05, 0.025, 0.08]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.6} />
+      </mesh>
+      {/* Tour PC au sol */}
+      <mesh position={[DESK_W / 2 + 0.18, 0.22, DESK_Z]} castShadow>
+        <boxGeometry args={[0.2, 0.44, 0.42]} />
+        <meshStandardMaterial color="#202227" roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
 export function Room() {
   const parquet = useParquetTexture();
   const abstract200 = useMemo(() => makeAbstract(200), []);
@@ -439,6 +625,9 @@ export function Room() {
         w={1.0}
         h={0.7}
       />
+
+      {/* Poste de travail contre le mur avant (vide) : bureau + ordi 2 écrans */}
+      <Workstation />
     </group>
   );
 }

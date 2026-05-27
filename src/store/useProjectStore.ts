@@ -19,6 +19,8 @@ export const DEFAULT_HARDWARE: ProjectHardware = {
 export interface ProjectPreferences {
   /** Direction caméra (vecteur regard→caméra normalisé) pour les vignettes du séquenceur. */
   photoSpaceViewDirection?: [number, number, number];
+  /** Position de départ du robot dans la salle d'exécution (au sol, X/Z en mètres). */
+  roomStartPos?: { x: number; z: number };
 }
 
 export interface ProjectCounts {

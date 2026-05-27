@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { DoubleSide, Shape } from "three";
 import { computeLegMounts } from "../model/hexapod";
+import { computeBodyTransform } from "../model/kinematics";
+import type { Pose } from "../model/pose";
 import { useHexapodStore } from "../store/useHexapodStore";
-import { useBodyTransform } from "../store/useBodyTransform";
 import { useCollisions } from "../store/useCollisions";
 import { ContactMarkers } from "./ContactMarkers";
 import { CollisionMarker } from "./CollisionMarker";
@@ -60,12 +61,32 @@ function FrontArrow({ chassisLength, chassisHeight, flipDown }: ArrowProps) {
   );
 }
 
-export function Hexapod() {
+interface HexapodProps {
+  /**
+   * Vue « salle d'exécution » : corps toujours opaque, aucun indicateur de
+   * gravité (CdG, polygone de support, CdG dynamique), couple ni collision —
+   * on ne garde que les marqueurs bleus de pieds au sol.
+   */
+  clean?: boolean;
+  /**
+   * Pose à afficher en remplacement de la pose globale (sans muter le store) :
+   * utilisée au repos dans la salle pour montrer la pose Init du programme.
+   */
+  pose?: Pose | null;
+}
+
+export function Hexapod({ clean = false, pose: poseOverride = null }: HexapodProps = {}) {
   const geometry = useHexapodStore((s) => s.geometry);
+  const globalPose = useHexapodStore((s) => s.pose);
+  const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const showArrow = useHexapodStore((s) => s.collisionPrefs.showArrow);
+  const pose = poseOverride ?? globalPose;
   const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
-  const transform = useBodyTransform();
+  const transform = useMemo(
+    () => computeBodyTransform(pose, geometry, mounts, gravityEnabled),
+    [pose, geometry, mounts, gravityEnabled],
+  );
   const collisions = useCollisions();
 
   // Pour chaque patte, calcule l'ensemble des segments en collision (0/1/2)
@@ -101,8 +122,8 @@ export function Hexapod() {
             color="#f5c518"
             metalness={0.2}
             roughness={0.5}
-            transparent={bodyTransparent}
-            opacity={bodyTransparent ? 0.45 : 1}
+            transparent={clean ? false : bodyTransparent}
+            opacity={clean ? 1 : bodyTransparent ? 0.45 : 1}
           />
         </mesh>
 
@@ -127,22 +148,30 @@ export function Hexapod() {
         />
 
         {/* Center of gravity marker — red sphere in chassis body frame */}
-        <mesh position={[geometry.cog.x, geometry.cog.y, geometry.cog.z]}>
-          <sphereGeometry args={[0.012, 16, 12]} />
-          <meshStandardMaterial color="#dc2626" emissive="#7f1d1d" emissiveIntensity={0.4} />
-        </mesh>
+        {!clean && (
+          <mesh position={[geometry.cog.x, geometry.cog.y, geometry.cog.z]}>
+            <sphereGeometry args={[0.012, 16, 12]} />
+            <meshStandardMaterial color="#dc2626" emissive="#7f1d1d" emissiveIntensity={0.4} />
+          </mesh>
+        )}
 
         {mounts.map((m) => (
-          <Leg key={m.index} mount={m} collidingSegs={legCollisionMap.get(m.index)} />
+          <Leg
+            key={m.index}
+            mount={m}
+            collidingSegs={clean ? undefined : legCollisionMap.get(m.index)}
+            clean={clean}
+            pose={poseOverride}
+          />
         ))}
 
         {/* Flèche 3D de marquage de collision */}
-        {collisions.hasCollision && showArrow && collisions.center && (
+        {!clean && collisions.hasCollision && showArrow && collisions.center && (
           <CollisionMarker center={collisions.center} />
         )}
 
         {/* Indicateurs de couple par joint (actifs pendant la lecture de séquence) */}
-        <TorqueIndicator />
+        {!clean && <TorqueIndicator />}
       </group>
 
       <ContactMarkers
@@ -152,6 +181,7 @@ export function Hexapod() {
         cogInside={transform.cogInside}
         cogDynamic={transform.cogDynamic}
         cogDynamicInside={transform.cogDynamicInside}
+        contactsOnly={clean}
       />
     </>
   );

@@ -1,6 +1,6 @@
 import { useRef } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Group, Vector3 } from "three";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Group, Vector3, Vector2, Raycaster, Plane } from "three";
 import { Hexapod } from "./Hexapod";
 import { Room, ROOM_W, ROOM_D } from "./Room";
 import { useHexapodStore } from "../store/useHexapodStore";
@@ -12,6 +12,11 @@ import { computeLegMounts } from "../model/hexapod";
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
+
+// Apparition du robot : délai avant la chute, hauteur et durée.
+const DROP_DELAY = 1.0; // s après l'apparition de la scène
+const DROP_HEIGHT = 2.2;
+const DROP_DUR = 0.7;
 
 /** Durée (s) d'une image, calée sur les réglages de vitesse du séquenceur. */
 function frameDurationSec(): number {
@@ -27,6 +32,9 @@ function frameDurationSec(): number {
  * rotation (estimation rigide 2D des contacts persistants).
  */
 function RobotInRoom() {
+  const { camera, gl } = useThree();
+  const isRunningSub = useProgramRunStore((s) => s.isRunning);
+  const restPose = useProgramRunStore((s) => s.restPose);
   const groupRef = useRef<Group>(null);
   const prevFrameIdx = useRef(-2);
   const prevContacts = useRef<Map<number, { x: number; z: number }> | null>(null);
@@ -35,23 +43,88 @@ function RobotInRoom() {
   const segEnd = useRef(0);
   const worldPos = useRef({ x: 0, z: 0 });
   const worldYaw = useRef(0);
+  // Animation d'apparition : le robot "tombe" à la verticale jusqu'au sol.
+  const mountStart = useRef<number | null>(null);
+  const dropStart = useRef<number | null>(null);
+  const dropped = useRef(false);
+
+  // Drag du robot pour fixer sa position de départ (à l'arrêt uniquement).
+  const onRobotPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (useProgramRunStore.getState().isRunning) return;
+    e.stopPropagation();
+    useProgramRunStore.getState().setDraggingRobot(true);
+    gl.domElement.style.cursor = "grabbing";
+    const ray = new Raycaster();
+    const ndc = new Vector2();
+    const ground = new Plane(new Vector3(0, 1, 0), 0);
+    const hit = new Vector3();
+    const move = (ev: PointerEvent) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      ndc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(ndc, camera);
+      if (ray.ray.intersectPlane(ground, hit)) {
+        useProgramRunStore.getState().setStartPos(hit.x, hit.z);
+      }
+    };
+    const up = () => {
+      useProgramRunStore.getState().setDraggingRobot(false);
+      gl.domElement.style.cursor = "";
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   useFrame((_, delta) => {
-    const { isRunning, currentFrameIndex } = useProgramRunStore.getState();
+    const { isRunning, currentFrameIndex, startX, startZ, restPose } = useProgramRunStore.getState();
 
     if (!isRunning) {
+      // Réinit de la locomotion ; le robot se tient à sa position de départ.
       prevFrameIdx.current = -2;
       prevContacts.current = null;
       velPos.current = { x: 0, z: 0 };
       velYaw.current = 0;
-      worldPos.current = { x: 0, z: 0 };
+      worldPos.current = { x: startX, z: startZ };
       worldYaw.current = 0;
-      if (groupRef.current) {
-        groupRef.current.position.set(0, 0, 0);
-        groupRef.current.rotation.y = 0;
+
+      const g = groupRef.current;
+      if (restPose == null) {
+        // Init pas encore connue : robot masqué, prêt à "tomber" quand elle arrive.
+        dropped.current = false;
+        dropStart.current = null;
+        mountStart.current = null;
+        if (g) g.visible = false;
+        return;
+      }
+      // Init connue : on attend DROP_DELAY après l'apparition, puis chute verticale.
+      const now = performance.now() / 1000;
+      if (mountStart.current == null) mountStart.current = now;
+      let y = 0;
+      let show = true;
+      if (!dropped.current) {
+        const fallAt = mountStart.current + DROP_DELAY;
+        if (now < fallAt) {
+          show = false; // délai : robot encore masqué
+        } else {
+          if (dropStart.current == null) dropStart.current = fallAt;
+          const t = Math.min(1, (now - dropStart.current) / DROP_DUR);
+          y = DROP_HEIGHT * (1 - t * t); // chute accélérée
+          if (t >= 1) { y = 0; dropped.current = true; }
+        }
+      }
+      if (g) {
+        g.visible = show;
+        g.position.set(startX, y, startZ);
+        g.rotation.y = 0;
       }
       return;
     }
+
+    // En lecture : robot visible, animation de chute considérée comme consommée.
+    if (groupRef.current) groupRef.current.visible = true;
+    dropped.current = true;
 
     const now = performance.now() / 1000;
 
@@ -136,16 +209,38 @@ function RobotInRoom() {
 
   return (
     <group ref={groupRef}>
-      <Hexapod />
+      {/* Au repos : pose Init du programme ; en lecture : pose globale animée. */}
+      <Hexapod clean pose={isRunningSub ? undefined : restPose} />
+
+      {/* Repère de départ + poignée de drag (à l'arrêt seulement) */}
+      {!isRunningSub && (
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
+            <ringGeometry args={[0.16, 0.19, 40]} />
+            <meshBasicMaterial color="#f5c518" transparent opacity={0.55} />
+          </mesh>
+          {/* Cible invisible : clic + glisser pour déplacer le point de départ */}
+          <mesh
+            position={[0, 0.12, 0]}
+            onPointerDown={onRobotPointerDown}
+            onPointerOver={() => { gl.domElement.style.cursor = "grab"; }}
+            onPointerOut={() => { gl.domElement.style.cursor = ""; }}
+          >
+            <boxGeometry args={[0.5, 0.28, 0.36]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        </>
+      )}
     </group>
   );
 }
 
 // Caméra fixe placée à l'INTÉRIEUR de la salle (x∈[-2.5,2.5], z∈[-4,4], y∈[0,2.5]),
 // près du coin avant, en hauteur, regardant vers le centre / le fond.
-// Rayons de l'ellipse d'orbite, calés sur les murs (toujours à l'intérieur).
-const ORBIT_A = ROOM_W / 2 - 0.4; // axe X (< 2,5)
-const ORBIT_B = ROOM_D / 2 - 0.5; // axe Z (< 4)
+// Rayons de l'ellipse d'orbite, calés sur les murs (toujours à l'intérieur, et
+// en deçà du bureau placé contre le mur avant z=+4).
+const ORBIT_A = ROOM_W / 2 - 0.5; // axe X (= 2,0)
+const ORBIT_B = ROOM_D / 2 - 0.8; // axe Z (= 3,2)
 const CAM_LOOK = new Vector3(0, 0.35, 0);
 const CAM_POS: [number, number, number] = [
   Math.cos((52 * Math.PI) / 180) * ORBIT_A,

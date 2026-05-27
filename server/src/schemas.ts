@@ -249,6 +249,8 @@ export const ProjectHardwareSchema = z.object({
 export const ProjectPreferencesSchema = z.object({
   /** Direction caméra (vecteur regard→caméra normalisé) pour les vignettes du séquenceur. */
   photoSpaceViewDirection: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  /** Position de départ du robot dans la salle d'exécution (au sol, X/Z en mètres). */
+  roomStartPos: z.object({ x: z.number(), z: z.number() }).optional(),
 });
 
 export const CreateProjectSchema = z.object({

@@ -3181,15 +3181,39 @@ html, body, #root {
 .room-timeline-track {
   position: relative;
   display: flex;
-  align-items: stretch;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 74px;
+}
+/* Un groupe = une séquence (label jaune + ses vignettes) */
+.room-timeline-group {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.room-timeline-grouplabel {
+  background: var(--accent);
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.room-timeline-cells {
+  display: flex;
   gap: 0;
-  min-height: 52px;
 }
 .room-timeline-cell {
   position: relative;
   flex: 1 1 0;
-  min-width: 38px;
-  max-width: 84px;
+  min-width: 0;
   padding: 3px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -3201,12 +3225,6 @@ html, body, #root {
   width: 100%;
   height: auto;
   border-radius: 4px;
-}
-/* Séparateur de début d'étape du programme */
-.room-timeline-cell.step-start {
-  border-left: 2px solid var(--border);
-  margin-left: 4px;
-  padding-left: 5px;
 }
 .room-timeline-cell.active {
   border-color: var(--accent);
