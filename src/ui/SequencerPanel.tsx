@@ -36,6 +36,7 @@ export function SequencerPanel() {
   const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
   const setActiveTab = useToolboxStore((s) => s.setActiveTab);
   const seqCtrlDocked = useToolboxStore((s) => s.configs['seq-ctrl']?.panel === 'sequencer');
+  const tabletMode = useToolboxStore((s) => s.tabletMode);
   const isDraggingToSeq = useToolboxStore((s) => s.draggingId !== null && s.hoveredPanel === 'sequencer');
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
@@ -321,14 +322,14 @@ export function SequencerPanel() {
   // Resize du panneau
   const resizeStartRef = useRef<{ y: number; h: number } | null>(null);
 
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     resizeStartRef.current = { y: e.clientY, h: useSequencerStore.getState().panelHeight };
     setIsResizing(true);
     document.body.style.cursor = 'ns-resize';
     document.body.style.userSelect = 'none';
 
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: PointerEvent) => {
       if (!resizeStartRef.current) return;
       const dy = resizeStartRef.current.y - ev.clientY;
       const newH = Math.max(MIN_PANEL_H, Math.min(MAX_PANEL_H, resizeStartRef.current.h + dy));
@@ -340,12 +341,12 @@ export function SequencerPanel() {
       setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
     };
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
   }, []);
 
   // Drop d'une pose enregistrée → nouvelle étape liée
@@ -493,7 +494,7 @@ export function SequencerPanel() {
         <div className="sequencer-content" data-dock-panel="sequencer">
 
           {/* Bord de redimensionnement */}
-          <div className="seq-resize-handle" onMouseDown={handleResizeStart} />
+          <div className="seq-resize-handle" onPointerDown={handleResizeStart} />
 
           {/* Toolbar */}
           <div className="seq-toolbar">
@@ -713,6 +714,32 @@ export function SequencerPanel() {
                   >
                     <span className="seq-row-drag">⠿</span>
                     <span className="seq-row-label-text">{servoLabel(servoId)}</span>
+                    {tabletMode && (
+                      <span className="seq-row-move">
+                        <button
+                          type="button"
+                          className="seq-icon-btn"
+                          disabled={orderIdx === 0}
+                          onClick={() => {
+                            const next = useSequencerStore.getState().servoOrder.slice();
+                            [next[orderIdx - 1], next[orderIdx]] = [next[orderIdx], next[orderIdx - 1]];
+                            useSequencerStore.getState().reorderServos(next);
+                          }}
+                          title="Monter la ligne"
+                        >↑</button>
+                        <button
+                          type="button"
+                          className="seq-icon-btn"
+                          disabled={orderIdx === servoOrder.length - 1}
+                          onClick={() => {
+                            const next = useSequencerStore.getState().servoOrder.slice();
+                            [next[orderIdx + 1], next[orderIdx]] = [next[orderIdx], next[orderIdx + 1]];
+                            useSequencerStore.getState().reorderServos(next);
+                          }}
+                          title="Descendre la ligne"
+                        >↓</button>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -758,6 +785,32 @@ export function SequencerPanel() {
                         {step.name}
                       </span>
                       <span className="seq-step-actions">
+                        {tabletMode && !isInterp && (
+                          <>
+                            <button
+                              type="button"
+                              className="seq-icon-btn"
+                              disabled={definedBefore === 0}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                useSequencerStore.getState().reorderStep(definedBefore, definedBefore - 1);
+                              }}
+                              title="Déplacer vers la gauche"
+                            >◀</button>
+                            <button
+                              type="button"
+                              className="seq-icon-btn"
+                              disabled={definedBefore >= definedCount - 1}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                useSequencerStore.getState().reorderStep(definedBefore, definedBefore + 2);
+                              }}
+                              title="Déplacer vers la droite"
+                            >▶</button>
+                          </>
+                        )}
                         <button
                           type="button"
                           className="seq-icon-btn"

@@ -8,6 +8,7 @@ import { Toast } from "./ui/Toast";
 import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
 import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
+import { TabletServoEditor } from "./ui/TabletServoEditor";
 import { SequencerPanel } from "./ui/SequencerPanel";
 import { PoseConflictModal } from "./ui/PoseConflictModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -334,6 +335,7 @@ export default function App() {
 
           <SequencerPanel />
           <FloatingToolboxes />
+          <TabletServoEditor />
         </>
       )}
 

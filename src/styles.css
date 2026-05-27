@@ -26,6 +26,10 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* dvh = hauteur réellement visible (exclut la barre d'adresse mobile/tablette).
+     Évite que le bas de l'app — le handle du séquenceur — passe hors écran. */
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -4664,3 +4668,164 @@ html, body, #root {
 @media (max-width: 560px) {
   .tablet-toggle-label { display: none; }
 }
+
+/* ── Popover de réglage servo (tap sur articulation 3D) ──────── */
+.tablet-servo-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  /* transparent : le robot reste visible pendant le réglage */
+}
+.tablet-servo-popover {
+  position: fixed;
+  left: var(--sx, 50%);
+  top: var(--sy, 50%);
+  z-index: 3001;
+  width: 260px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  padding: 12px 14px;
+}
+.tsp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tsp-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+.tsp-close {
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.tsp-close:hover { background: var(--bg-panel); color: var(--text); }
+.tsp-val {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 2px 0 8px;
+}
+.tsp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tsp-step {
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.tsp-step:hover { border-color: var(--accent); color: var(--accent); }
+.tsp-slider {
+  flex: 1;
+  height: 32px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.tsp-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* ── Couche tactile transversale (classe .app.tablet) ────────── */
+
+/* Sliders de servos : pouce élargi pour la prise au doigt */
+.app.tablet .servo-row input[type="range"] { height: 28px; }
+.app.tablet .servo-row input[type="range"]::-webkit-slider-runnable-track { height: 6px; }
+.app.tablet .servo-row input[type="range"]::-moz-range-track { height: 6px; }
+.app.tablet .servo-row input[type="range"]::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+}
+.app.tablet .servo-row input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+/* Poignées de panneaux latéraux agrandies */
+.app.tablet .sidebar-handle {
+  width: 28px;
+  height: 84px;
+  font-size: 18px;
+}
+
+/* Actions d'étape du séquenceur : toujours visibles (pas de survol) */
+.app.tablet .seq-step-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.app.tablet .seq-icon-btn {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
+
+/* Croix de suppression de pose agrandie + toujours visible (pas de survol) */
+.app.tablet .pose-card-del {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+
+/* Bouton « ajouter à la séquence » d'une pose (mode tablette) */
+.pose-card-add {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  height: 22px;
+  padding: 0 7px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.pose-card-add:hover { background: var(--accent); color: #1a1a1a; }
+
+/* Supprime le délai tactile sur les boutons en mode tablette */
+.app.tablet button { touch-action: manipulation; }
+
+/* Boutons de déplacement des lignes de servos (séquenceur tactile) */
+.seq-row-move {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Poignée de redimensionnement : capte le glissé tactile sans scroller la page */
+.seq-resize-handle { touch-action: none; }

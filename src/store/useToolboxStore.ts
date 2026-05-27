@@ -92,10 +92,13 @@ interface ToolboxStore {
   uiPrefs: UiPrefs;
   /** Mode tablette : préférence locale à l'appareil (jamais persistée dans le profil). */
   tabletMode: boolean;
+  /** Servo en cours d'édition via le popover tactile (mode tablette), ancré à un point écran. */
+  tabletServoEdit: { servoId: number; x: number; y: number } | null;
   draggingId: string | null;
   hoveredPanel: PanelSide | null;
   hoveredInsertIndex: number;
   setTabletMode: (v: boolean) => void;
+  setTabletServoEdit: (v: { servoId: number; x: number; y: number } | null) => void;
   setMinimized: (id: string, v: boolean) => void;
   dock: (id: string, panel: PanelSide, insertIndex?: number) => void;
   undock: (id: string, pos: { x: number; y: number }) => void;
@@ -117,11 +120,13 @@ export const useToolboxStore = create<ToolboxStore>()(
       configs: DEFAULTS,
       uiPrefs: DEFAULT_UI_PREFS,
       tabletMode: detectCoarsePointer(),
+      tabletServoEdit: null,
       draggingId: null,
       hoveredPanel: null,
       hoveredInsertIndex: 0,
 
-      setTabletMode: (v) => set({ tabletMode: v }),
+      setTabletMode: (v) => set((s) => ({ tabletMode: v, tabletServoEdit: v ? s.tabletServoEdit : null })),
+      setTabletServoEdit: (v) => set({ tabletServoEdit: v }),
 
       setMinimized: (id, v) =>
         set((s) => ({ configs: { ...s.configs, [id]: { ...s.configs[id], minimized: v } } })),

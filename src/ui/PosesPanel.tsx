@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type DragEvent } from 'react';
 import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useSequencerStore } from '../store/useSequencerStore';
+import { useToolboxStore } from '../store/useToolboxStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { confirmDialog } from '../store/useConfirmStore';
@@ -20,6 +21,16 @@ export function PosesContent() {
   const user = useAuthStore((s) => s.user);
   const projectId = useProjectStore((s) => s.activeProjectId);
   const applyPose = useHexapodStore((s) => s.applyPose);
+  const tabletMode = useToolboxStore((s) => s.tabletMode);
+
+  // Mode tablette : ajoute la pose comme étape liée en fin de séquence
+  // (remplace le glisser-déposer HTML5 inopérant au doigt) et ouvre le séquenceur.
+  const handleAddToSequence = (p: SavedPose) => {
+    const seq = useSequencerStore.getState();
+    const definedCount = seq.steps.filter((st) => !st.type || st.type === 'defined').length;
+    seq.insertStep(p.angles, definedCount, p.name, p.id);
+    useToolboxStore.getState().setSequencerOpen(true);
+  };
 
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -171,6 +182,20 @@ export function PosesContent() {
                   />
                 ) : (
                   <div className="pose-card-label" title={p.name}>{p.name}</div>
+                )}
+                {tabletMode && !isRenaming && (
+                  <button
+                    type="button"
+                    className="pose-card-add"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddToSequence(p);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    title="Ajouter à la séquence"
+                  >
+                    +seq
+                  </button>
                 )}
                 <button
                   type="button"

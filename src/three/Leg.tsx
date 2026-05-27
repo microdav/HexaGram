@@ -5,6 +5,7 @@ import { useThree } from "@react-three/fiber";
 import { degToRad } from "../model/servo";
 import { servoIndex } from "../model/pose";
 import { mirrorLegOf, useHexapodStore } from "../store/useHexapodStore";
+import { useToolboxStore } from "../store/useToolboxStore";
 import { SERVOS, computeLegMounts, type LegMount } from "../model/hexapod";
 import { computeFootTip, computeBodyTransform } from "../model/kinematics";
 import { solveIK } from "../model/ik";
@@ -44,6 +45,8 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const arcShownMask = useHexapodStore((s) => s.arcShownMask);
   const mirrorEnabled = useHexapodStore((s) => s.mirrorEnabled);
   const setArcShown = useHexapodStore((s) => s.setArcShown);
+  const tabletMode = useToolboxStore((s) => s.tabletMode);
+  const setTabletServoEdit = useToolboxStore((s) => s.setTabletServoEdit);
 
   const { camera, gl } = useThree();
 
@@ -94,6 +97,20 @@ export function Leg({ mount, collidingSegs }: LegProps) {
     }
   };
 
+  // Mode tablette : un tap sur l'articulation ouvre le popover de réglage
+  // (ancré au point touché) et épingle l'arc pour le retour visuel.
+  const onJointClick = (k: JointKey, e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (tabletMode) {
+      const id = servoIdOf(k);
+      pinnedJoints.current.add(k);
+      setArcShown(id, true);
+      setTabletServoEdit({ servoId: id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+    } else if (lastPointerType.current === "touch") {
+      onTap(k);
+    }
+  };
+
   const onTap = (k: JointKey) => {
     const id = servoIdOf(k);
     const t = timers.current[k];
@@ -139,7 +156,9 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const showFemur = visibleFor("femur");
   const showTibia = visibleFor("tibia");
 
-  const jointR    = 0.012;
+  // Articulations agrandies en mode tablette pour être tapables au doigt.
+  const jointR    = tabletMode ? 0.02 : 0.012;
+  const footR     = tabletMode ? 0.02 : 0.012;
   const coxaArcR  = Math.max(0.035, segs.coxa * 0.85);
   const femurArcR = Math.max(0.045, segs.femur * 0.55);
   const tibiaArcR = Math.max(0.05, segs.tibia * 0.45);
@@ -266,7 +285,7 @@ export function Leg({ mount, collidingSegs }: LegProps) {
         onPointerOver={(e) => { e.stopPropagation(); onEnter("coxa"); }}
         onPointerOut={(e)  => { e.stopPropagation(); onLeave("coxa"); }}
         onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-        onClick={(e) => { e.stopPropagation(); if (lastPointerType.current === "touch") onTap("coxa"); }}
+        onClick={(e) => onJointClick("coxa", e)}
       >
         <sphereGeometry args={[jointR, 16, 16]} />
         <meshStandardMaterial color={showCoxa ? JOINT_HOVER_COLOR : JOINT_COLOR} />
@@ -294,7 +313,7 @@ export function Leg({ mount, collidingSegs }: LegProps) {
             onPointerOver={(e) => { e.stopPropagation(); onEnter("femur"); }}
             onPointerOut={(e)  => { e.stopPropagation(); onLeave("femur"); }}
             onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-            onClick={(e) => { e.stopPropagation(); if (lastPointerType.current === "touch") onTap("femur"); }}
+            onClick={(e) => onJointClick("femur", e)}
           >
             <sphereGeometry args={[jointR, 16, 16]} />
             <meshStandardMaterial color={showFemur ? JOINT_HOVER_COLOR : JOINT_COLOR} />
@@ -322,7 +341,7 @@ export function Leg({ mount, collidingSegs }: LegProps) {
                 onPointerOver={(e) => { e.stopPropagation(); onEnter("tibia"); }}
                 onPointerOut={(e)  => { e.stopPropagation(); onLeave("tibia"); }}
                 onPointerDown={(e) => { lastPointerType.current = e.pointerType; }}
-                onClick={(e) => { e.stopPropagation(); if (lastPointerType.current === "touch") onTap("tibia"); }}
+                onClick={(e) => onJointClick("tibia", e)}
               >
                 <sphereGeometry args={[jointR, 16, 16]} />
                 <meshStandardMaterial color={showTibia ? JOINT_HOVER_COLOR : JOINT_COLOR} />
@@ -351,7 +370,7 @@ export function Leg({ mount, collidingSegs }: LegProps) {
                   onPointerOut={onFootPointerOut}
                   onPointerDown={onFootPointerDown}
                 >
-                  <sphereGeometry args={[0.012, 12, 12]} />
+                  <sphereGeometry args={[footR, 12, 12]} />
                   <meshStandardMaterial color={footColor} />
                 </mesh>
               </group>
