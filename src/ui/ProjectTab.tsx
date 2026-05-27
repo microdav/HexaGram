@@ -1,7 +1,15 @@
 import { useProjectStore } from "../store/useProjectStore";
 import { useToolboxStore } from "../store/useToolboxStore";
 
-export function ProjectTab() {
+interface ProjectTabProps {
+  /**
+   * Garde exécuté avant de quitter l'onglet courant. S'il résout `false`, le
+   * changement d'onglet est annulé (ex. modification de pose non enregistrée).
+   */
+  onBeforeSwitch?: () => Promise<boolean>;
+}
+
+export function ProjectTab({ onBeforeSwitch }: ProjectTabProps) {
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeTab = useToolboxStore((s) => s.uiPrefs.activeTab ?? 'conception');
   const setActiveTab = useToolboxStore((s) => s.setActiveTab);
@@ -9,14 +17,17 @@ export function ProjectTab() {
 
   const isActive = activeTab === 'projet';
 
+  const handleClick = async () => {
+    if (activeTab === 'conception' && onBeforeSwitch && !(await onBeforeSwitch())) return;
+    list();
+    setActiveTab('projet');
+  };
+
   return (
     <button
       type="button"
       className={`app-tab project-tab${isActive ? ' active' : ''}`}
-      onClick={() => {
-        list();
-        setActiveTab('projet');
-      }}
+      onClick={handleClick}
       title="Gestion du projet"
     >
       <span className="project-tab-label">Projet</span>

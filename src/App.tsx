@@ -26,6 +26,7 @@ import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
+import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
 
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
@@ -93,6 +94,29 @@ export default function App() {
     });
     return () => { unsub(); clearTimeout(timer); };
   }, []);
+
+  // Avertit avant un hard refresh / fermeture d'onglet si une pose d'étape a
+  // été modifiée sans être appliquée (prompt natif — pas de modale custom
+  // possible sur beforeunload).
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (getPendingStepEdit()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // Changement d'onglet protégé : si une pose d'étape est en cours d'édition,
+  // on propose de l'enregistrer avant de quitter la page Conception.
+  const guardedSetActiveTab = async (tab: Parameters<typeof setActiveTab>[0]) => {
+    if (activeTab === 'conception' && tab !== 'conception') {
+      if (!(await guardStepEdit())) return;
+    }
+    setActiveTab(tab);
+  };
 
   // À la connexion : charger les projets et activer celui de l'URL (slug)
   // si trouvé, sinon le dernier mis à jour
@@ -204,11 +228,11 @@ export default function App() {
       </header>
 
       <nav className="app-tabs">
-        {user && <ProjectTab />}
+        {user && <ProjectTab onBeforeSwitch={guardStepEdit} />}
         <button
           type="button"
           className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}
-          onClick={() => setActiveTab('conception')}
+          onClick={() => guardedSetActiveTab('conception')}
           disabled={!!user && !activeProjectId}
           title={!!user && !activeProjectId ? "Sélectionnez ou créez un projet d'abord" : ""}
         >
@@ -217,7 +241,7 @@ export default function App() {
         <button
           type="button"
           className={`app-tab${activeTab === 'programmation' ? ' active' : ''}`}
-          onClick={() => setActiveTab('programmation')}
+          onClick={() => guardedSetActiveTab('programmation')}
           disabled={!!user && !activeProjectId}
           title={!!user && !activeProjectId ? "Sélectionnez ou créez un projet d'abord" : ""}
         >
@@ -229,6 +253,7 @@ export default function App() {
       <InstallBanner />
       <Toast />
       <ConfirmDialog />
+      <PoseConflictModal />
 
       {activeTab === 'projet' && user && <ProjectPage />}
 
@@ -276,7 +301,6 @@ export default function App() {
 
           <SequencerPanel />
           <FloatingToolboxes />
-          <PoseConflictModal />
         </>
       )}
 

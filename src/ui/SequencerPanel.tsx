@@ -7,6 +7,7 @@ import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
 import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { confirmDialog } from '../store/useConfirmStore';
+import { guardStepEdit } from '../store/stepEditGuard';
 import { useAuthStore } from '../store/useAuthStore';
 import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
 import { SERVOS } from '../model/hexapod';
@@ -351,10 +352,13 @@ export function SequencerPanel() {
     useSequencerStore.getState().addStep(sp.angles, sp.name, sp.id);
   };
 
-  const handleStepClick = (colIdx: number) => {
+  const handleStepClick = async (colIdx: number) => {
     const step = steps[colIdx];
     if (!step) return;
     const isAlreadySelected = selectedStepIndex === colIdx;
+    // Si la pose de l'étape courante a été modifiée sans être appliquée,
+    // on propose de l'enregistrer avant de changer (ou de désélectionner).
+    if (!(await guardStepEdit())) return;
     useSequencerStore.getState().setSelectedStepIndex(isAlreadySelected ? -1 : colIdx);
     if (!isAlreadySelected) {
       useHexapodStore.getState().applyPose(step.pose);
@@ -532,7 +536,7 @@ export function SequencerPanel() {
               <button
                 type="button"
                 className="seq-btn seq-btn-programs"
-                onClick={() => setActiveTab('programmation')}
+                onClick={async () => { if (await guardStepEdit()) setActiveTab('programmation'); }}
                 title="Programmes graphiques"
               >
                 ▶ Prog.

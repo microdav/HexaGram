@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSequencerStore } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
+import { posesEqual } from '../store/stepEditGuard';
 import type { Pose } from '../model/pose';
 
 const MAX_LOCAL_HISTORY = 30;
@@ -9,11 +10,14 @@ const DEBOUNCE_MS = 600;
 export function StepInfoPanel() {
   const steps = useSequencerStore((s) => s.steps);
   const selectedStepIndex = useSequencerStore((s) => s.selectedStepIndex);
+  const autoApply = useSequencerStore((s) => s.autoApply);
   const step = selectedStepIndex >= 0 ? steps[selectedStepIndex] : null;
 
   const [editName, setEditName] = useState('');
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Vrai quand la pose 3D live diffère de la pose stockée de l'étape (modif non appliquée).
+  const [dirty, setDirty] = useState(false);
 
   // Historique local en mémoire — non persisté, réinitialisé à l'Appliquer
   const localHistory = useRef<Pose[]>([]);
@@ -29,6 +33,7 @@ export function StepInfoPanel() {
   // Initialise l'historique local à chaque changement d'étape sélectionnée
   useEffect(() => {
     if (debounceTimer.current) { clearTimeout(debounceTimer.current); debounceTimer.current = null; }
+    setDirty(false);
     if (!step) {
       localHistory.current = [];
       localHistoryIdx.current = 0;
@@ -43,11 +48,16 @@ export function StepInfoPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step?.id]);
 
-  // Subscribe aux changements de pose du robot → snapshots debounce
+  // Subscribe aux changements de pose du robot → état dirty + snapshots debounce
   useEffect(() => {
     if (!step) return;
+    const stepId = step.id;
     const unsub = useHexapodStore.subscribe((state, prev) => {
       if (state.pose === prev.pose) return;   // pas de changement de pose
+      // Dirty immédiat : la pose live diffère-t-elle de la pose stockée de l'étape ?
+      const cur = useSequencerStore.getState().steps.find((s) => s.id === stepId);
+      if (!cur) return;
+      setDirty(!posesEqual(state.pose as Pose, cur.pose));
       if (isNavigating.current) return;       // navigation interne, pas d'historique
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
@@ -59,6 +69,15 @@ export function StepInfoPanel() {
         localHistoryIdx.current = next.length - 1;
         setCanUndo(next.length > 1);
         setCanRedo(false);
+        // Enregistrement automatique : on applique à l'étape une fois la pose
+        // stabilisée. Les étapes liées à une pose enregistrée sont exclues — le
+        // lien doit être arbitré à la main via PoseConflictModal.
+        const seq = useSequencerStore.getState();
+        const fresh = seq.steps.find((s) => s.id === stepId);
+        if (seq.autoApply && fresh && !fresh.sourcePoseId && !posesEqual(pose, fresh.pose)) {
+          seq.updateStepPose(stepId, pose);
+          setDirty(false);
+        }
       }, DEBOUNCE_MS);
     });
     return () => {
@@ -117,7 +136,21 @@ export function StepInfoPanel() {
     localHistoryIdx.current = 0;
     setCanUndo(false);
     setCanRedo(false);
+    setDirty(false);
     e.currentTarget.focus();
+  };
+
+  const handleAutoApplyChange = (checked: boolean) => {
+    useSequencerStore.getState().setAutoApply(checked);
+    if (!checked || !step) return;
+    // En activant l'option, on applique immédiatement une modif déjà en attente
+    // (sauf étape liée, arbitrée à la main).
+    const live = (useHexapodStore.getState().pose as Pose).slice() as Pose;
+    const cur = useSequencerStore.getState().steps.find((s) => s.id === step.id);
+    if (cur && !cur.sourcePoseId && !posesEqual(live, cur.pose)) {
+      useSequencerStore.getState().updateStepPose(step.id, live);
+      setDirty(false);
+    }
   };
 
   return (
@@ -154,11 +187,23 @@ export function StepInfoPanel() {
           type="button"
           className="step-info-btn step-info-btn-save"
           onClick={(e) => handleSavePose(e)}
-          title="Enregistrer la pose 3D actuelle dans cette étape"
+          disabled={!dirty}
+          title={dirty ? 'Enregistrer la pose 3D actuelle dans cette étape' : 'Aucune modification à appliquer'}
         >
           Appliquer
         </button>
       </div>
+      <label
+        className="step-info-autosave"
+        title="Appliquer automatiquement les modifications à l'étape, sans cliquer sur Appliquer"
+      >
+        <input
+          type="checkbox"
+          checked={autoApply}
+          onChange={(e) => handleAutoApplyChange(e.target.checked)}
+        />
+        <span>Enregistrer automatiquement</span>
+      </label>
     </div>
   );
 }

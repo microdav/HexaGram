@@ -73,6 +73,12 @@ interface SequencerState {
   panelHeight: number;
   sequenceName: string;
   showInterpolated: boolean;
+  /**
+   * Si vrai, toute modification de pose de l'étape sélectionnée est appliquée
+   * automatiquement (après stabilisation), sans bouton « Appliquer » ni modale.
+   * Volontairement non persisté : repart à false à chaque session.
+   */
+  autoApply: boolean;
   pendingPoseConflict: PendingPoseConflict | null;
 
   addStep: (pose: Pose, name?: string, sourcePoseId?: string | null) => void;
@@ -93,6 +99,7 @@ interface SequencerState {
   setPanelHeight: (h: number) => void;
   setSequenceName: (name: string) => void;
   toggleShowInterpolated: () => void;
+  setAutoApply: (v: boolean) => void;
   updateStepName: (id: string, name: string) => void;
   updateStepPose: (id: string, pose: Pose) => void;
   /**
@@ -179,6 +186,7 @@ export const useSequencerStore = create<SequencerState>()(
       panelHeight: 258,
       sequenceName: 'Séquence',
       showInterpolated: false,
+      autoApply: false,
       pendingPoseConflict: null,
 
       addStep: (pose, name, sourcePoseId) =>
@@ -317,6 +325,7 @@ export const useSequencerStore = create<SequencerState>()(
       setPanelHeight: (h) => set({ panelHeight: h }),
       setSequenceName: (name) => set({ sequenceName: name }),
       toggleShowInterpolated: () => set((s) => ({ showInterpolated: !s.showInterpolated })),
+      setAutoApply: (v) => set({ autoApply: v }),
 
       updateStepName: (id, name) =>
         set((s) => ({

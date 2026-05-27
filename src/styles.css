@@ -2670,6 +2670,19 @@ html, body, #root {
   font-weight: 600;
 }
 .step-info-btn-save:hover:not(:disabled) { background: var(--accent); color: #1a1a1a; }
+.step-info-autosave {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.step-info-autosave input { cursor: pointer; margin: 0; }
+.step-info-autosave:hover { color: var(--text); }
 
 @media (max-width: 900px) {
   .layout {
@@ -4410,6 +4423,13 @@ html, body, #root {
 .confirm-dialog-btn-danger:hover {
   background: #e36561;
   border-color: #e36561;
+}
+.confirm-dialog-btn-discard {
+  color: var(--text-dim);
+}
+.confirm-dialog-btn-discard:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 .confirm-dialog-btn:focus-visible {
   outline: 2px solid var(--accent);

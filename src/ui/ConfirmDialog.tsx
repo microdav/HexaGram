@@ -13,8 +13,8 @@ export function ConfirmDialog() {
   useEffect(() => {
     if (!pending) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") resolve(false);
-      if (e.key === "Enter") resolve(true);
+      if (e.key === "Escape") resolve("cancel");
+      if (e.key === "Enter") resolve("confirm");
     };
     window.addEventListener("keydown", handler);
     // Focus le bouton "Confirmer" pour permettre la validation au clavier
@@ -29,7 +29,7 @@ export function ConfirmDialog() {
   const variantClass = options.variant === "danger" ? " confirm-dialog-danger" : "";
 
   return (
-    <div className="confirm-dialog-backdrop" onClick={() => resolve(false)}>
+    <div className="confirm-dialog-backdrop" onClick={() => resolve("cancel")}>
       <div className={`confirm-dialog${variantClass}`} onClick={(e) => e.stopPropagation()}>
         {options.title && <div className="confirm-dialog-title">{options.title}</div>}
         <div className="confirm-dialog-body">
@@ -41,15 +41,24 @@ export function ConfirmDialog() {
           <button
             type="button"
             className="confirm-dialog-btn"
-            onClick={() => resolve(false)}
+            onClick={() => resolve("cancel")}
           >
             {options.cancelLabel ?? "Annuler"}
           </button>
+          {options.discardLabel && (
+            <button
+              type="button"
+              className="confirm-dialog-btn confirm-dialog-btn-discard"
+              onClick={() => resolve("discard")}
+            >
+              {options.discardLabel}
+            </button>
+          )}
           <button
             ref={confirmBtnRef}
             type="button"
             className={`confirm-dialog-btn confirm-dialog-btn-primary${options.variant === "danger" ? " confirm-dialog-btn-danger" : ""}`}
-            onClick={() => resolve(true)}
+            onClick={() => resolve("confirm")}
           >
             {options.confirmLabel ?? "Confirmer"}
           </button>
