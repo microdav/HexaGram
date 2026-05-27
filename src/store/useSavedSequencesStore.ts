@@ -26,6 +26,8 @@ interface SavedSequencesState {
   list: () => Promise<void>;
   save: (name: string, steps: SequencerStep[]) => Promise<SavedSequence>;
   updateSteps: (id: string, steps: SequencerStep[]) => Promise<void>;
+  /** Récupère une séquence complète sans toucher à l'id actif (consultation). */
+  getSequence: (id: string) => Promise<SavedSequence>;
   load: (id: string) => Promise<SavedSequence>;
   rename: (id: string, name: string) => Promise<void>;
   duplicate: (id: string, newName: string) => Promise<SavedSequence>;
@@ -141,9 +143,14 @@ export const useSavedSequencesStore = create<SavedSequencesState>()(
     }));
   },
 
-  load: async (id) => {
+  getSequence: async (id) => {
     const seq = await api.get<SavedSequence>(`/sequences/${id}`);
     hydrateSequenceThumbnails(seq.steps);
+    return seq;
+  },
+
+  load: async (id) => {
+    const seq = await get().getSequence(id);
     set({ activeSequenceId: id });
     return seq;
   },

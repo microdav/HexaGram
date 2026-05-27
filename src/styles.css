@@ -2150,6 +2150,7 @@ html, body, #root {
 
 /* Step columns */
 .seq-step-col {
+  position: relative;
   flex: 0 0 74px;
   display: flex;
   flex-direction: column;
@@ -2157,7 +2158,22 @@ html, body, #root {
   transition: background 0.35s ease;
 }
 .seq-step-col.active { background: rgba(245, 197, 24, 0.06); }
-.seq-step-col.drag-col-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
+
+/* Barre d'insertion (drop d'une pose ou déplacement d'une étape) : trait vertical
+   en pointillé sur le bord gauche de la colonne devant laquelle l'élément sera inséré. */
+.seq-step-col.seq-insert-before::before,
+.seq-add-col.seq-insert-before::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 3px dashed var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent));
+  z-index: 60;
+  pointer-events: none;
+}
 
 .seq-step-hdr {
   justify-content: space-between;
@@ -2230,6 +2246,7 @@ html, body, #root {
 
 /* Add-step column */
 .seq-add-col {
+  position: relative;
   flex: 0 0 72px;
   display: flex;
   flex-direction: column;
@@ -2361,9 +2378,10 @@ html, body, #root {
   cursor: pointer;
   transition: background 0.1s;
 }
-.seq-options-item:hover { background: rgba(255,255,255,0.07); }
+.seq-options-item:hover:not(:disabled) { background: rgba(255,255,255,0.07); }
+.seq-options-item:disabled { opacity: 0.4; cursor: not-allowed; }
 .seq-options-item-danger { color: var(--danger); }
-.seq-options-item-danger:hover { background: rgba(239,68,68,0.12); }
+.seq-options-item-danger:hover:not(:disabled) { background: rgba(239,68,68,0.12); }
 .seq-options-sep {
   height: 1px;
   background: var(--border);
@@ -2439,6 +2457,47 @@ html, body, #root {
 }
 .seq-modal-btn-primary:hover { background: #e6b800; border-color: #e6b800; color: #1a1a1a; }
 .seq-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Modal d'ajout d'étape (3 choix) ─────────────────────── */
+.seq-addstep-modal { min-width: 480px; max-width: 540px; }
+.seq-addstep-choices {
+  display: flex;
+  gap: 12px;
+}
+.seq-addstep-choice {
+  flex: 1 1 0;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.seq-addstep-choice:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(245, 197, 24, 0.06);
+  transform: translateY(-2px);
+}
+.seq-addstep-choice:disabled { opacity: 0.4; cursor: not-allowed; }
+.seq-addstep-choice-icon {
+  font-size: 30px;
+  line-height: 1;
+  color: var(--accent);
+}
+.seq-addstep-choice-title { font-size: 12px; font-weight: 600; }
+.seq-addstep-choice-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
 
 /* ── Export sequence modal ───────────────────────────────── */
 .seq-export-modal {

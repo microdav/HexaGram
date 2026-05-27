@@ -82,9 +82,10 @@ interface SequencerState {
   pendingPoseConflict: PendingPoseConflict | null;
 
   addStep: (pose: Pose, name?: string, sourcePoseId?: string | null) => void;
+  insertStep: (pose: Pose, index: number, name?: string, sourcePoseId?: string | null) => void;
   duplicateStep: (id: string) => void;
   removeStep: (id: string) => void;
-  moveStep: (fromIdx: number, toIdx: number) => void;
+  reorderStep: (fromDef: number, toGap: number) => void;
   reorderServos: (order: number[]) => void;
   setTransitionSpeed: (v: number) => void;
   setStepDelay: (v: number) => void;
@@ -209,6 +210,28 @@ export const useSequencerStore = create<SequencerState>()(
           };
         }),
 
+      insertStep: (pose, index, name, sourcePoseId) =>
+        set((s) => {
+          const defined = onlyDefined(s.steps);
+          const at = Math.max(0, Math.min(index, defined.length));
+          const newStep: SequencerStep = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: name ?? `Étape ${defined.length + 1}`,
+            pose: pose.slice(),
+            type: 'defined',
+            sourcePoseId: sourcePoseId ?? null,
+          };
+          const newDefined = defined.slice();
+          newDefined.splice(at, 0, newStep);
+          const newSteps = buildInterpolated(newDefined, s.stepDelay);
+          return {
+            steps: newSteps,
+            selectedStepIndex: newSteps.findIndex((st) => st.id === newStep.id),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+          };
+        }),
+
       duplicateStep: (id) =>
         set((s) => {
           const defined = onlyDefined(s.steps);
@@ -244,24 +267,19 @@ export const useSequencerStore = create<SequencerState>()(
           };
         }),
 
-      moveStep: (fromIdx, toIdx) =>
+      // Déplace l'étape définie d'indice fromDef vers le gap d'insertion toGap
+      // (0 = avant la 1re définie, N = après la dernière).
+      reorderStep: (fromDef, toGap) =>
         set((s) => {
-          if (fromIdx === toIdx) return s;
-          const moved = s.steps[fromIdx];
-          if (!moved || moved.type === 'interpolated') return s;
           const defined = onlyDefined(s.steps);
-          const fromDef = defined.findIndex((st) => st.id === moved.id);
-          if (fromDef === -1) return s;
-          // Position cible dans les défined : compter les défined avant toIdx (en excluant le step déplacé).
-          let toDef = 0;
-          for (let i = 0; i < toIdx && i < s.steps.length; i++) {
-            const st = s.steps[i];
-            if ((!st.type || st.type === 'defined') && st.id !== moved.id) toDef++;
-          }
-          if (toDef > defined.length - 1) toDef = defined.length - 1;
+          if (fromDef < 0 || fromDef >= defined.length) return s;
+          let to = Math.max(0, Math.min(toGap, defined.length));
+          // Insérer juste avant ou juste après soi-même = aucun changement.
+          if (to === fromDef || to === fromDef + 1) return s;
           const newDefined = defined.slice();
-          newDefined.splice(fromDef, 1);
-          newDefined.splice(toDef, 0, moved);
+          const [moved] = newDefined.splice(fromDef, 1);
+          if (fromDef < to) to -= 1; // le retrait décale les indices au-delà de fromDef
+          newDefined.splice(to, 0, moved);
           return {
             steps: buildInterpolated(newDefined, s.stepDelay),
             history: pushHistory(s.history, s.steps),

@@ -18,6 +18,7 @@ import { PoseThumbnail } from './PoseThumbnail';
 import { POSE_DRAG_MIME } from './PosesPanel';
 import { SequenceExportModal } from './SequenceExportModal';
 import { SequenceImportModal } from './SequenceImportModal';
+import { SequenceAddStepModal } from './SequenceAddStepModal';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
 
@@ -39,10 +40,15 @@ export function SequencerPanel() {
   const [isResizing, setIsResizing] = useState(false);
   const [dragRowFrom, setDragRowFrom] = useState<number | null>(null);
   const [dragRowOver, setDragRowOver] = useState<number | null>(null);
+  // Déplacement d'une étape : dragColFrom = indice de l'étape définie déplacée ;
+  // colDropIndex = gap d'insertion visé (0 = avant la 1re, N = après la dernière).
   const [dragColFrom, setDragColFrom] = useState<number | null>(null);
-  const [dragColOver, setDragColOver] = useState<number | null>(null);
+  const [colDropIndex, setColDropIndex] = useState<number | null>(null);
   // Drag d'une pose enregistrée depuis la toolbox Poses vers le séquenceur
   const [posedragActive, setPosedragActive] = useState(false);
+  // Position d'insertion visée (index parmi les étapes définies, 0 = avant la 1re,
+  // N = après la dernière / colonne d'ajout). null tant qu'aucune colonne n'est survolée.
+  const [poseDropIndex, setPoseDropIndex] = useState<number | null>(null);
   const posedragCounter = useRef(0);
 
   // Sequence save/new modal
@@ -71,6 +77,8 @@ export function SequencerPanel() {
   // Export / Import modals
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  // Modal d'ajout d'étape (neutre / dupliquer / importer d'une autre séquence)
+  const [showAddStepModal, setShowAddStepModal] = useState(false);
 
   const steps = useSequencerStore((s) => s.steps);
   const servoOrder = useSequencerStore((s) => s.servoOrder);
@@ -87,14 +95,21 @@ export function SequencerPanel() {
   const showInterpolated = useSequencerStore((s) => s.showInterpolated);
 
   const displayedSteps = showInterpolated ? steps : steps.filter((s) => s.type !== 'interpolated');
+  const definedCount = steps.filter((s) => !s.type || s.type === 'defined').length;
+  // Gap où afficher la barre d'insertion (drop de pose ou déplacement d'étape).
+  // Pour un déplacement, on masque les gaps qui n'auraient aucun effet (avant/après soi-même).
+  const activeInsertGap =
+    poseDropIndex !== null
+      ? poseDropIndex
+      : colDropIndex !== null && dragColFrom !== null && colDropIndex !== dragColFrom && colDropIndex !== dragColFrom + 1
+        ? colDropIndex
+        : null;
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const activeSequenceId = useSavedSequencesStore((s) => s.activeSequenceId);
   const savedPoses = useSavedPosesStore((s) => s.poses);
   const user = useAuthStore((s) => s.user);
   const projectId = useProjectStore((s) => s.activeProjectId);
-
-  const pose = useHexapodStore((s) => s.pose);
 
 
   // Recharge la liste quand on est connecté avec un projet actif. On dépend
@@ -269,24 +284,39 @@ export function SequencerPanel() {
   const onRowDragEnd = () => { setDragRowFrom(null); setDragRowOver(null); };
 
   // Step column drag-and-drop
-  const onColDragStart = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
-    setDragColFrom(colIdx);
+  // Calcule le gap d'insertion visé selon la moitié de colonne survolée
+  // (colonne interpolée → segment auquel elle appartient).
+  const gapFromColumn = (e: DragEvent<HTMLDivElement>, definedBefore: number, isInterp: boolean): number => {
+    if (isInterp) return definedBefore;
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientX < rect.left + rect.width / 2 ? definedBefore : definedBefore + 1;
+  };
+  const onColDragStart = (e: DragEvent<HTMLDivElement>, definedBefore: number) => {
+    setDragColFrom(definedBefore);
     e.dataTransfer.effectAllowed = 'move';
   };
-  const onColDragOver = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
+  const onColDragOver = (e: DragEvent<HTMLDivElement>, definedBefore: number, isInterp: boolean) => {
     e.preventDefault();
+    const idx = gapFromColumn(e, definedBefore, isInterp);
+    // Drag d'une pose (copie) vs déplacement d'une étape (move) : même calcul, états distincts.
+    if (hasPoseInDrag(e)) {
+      e.dataTransfer.dropEffect = 'copy';
+      if (poseDropIndex !== idx) setPoseDropIndex(idx);
+      return;
+    }
     e.dataTransfer.dropEffect = 'move';
-    if (dragColOver !== colIdx) setDragColOver(colIdx);
+    if (colDropIndex !== idx) setColDropIndex(idx);
   };
-  const onColDrop = (e: DragEvent<HTMLDivElement>, colIdx: number) => {
+  const onColDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (dragColFrom !== null && dragColFrom !== colIdx) {
-      useSequencerStore.getState().moveStep(dragColFrom, colIdx);
+    if (hasPoseInDrag(e)) { onPoseDrop(e); return; }
+    if (dragColFrom !== null && colDropIndex !== null) {
+      useSequencerStore.getState().reorderStep(dragColFrom, colDropIndex);
     }
     setDragColFrom(null);
-    setDragColOver(null);
+    setColDropIndex(null);
   };
-  const onColDragEnd = () => { setDragColFrom(null); setDragColOver(null); };
+  const onColDragEnd = () => { setDragColFrom(null); setColDropIndex(null); };
 
   // Resize du panneau
   const resizeStartRef = useRef<{ y: number; h: number } | null>(null);
@@ -343,19 +373,26 @@ export function SequencerPanel() {
   const onPoseDragLeave = (e: DragEvent<HTMLDivElement>) => {
     if (!hasPoseInDrag(e)) return;
     posedragCounter.current = Math.max(0, posedragCounter.current - 1);
-    if (posedragCounter.current === 0) setPosedragActive(false);
+    if (posedragCounter.current === 0) {
+      setPosedragActive(false);
+      setPoseDropIndex(null);
+    }
   };
 
   const onPoseDrop = (e: DragEvent<HTMLDivElement>) => {
     const poseId = e.dataTransfer.getData(POSE_DRAG_MIME);
+    const targetIndex = poseDropIndex;
     posedragCounter.current = 0;
     setPosedragActive(false);
+    setPoseDropIndex(null);
     if (!poseId) return;
     e.preventDefault();
     e.stopPropagation();
     const sp = useSavedPosesStore.getState().getById(poseId);
     if (!sp) return;
-    useSequencerStore.getState().addStep(sp.angles, sp.name, sp.id);
+    const definedCount = useSequencerStore.getState().steps.filter((st) => !st.type || st.type === 'defined').length;
+    // Sans colonne survolée (drop sur une zone vide du panneau), on ajoute à la fin.
+    useSequencerStore.getState().insertStep(sp.angles, targetIndex ?? definedCount, sp.name, sp.id);
   };
 
   const handleStepClick = async (colIdx: number) => {
@@ -405,6 +442,9 @@ export function SequencerPanel() {
 
       {/* ── Import sequence modal ────────────────────────── */}
       <SequenceImportModal open={showImportModal} onClose={() => setShowImportModal(false)} />
+
+      {/* ── Add-step modal (neutre / dupliquer / importer) ─── */}
+      <SequenceAddStepModal open={showAddStepModal} onClose={() => setShowAddStepModal(false)} />
 
       {/* ── Rename modal ────────────────────────────────── */}
       {showRenameModal && (
@@ -483,28 +523,6 @@ export function SequencerPanel() {
                 ↩
               </button>
 
-              {user && (
-                <>
-                  <button
-                    type="button"
-                    className="seq-btn"
-                    onClick={handleOpenExport}
-                    disabled={steps.length === 0}
-                    title="Exporter la séquence (JSON, visualisation par étape)"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="seq-btn"
-                    onClick={handleOpenImport}
-                    title="Importer une séquence (coller un JSON)"
-                  >
-                    ↓
-                  </button>
-                </>
-              )}
-
               <div className="seq-sep" />
 
               <label className="seq-ctrl">
@@ -579,7 +597,6 @@ export function SequencerPanel() {
                         }
                         setShowOptions((v) => !v);
                       }}
-                      disabled={!activeSequenceId}
                       title="Options de la séquence"
                     >
                       ⋮
@@ -598,7 +615,24 @@ export function SequencerPanel() {
                       <button
                         type="button"
                         className="seq-options-item"
+                        onClick={() => { setShowOptions(false); handleOpenImport(); }}
+                      >
+                        Importer une séquence…
+                      </button>
+                      <button
+                        type="button"
+                        className="seq-options-item"
+                        onClick={() => { setShowOptions(false); handleOpenExport(); }}
+                        disabled={steps.length === 0}
+                      >
+                        Exporter la séquence…
+                      </button>
+                      <div className="seq-options-sep" />
+                      <button
+                        type="button"
+                        className="seq-options-item"
                         onClick={() => { setShowOptions(false); setShowRenameModal(true); }}
+                        disabled={!activeSequenceId}
                       >
                         Renommer
                       </button>
@@ -606,6 +640,7 @@ export function SequencerPanel() {
                         type="button"
                         className="seq-options-item"
                         onClick={handleDuplicate}
+                        disabled={!activeSequenceId}
                       >
                         Dupliquer
                       </button>
@@ -614,6 +649,7 @@ export function SequencerPanel() {
                         type="button"
                         className="seq-options-item seq-options-item-danger"
                         onClick={handleDelete}
+                        disabled={!activeSequenceId}
                       >
                         Supprimer
                       </button>
@@ -689,14 +725,16 @@ export function SequencerPanel() {
                 const linkedPoseName = isLinked
                   ? savedPoses.find((p) => p.id === step.sourcePoseId)?.name
                   : null;
+                // Nombre d'étapes définies situées avant cette colonne (= son propre index défini si elle est définie).
+                const definedBefore = steps.slice(0, colIdx).filter((st) => !st.type || st.type === 'defined').length;
                 return (
                   <div
                     key={step.id}
-                    className={`seq-step-col${isInterp ? ' interpolated' : ''}${isLinked ? ' linked' : ''}${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${dragColOver === colIdx && dragColFrom !== colIdx ? ' drag-col-over' : ''}`}
+                    className={`seq-step-col${isInterp ? ' interpolated' : ''}${isLinked ? ' linked' : ''}${currentStepIndex === colIdx || selectedStepIndex === colIdx ? ' active' : ''}${!isInterp && activeInsertGap === definedBefore ? ' seq-insert-before' : ''}`}
                     draggable={!isInterp}
-                    onDragStart={isInterp ? undefined : (e) => onColDragStart(e, colIdx)}
-                    onDragOver={(e) => onColDragOver(e, colIdx)}
-                    onDrop={(e) => onColDrop(e, colIdx)}
+                    onDragStart={isInterp ? undefined : (e) => onColDragStart(e, definedBefore)}
+                    onDragOver={(e) => onColDragOver(e, definedBefore, isInterp)}
+                    onDrop={onColDrop}
                     onDragEnd={onColDragEnd}
                   >
                     <div
@@ -785,18 +823,35 @@ export function SequencerPanel() {
               })}
 
               {/* Add-step column */}
-              <div className="seq-add-col">
+              <div
+                className={`seq-add-col${activeInsertGap === definedCount ? ' seq-insert-before' : ''}`}
+                onDragOver={(e) => {
+                  if (hasPoseInDrag(e)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (poseDropIndex !== definedCount) setPoseDropIndex(definedCount);
+                  } else if (dragColFrom !== null) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (colDropIndex !== definedCount) setColDropIndex(definedCount);
+                  }
+                }}
+                onDrop={onColDrop}
+              >
                 <div className="seq-step-thumb-row seq-step-thumb-row-spacer" aria-hidden="true" />
                 <div className="seq-hdr-cell">
                   <button
                     type="button"
                     className="seq-add-btn"
-                    onClick={() => {
-                      const { steps, addStep } = useSequencerStore.getState();
-                      const defaultPose = steps.length > 0 ? steps[steps.length - 1].pose : pose;
-                      addStep(defaultPose);
+                    onClick={async () => {
+                      // Désélectionne l'étape active (en gardant ses modifs non enregistrées).
+                      if (selectedStepIndex !== -1) {
+                        if (!(await guardStepEdit())) return;
+                        useSequencerStore.getState().setSelectedStepIndex(-1);
+                      }
+                      setShowAddStepModal(true);
                     }}
-                    title="Capturer la pose actuelle comme nouvelle étape"
+                    title="Ajouter une étape (neutre, copie, ou import d'une autre séquence)"
                   >
                     + Étape
                   </button>
