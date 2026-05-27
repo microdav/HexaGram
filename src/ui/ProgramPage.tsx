@@ -10,6 +10,7 @@ import { useToastStore } from "../store/useToastStore";
 import { confirmTri } from "../store/useConfirmStore";
 import { registerProgramGuard } from "../store/programEditGuard";
 import { PoseThumbnail } from "./PoseThumbnail";
+import { ProgramRoomPanel } from "./ProgramRoomPanel";
 import type { Pose } from "../model/pose";
 import type { Program, ProgramStep, LoopTarget } from "../model/program";
 import type { SequencerStep } from "../store/useSequencerStore";
@@ -484,6 +485,9 @@ export function ProgramPage() {
             </>
           )}
         </div>
+
+        {/* Panneau salle d'exécution (3D, caméra fixe, redimensionnable) */}
+        <ProgramRoomPanel program={draft} />
       </div>
 
       {/* Picker de step */}

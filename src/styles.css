@@ -3024,6 +3024,217 @@ html, body, #root {
   min-width: 0;
 }
 
+/* Panneau salle d'exécution (3D), ancré à droite et redimensionnable */
+.program-room-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-left: 12px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+/* Handle de resize — même esprit que .sidebar-handle, vertical */
+.program-room-handle {
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 56px;
+  padding: 0;
+  background: var(--bg-panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+  font-size: 12px;
+  line-height: 1;
+  cursor: ew-resize;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  transition: background 0.15s, color 0.15s;
+}
+.program-room-handle:hover {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+
+.program-room-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+.program-room-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.program-room-error {
+  font-size: 11px;
+  color: #f87171;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-room-spacer { flex: 1; }
+
+.program-room-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef1f5;
+}
+.program-room-canvas canvas {
+  display: block;
+}
+.program-room-canvas { cursor: grab; touch-action: none; }
+.program-room-canvas:active { cursor: grabbing; }
+
+/* Contrôles caméra superposés (coin haut-gauche de la scène) */
+.room-cam-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 4;
+}
+.room-cam-rotate {
+  display: flex;
+  gap: 4px;
+}
+.room-cam-overlay button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 22, 28, 0.6);
+  color: #e6e8ec;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.room-cam-overlay button:hover {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+.room-cam-corners {
+  display: grid;
+  grid-template-columns: 26px 26px;
+  gap: 4px;
+}
+.room-cam-corner.active {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+
+/* Sélecteur de vitesse dans la toolbar */
+.program-room-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.program-room-speed select {
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.program-room-speed select:focus { outline: none; border-color: var(--accent); }
+
+/* Frise : vignettes des keyframes + curseur de progression */
+.program-room-timeline {
+  flex-shrink: 0;
+  margin-top: 8px;
+  padding: 6px 4px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.room-timeline-track {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 52px;
+}
+.room-timeline-cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 38px;
+  max-width: 84px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.room-timeline-cell .pose-thumb {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+/* Séparateur de début d'étape du programme */
+.room-timeline-cell.step-start {
+  border-left: 2px solid var(--border);
+  margin-left: 4px;
+  padding-left: 5px;
+}
+.room-timeline-cell.active {
+  border-color: var(--accent);
+  background: rgba(245, 197, 24, 0.08);
+}
+/* Curseur de progression vertical */
+.room-timeline-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(245, 197, 24, 0.8);
+  pointer-events: none;
+  transform: translateX(-1px);
+  transition: left 0.15s linear;
+}
+.room-timeline-playhead::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--accent);
+}
+
 .program-empty-hint {
   flex: 1;
   display: flex;
