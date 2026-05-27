@@ -47,6 +47,7 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const setArcShown = useHexapodStore((s) => s.setArcShown);
   const tabletMode = useToolboxStore((s) => s.tabletMode);
   const setTabletServoEdit = useToolboxStore((s) => s.setTabletServoEdit);
+  const tabletEditId = useToolboxStore((s) => s.tabletServoEdit?.servoId ?? null);
 
   const { camera, gl } = useThree();
 
@@ -97,15 +98,21 @@ export function Leg({ mount, collidingSegs }: LegProps) {
     }
   };
 
-  // Mode tablette : un tap sur l'articulation ouvre le popover de réglage
-  // (ancré au point touché) et épingle l'arc pour le retour visuel.
+  // Mode tablette : la « sélection » d'une articulation = le popover ouvert
+  // pour ce servo (cf. visibleFor, qui allume l'arc tant qu'il est ouvert).
+  // Taper le même joint, ou fermer le popover, le désélectionne — pas
+  // d'épinglage persistant ici.
   const onJointClick = (k: JointKey, e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     if (tabletMode) {
       const id = servoIdOf(k);
-      pinnedJoints.current.add(k);
-      setArcShown(id, true);
-      setTabletServoEdit({ servoId: id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+      const cur = useToolboxStore.getState().tabletServoEdit;
+      if (cur?.servoId === id) {
+        setTabletServoEdit(null);
+        setArcShown(id, false);
+      } else {
+        setTabletServoEdit({ servoId: id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+      }
     } else if (lastPointerType.current === "touch") {
       onTap(k);
     }
@@ -145,11 +152,14 @@ export function Leg({ mount, collidingSegs }: LegProps) {
   const mirrorLeg = mirrorLegOf(mount.index);
   const visibleFor = (k: JointKey): boolean => {
     const ownId = servoIdOf(k);
-    const ownBit = (arcShownMask >>> ownId) & 1;
-    if (ownBit) return true;
+    if ((arcShownMask >>> ownId) & 1) return true;
+    // Mode tablette : l'arc reste visible tant que son popover est ouvert.
+    if (tabletMode && tabletEditId === ownId) return true;
     if (!mirrorEnabled) return false;
     const mirrorId = servoIndex(mirrorLeg, k);
-    return ((arcShownMask >>> mirrorId) & 1) === 1;
+    if ((arcShownMask >>> mirrorId) & 1) return true;
+    if (tabletMode && tabletEditId === mirrorId) return true;
+    return false;
   };
 
   const showCoxa  = visibleFor("coxa");

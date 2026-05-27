@@ -4692,6 +4692,18 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  margin: -2px -4px 0;
+  padding: 2px 4px;
+}
+.tsp-head:active { cursor: grabbing; }
+.tsp-grip {
+  color: var(--text-dim);
+  font-size: 13px;
+  flex-shrink: 0;
 }
 .tsp-title {
   flex: 1;
