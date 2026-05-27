@@ -1164,6 +1164,19 @@ html, body, #root {
 }
 
 /* ── Bouton engrenage profil ─────────────────────────────────────────── */
+.profile-autosave {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.profile-autosave input { cursor: pointer; margin: 0; }
+.profile-autosave:hover { color: var(--text); }
 .profile-panel-gear-row {
   margin-top: 4px;
 }

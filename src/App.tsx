@@ -27,6 +27,7 @@ import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
 import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
+import { guardProfileEdit, isProfileDirty } from "./store/profileEditGuard";
 
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
@@ -100,7 +101,7 @@ export default function App() {
   // possible sur beforeunload).
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (getPendingStepEdit()) {
+      if (getPendingStepEdit() || isProfileDirty()) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -109,11 +110,30 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  // Changement d'onglet protégé : si une pose d'étape est en cours d'édition,
-  // on propose de l'enregistrer avant de quitter la page Conception.
+  // Enregistrement automatique du profil : quand l'option est active, toute
+  // modification de la config robot est persistée après stabilisation (1,5 s).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const unsub = useHexapodStore.subscribe(() => {
+      const { autoSave, activeProfileId } = useProfilesStore.getState();
+      if (!autoSave || !activeProfileId || !isProfileDirty()) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        useProfilesStore.getState().update(activeProfileId);
+      }, 1500);
+    });
+    return () => { unsub(); clearTimeout(timer); };
+  }, []);
+
+  // Garde combiné avant de quitter la page Conception : étape éditée puis profil.
+  const guardDesignLeave = async (): Promise<boolean> =>
+    (await guardStepEdit()) && (await guardProfileEdit());
+
+  // Changement d'onglet protégé : on propose d'enregistrer les modifications en
+  // cours (pose d'étape, réglages de profil) avant de quitter la page Conception.
   const guardedSetActiveTab = async (tab: Parameters<typeof setActiveTab>[0]) => {
     if (activeTab === 'conception' && tab !== 'conception') {
-      if (!(await guardStepEdit())) return;
+      if (!(await guardDesignLeave())) return;
     }
     setActiveTab(tab);
   };
@@ -228,7 +248,7 @@ export default function App() {
       </header>
 
       <nav className="app-tabs">
-        {user && <ProjectTab onBeforeSwitch={guardStepEdit} />}
+        {user && <ProjectTab onBeforeSwitch={guardDesignLeave} />}
         <button
           type="button"
           className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}

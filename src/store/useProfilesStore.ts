@@ -14,12 +14,21 @@ interface ProfilesState {
   profiles: ProfileSummary[];
   activeProfileId: string | null;
   loading: boolean;
+  /**
+   * Signature de la config robot au dernier chargement/enregistrement. Comparée
+   * à la signature live pour détecter les modifications non enregistrées du
+   * profil. `null` tant qu'aucun profil n'est actif.
+   */
+  savedSignature: string | null;
+  /** Enregistrement automatique du profil (défaut faux, non persisté). */
+  autoSave: boolean;
   list: () => Promise<void>;
   save: (name: string) => Promise<void>;
   update: (id: string) => Promise<void>;
   load: (id: string) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  setAutoSave: (v: boolean) => void;
   clear: () => void;
 }
 
@@ -31,6 +40,8 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
   profiles: [],
   activeProfileId: null,
   loading: false,
+  savedSignature: null,
+  autoSave: false,
 
   list: async () => {
     const projectId = activeProjectId();
@@ -57,6 +68,7 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
     set((s) => ({
       profiles: [profile, ...s.profiles],
       activeProfileId: profile.id,
+      savedSignature: useHexapodStore.getState().profileCoreSignature(),
     }));
   },
 
@@ -66,13 +78,14 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
     const now = Date.now();
     set((s) => ({
       profiles: s.profiles.map((p) => (p.id === id ? { ...p, updatedAt: now } : p)),
+      savedSignature: useHexapodStore.getState().profileCoreSignature(),
     }));
   },
 
   load: async (id: string) => {
     const full = await api.get<{ id: string; name: string; data: unknown }>(`/profiles/${id}`);
     useHexapodStore.getState().applyProfile(full.data);
-    set({ activeProfileId: id });
+    set({ activeProfileId: id, savedSignature: useHexapodStore.getState().profileCoreSignature() });
   },
 
   rename: async (id: string, name: string) => {
@@ -87,8 +100,11 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
     set((s) => ({
       profiles: s.profiles.filter((p) => p.id !== id),
       activeProfileId: s.activeProfileId === id ? null : s.activeProfileId,
+      savedSignature: s.activeProfileId === id ? null : s.savedSignature,
     }));
   },
 
-  clear: () => set({ profiles: [], activeProfileId: null }),
+  setAutoSave: (v: boolean) => set({ autoSave: v }),
+
+  clear: () => set({ profiles: [], activeProfileId: null, savedSignature: null }),
 }));

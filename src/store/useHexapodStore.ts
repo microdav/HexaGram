@@ -115,6 +115,12 @@ interface HexapodState {
   setTorqueEnabled: (v: boolean) => void;
   applyPose: (pose: Pose) => void;
   serializeProfile: () => RobotProfileData;
+  /**
+   * Signature JSON de la config "robot" du profil, hors layout des panneaux
+   * (toolboxLayout/uiPrefs, éphémères et auto-sauvegardés séparément). Sert à
+   * détecter les modifications non enregistrées du profil.
+   */
+  profileCoreSignature: () => string;
   applyProfile: (data: unknown) => void;
 }
 
@@ -258,6 +264,13 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       uiPrefs: { ...useToolboxStore.getState().uiPrefs },
       weightConfig: Object.keys(s.weightConfig).length > 0 ? { ...s.weightConfig } : undefined,
     };
+  },
+
+  profileCoreSignature: (): string => {
+    const core = get().serializeProfile() as unknown as Record<string, unknown>;
+    delete core.toolboxLayout;
+    delete core.uiPrefs;
+    return JSON.stringify(core);
   },
 
   applyProfile: (data: unknown) => {

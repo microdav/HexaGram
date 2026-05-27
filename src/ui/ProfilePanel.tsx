@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useProfilesStore } from "../store/useProfilesStore";
+import { useHexapodStore } from "../store/useHexapodStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { useToastStore } from "../store/useToastStore";
+import { guardProfileEdit } from "../store/profileEditGuard";
 import { Modal } from "./Modal";
 import { ProfileSettingsModal } from "./ProfileSettingsModal";
 
@@ -12,6 +14,8 @@ export function ProfilePanel() {
   const saveProfile = useProfilesStore((s) => s.save);
   const updateProfile = useProfilesStore((s) => s.update);
   const loadProfile = useProfilesStore((s) => s.load);
+  const savedSignature = useProfilesStore((s) => s.savedSignature);
+  const autoSave = useProfilesStore((s) => s.autoSave);
 
   const showToast = useToastStore((s) => s.show);
 
@@ -19,6 +23,18 @@ export function ProfilePanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [saving, setSaving] = useState(false);
+  // Vrai quand la config robot diffère de la dernière version enregistrée.
+  const [dirty, setDirty] = useState(false);
+
+  // Recalcule l'état "modifié" à chaque changement de la config robot et quand
+  // la signature de référence change (après enregistrement/chargement).
+  useEffect(() => {
+    const compute = () => {
+      setDirty(savedSignature != null && useHexapodStore.getState().profileCoreSignature() !== savedSignature);
+    };
+    compute();
+    return useHexapodStore.subscribe(compute);
+  }, [savedSignature]);
 
   if (!user) return null;
 
@@ -50,6 +66,23 @@ export function ProfilePanel() {
     }
   };
 
+  // Changement de profil protégé : on propose d'enregistrer les réglages en
+  // cours avant de charger un autre profil.
+  const handleSelectProfile = async (id: string) => {
+    if (!id || id === activeProfileId) return;
+    if (!(await guardProfileEdit())) return;
+    loadProfile(id);
+  };
+
+  const handleAutoSaveChange = async (checked: boolean) => {
+    useProfilesStore.getState().setAutoSave(checked);
+    // En activant l'option, on enregistre immédiatement une modif en attente.
+    if (checked && activeProfileId && dirty) {
+      setSaving(true);
+      try { await updateProfile(activeProfileId); } finally { setSaving(false); }
+    }
+  };
+
   return (
     <div className="panel profile-panel">
       <div className="profile-panel-row">
@@ -59,7 +92,7 @@ export function ProfilePanel() {
             className="profile-select"
             aria-label="Profil robot actif"
             value={activeProfileId ?? ""}
-            onChange={(e) => e.target.value && loadProfile(e.target.value)}
+            onChange={(e) => handleSelectProfile(e.target.value)}
           >
             {!activeProfileId && <option value="">— choisir —</option>}
             {profiles.map((p) => (
@@ -72,13 +105,31 @@ export function ProfilePanel() {
         <button
           type="button"
           className="btn btn-icon btn-save-profile"
-          disabled={saving}
-          title={activeProfile ? `Sauvegarder « ${activeProfile.name} »` : "Sauvegarder le profil…"}
+          disabled={saving || (!!activeProfileId && !dirty)}
+          title={
+            activeProfile
+              ? dirty ? `Sauvegarder « ${activeProfile.name} »` : "Aucune modification à enregistrer"
+              : "Sauvegarder le profil…"
+          }
           onClick={handleSave}
         >
           {saving ? "…" : "💾"}
         </button>
       </div>
+
+      {activeProfileId && (
+        <label
+          className="profile-autosave"
+          title="Enregistrer automatiquement les réglages du profil"
+        >
+          <input
+            type="checkbox"
+            checked={autoSave}
+            onChange={(e) => handleAutoSaveChange(e.target.checked)}
+          />
+          <span>Enregistrer automatiquement</span>
+        </label>
+      )}
 
       <div className="profile-panel-gear-row">
         <button
