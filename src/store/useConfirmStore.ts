@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-/** Résultat d'une confirmation tri-état. */
-export type ConfirmResult = "confirm" | "discard" | "cancel";
+/** Résultat d'une confirmation (jusqu'à quatre états). */
+export type ConfirmResult = "confirm" | "alt" | "discard" | "cancel";
 
 export interface ConfirmOptions {
   /** Texte du modal. Une seule chaîne, ou plusieurs lignes via tableau. */
@@ -14,6 +14,11 @@ export interface ConfirmOptions {
    * le modal devient tri-état et résout `'discard'` quand on clique dessus.
    */
   discardLabel?: string;
+  /**
+   * Libellé d'un quatrième bouton secondaire (ex. "Nouvelle pose"). S'il est
+   * défini, le modal résout `'alt'` quand on clique dessus.
+   */
+  altLabel?: string;
   /** Variante visuelle (rouge pour les suppressions). */
   variant?: "default" | "danger";
 }
@@ -27,7 +32,7 @@ interface ConfirmState {
   pending: ConfirmPending | null;
   /** Confirmation binaire — résout `true` uniquement sur "Confirmer". */
   ask: (options: ConfirmOptions) => Promise<boolean>;
-  /** Confirmation tri-état — résout 'confirm' | 'discard' | 'cancel'. */
+  /** Confirmation multi-état — résout 'confirm' | 'alt' | 'discard' | 'cancel'. */
   askTri: (options: ConfirmOptions) => Promise<ConfirmResult>;
   resolve: (r: ConfirmResult) => void;
 }
@@ -57,7 +62,7 @@ export function confirmDialog(options: ConfirmOptions | string): Promise<boolean
   return useConfirmStore.getState().ask(opts);
 }
 
-/** Variante tri-état — résout 'confirm' | 'discard' | 'cancel'. */
+/** Variante multi-état — résout 'confirm' | 'alt' | 'discard' | 'cancel'. */
 export function confirmTri(options: ConfirmOptions | string): Promise<ConfirmResult> {
   const opts: ConfirmOptions = typeof options === "string" ? { message: options } : options;
   return useConfirmStore.getState().askTri(opts);

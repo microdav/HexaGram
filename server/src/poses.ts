@@ -5,6 +5,7 @@ import {
   CreatePoseSchema,
   UpdatePoseSchema,
   ReorderPosesSchema,
+  PropagatePoseSchema,
 } from "./schemas";
 import { requireAuth, AuthRequest } from "./middleware/jwt";
 
@@ -31,6 +32,20 @@ function ensureProjectOwnership(userId: string, projectId: string): boolean {
     .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
     .get(projectId, userId);
   return !!row;
+}
+
+/** Retourne le project_id de la pose si elle appartient au user, sinon null. */
+function poseProjectId(userId: string, poseId: string): string | null {
+  const row = db
+    .prepare("SELECT project_id FROM poses WHERE id = ? AND user_id = ?")
+    .get(poseId, userId) as { project_id: string } | undefined;
+  return row ? row.project_id : null;
+}
+
+interface StoredStep {
+  sourcePoseId?: string | null;
+  pose?: number[];
+  [k: string]: unknown;
 }
 
 function nextPosition(userId: string, projectId: string): number {
@@ -172,6 +187,99 @@ router.post("/reorder", (req: AuthRequest, res: Response): void => {
     throw err;
   }
   res.status(204).send();
+});
+
+// GET /api/poses/:id/usage — séquences du projet dont des steps réfèrent la pose
+router.get("/:id/usage", (req: AuthRequest, res: Response): void => {
+  const poseId = req.params.id;
+  const projectId = poseProjectId(req.userId!, poseId);
+  if (!projectId) {
+    res.status(404).json({ error: "Pose introuvable" });
+    return;
+  }
+  const like = `%"sourcePoseId":"${poseId}"%`;
+  const rows = db
+    .prepare(
+      "SELECT id, name, steps FROM sequences WHERE user_id = ? AND project_id = ? AND steps LIKE ?"
+    )
+    .all(req.userId, projectId, like) as Record<string, unknown>[];
+  const sequences: { id: string; name: string; stepCount: number }[] = [];
+  for (const r of rows) {
+    let steps: StoredStep[];
+    try {
+      steps = JSON.parse(r.steps as string);
+    } catch {
+      continue;
+    }
+    const stepCount = steps.filter((s) => s.sourcePoseId === poseId).length;
+    if (stepCount > 0) {
+      sequences.push({ id: r.id as string, name: r.name as string, stepCount });
+    }
+  }
+  const total = sequences.reduce((acc, s) => acc + s.stepCount, 0);
+  res.json({ total, sequences });
+});
+
+// POST /api/poses/:id/propagate — body : { angles }
+// Met à jour les angles de la pose ET la pose de tous les steps liés (toutes
+// séquences du projet), dans une transaction. Invalide les vignettes concernées.
+router.post("/:id/propagate", (req: AuthRequest, res: Response): void => {
+  const poseId = req.params.id;
+  const projectId = poseProjectId(req.userId!, poseId);
+  if (!projectId) {
+    res.status(404).json({ error: "Pose introuvable" });
+    return;
+  }
+  const parsed = PropagatePoseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
+    return;
+  }
+  const { angles } = parsed.data;
+  const now = Date.now();
+  const like = `%"sourcePoseId":"${poseId}"%`;
+  const seqRows = db
+    .prepare(
+      "SELECT id, steps FROM sequences WHERE user_id = ? AND project_id = ? AND steps LIKE ?"
+    )
+    .all(req.userId, projectId, like) as Record<string, unknown>[];
+
+  const sequencesUpdated: string[] = [];
+  db.exec("BEGIN");
+  try {
+    db.prepare(
+      "UPDATE poses SET angles = ?, thumbnail = NULL, thumbnail_context = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).run(JSON.stringify(angles), now, poseId, req.userId);
+
+    const updStmt = db.prepare(
+      "UPDATE sequences SET steps = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    );
+    for (const r of seqRows) {
+      let steps: StoredStep[];
+      try {
+        steps = JSON.parse(r.steps as string);
+      } catch {
+        continue;
+      }
+      let changed = false;
+      const newSteps = steps.map((s) => {
+        if (s.sourcePoseId !== poseId) return s;
+        changed = true;
+        return { ...s, pose: angles, thumbnail: null, thumbnailContext: null };
+      });
+      if (changed) {
+        updStmt.run(JSON.stringify(newSteps), now, r.id, req.userId);
+        sequencesUpdated.push(r.id as string);
+      }
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  const row = db.prepare("SELECT * FROM poses WHERE id = ?").get(poseId) as Record<string, unknown>;
+  res.json({ pose: parsePose(row), sequencesUpdated });
 });
 
 // DELETE /api/poses/:id

@@ -54,6 +54,15 @@ export function ConfirmDialog() {
               {options.discardLabel}
             </button>
           )}
+          {options.altLabel && (
+            <button
+              type="button"
+              className="confirm-dialog-btn"
+              onClick={() => resolve("alt")}
+            >
+              {options.altLabel}
+            </button>
+          )}
           <button
             ref={confirmBtnRef}
             type="button"

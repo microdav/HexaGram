@@ -4277,6 +4277,12 @@ html, body, #root {
   border-color: var(--accent-hover);
   background: rgba(245, 197, 24, 0.12);
 }
+.pose-card.selected {
+  border-color: var(--accent);
+  border-width: 2px;
+  padding: 3px;
+  box-shadow: 0 0 0 1px var(--accent), 0 0 8px rgba(245, 197, 24, 0.35);
+}
 .pose-card-thumb {
   width: 100%;
   height: 56px;

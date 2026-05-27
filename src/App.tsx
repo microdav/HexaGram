@@ -27,6 +27,7 @@ import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
 import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
+import { guardPoseEdit, getPendingPoseEdit } from "./store/poseEditGuard";
 import { guardProfileEdit, isProfileDirty } from "./store/profileEditGuard";
 
 export default function App() {
@@ -101,7 +102,7 @@ export default function App() {
   // possible sur beforeunload).
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (getPendingStepEdit() || isProfileDirty()) {
+      if (getPendingStepEdit() || getPendingPoseEdit() || isProfileDirty()) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -127,7 +128,7 @@ export default function App() {
 
   // Garde combiné avant de quitter la page Conception : étape éditée puis profil.
   const guardDesignLeave = async (): Promise<boolean> =>
-    (await guardStepEdit()) && (await guardProfileEdit());
+    (await guardStepEdit()) && (await guardPoseEdit()) && (await guardProfileEdit());
 
   // Changement d'onglet protégé : on propose d'enregistrer les modifications en
   // cours (pose d'étape, réglages de profil) avant de quitter la page Conception.

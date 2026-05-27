@@ -1,16 +1,22 @@
 import { useState, useRef, useEffect, type DragEvent } from 'react';
 import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { useHexapodStore } from '../store/useHexapodStore';
+import { useSequencerStore } from '../store/useSequencerStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { confirmDialog } from '../store/useConfirmStore';
+import { guardStepEdit } from '../store/stepEditGuard';
+import { guardPoseEdit } from '../store/poseEditGuard';
 import { PoseThumbnail } from './PoseThumbnail';
+import type { SavedPose } from '../model/pose';
 
 /** Format MIME utilisé pour transporter l'id de pose lors d'un drag → séquenceur. */
 export const POSE_DRAG_MIME = 'application/x-hexagram-pose-id';
 
 export function PosesContent() {
   const poses = useSavedPosesStore((s) => s.poses);
+  const selectedPoseId = useSavedPosesStore((s) => s.selectedPoseId);
+  const setSelectedPoseId = useSavedPosesStore((s) => s.setSelectedPoseId);
   const user = useAuthStore((s) => s.user);
   const projectId = useProjectStore((s) => s.activeProjectId);
   const applyPose = useHexapodStore((s) => s.applyPose);
@@ -39,6 +45,17 @@ export function PosesContent() {
     } catch (err) {
       console.error('Save pose failed', err);
     }
+  };
+
+  // Sélectionner une pose : on quitte d'abord proprement le contexte courant
+  // (étape éditée OU pose éditée), puis on applique la pose, on la marque
+  // sélectionnée et on désactive l'étape de séquence active (exclusion mutuelle).
+  const handleSelectPose = async (p: SavedPose) => {
+    if (!(await guardStepEdit())) return;
+    if (!(await guardPoseEdit())) return;
+    applyPose(p.angles);
+    setSelectedPoseId(p.id);
+    useSequencerStore.getState().setSelectedStepIndex(-1);
   };
 
   const handleRenameConfirm = async () => {
@@ -118,13 +135,13 @@ export function PosesContent() {
             return (
               <div
                 key={p.id}
-                className={`pose-card${dragOverIdx === idx && internalDragId !== p.id ? ' drag-over' : ''}${internalDragId === p.id ? ' dragging' : ''}`}
+                className={`pose-card${selectedPoseId === p.id ? ' selected' : ''}${dragOverIdx === idx && internalDragId !== p.id ? ' drag-over' : ''}${internalDragId === p.id ? ' dragging' : ''}`}
                 draggable={!isRenaming}
                 onDragStart={(e) => onPoseDragStart(e, p.id)}
                 onDragOver={(e) => onPoseDragOver(e, idx)}
                 onDrop={(e) => onPoseDrop(e, idx)}
                 onDragEnd={onPoseDragEnd}
-                onClick={() => !isRenaming && applyPose(p.angles)}
+                onClick={() => !isRenaming && handleSelectPose(p)}
                 onDoubleClick={() => {
                   setRenameId(p.id);
                   setRenameValue(p.name);

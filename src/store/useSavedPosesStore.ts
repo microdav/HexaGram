@@ -5,13 +5,28 @@ import { useAuthStore } from './useAuthStore';
 import { useProjectStore } from './useProjectStore';
 import { useProfilesStore } from './useProfilesStore';
 import { useHexapodStore } from './useHexapodStore';
+import { useSequencerStore } from './useSequencerStore';
 import { usePhotoSpaceStore } from './usePhotoSpaceStore';
 import { usePoseThumbnailStore, computeThumbnailContext, hashPose } from './usePoseThumbnailStore';
 import type { Pose, SavedPose } from '../model/pose';
 
+/** Une séquence référençant une pose (résultat de usage). */
+export interface PoseUsageSequence {
+  id: string;
+  name: string;
+  stepCount: number;
+}
+
+export interface PoseUsage {
+  total: number;
+  sequences: PoseUsageSequence[];
+}
+
 interface SavedPosesState {
   poses: SavedPose[];
   loading: boolean;
+  /** Pose actuellement sélectionnée/éditée depuis la boîte « Poses » (transitoire). */
+  selectedPoseId: string | null;
   list: () => Promise<void>;
   add: (name: string, angles: Pose) => Promise<SavedPose>;
   rename: (id: string, name: string) => Promise<void>;
@@ -19,6 +34,11 @@ interface SavedPosesState {
   remove: (id: string) => Promise<void>;
   reorder: (orderedIds: string[]) => Promise<void>;
   getById: (id: string) => SavedPose | undefined;
+  setSelectedPoseId: (id: string | null) => void;
+  /** Séquences du projet dont des steps réfèrent cette pose. */
+  usage: (id: string) => Promise<PoseUsage>;
+  /** Remplace les angles de la pose ET propage aux steps liés (toutes séquences). */
+  propagateAngles: (id: string, angles: Pose) => Promise<void>;
   clear: () => void;
 }
 
@@ -111,6 +131,7 @@ export const useSavedPosesStore = create<SavedPosesState>()(
     (set, get) => ({
       poses: [],
       loading: false,
+      selectedPoseId: null,
 
       list: async () => {
         if (!isBackend()) return;
@@ -215,6 +236,7 @@ export const useSavedPosesStore = create<SavedPosesState>()(
           poses: s.poses
             .filter((p) => p.id !== id)
             .map((p, i) => ({ ...p, position: i })),
+          selectedPoseId: s.selectedPoseId === id ? null : s.selectedPoseId,
         }));
       },
 
@@ -244,7 +266,38 @@ export const useSavedPosesStore = create<SavedPosesState>()(
 
       getById: (id) => get().poses.find((p) => p.id === id),
 
-      clear: () => set({ poses: [] }),
+      setSelectedPoseId: (id) => set({ selectedPoseId: id }),
+
+      usage: async (id) => {
+        if (!isBackend()) return { total: 0, sequences: [] };
+        try {
+          return await api.get<PoseUsage>(`/poses/${id}/usage`);
+        } catch {
+          return { total: 0, sequences: [] };
+        }
+      },
+
+      propagateAngles: async (id, angles) => {
+        const now = Date.now();
+        delete _lastPersistedHash[id];
+        if (isBackend()) {
+          try {
+            await api.post(`/poses/${id}/propagate`, { angles });
+          } catch { /* on met quand même à jour localement ci-dessous */ }
+        }
+        // Pose locale (vignette invalidée comme dans updateAngles).
+        set((s) => ({
+          poses: s.poses.map((p) =>
+            p.id === id
+              ? { ...p, angles: angles.slice(), thumbnail: null, thumbnailContext: null, updatedAt: now }
+              : p
+          ),
+        }));
+        // Steps liés de la séquence actuellement chargée.
+        useSequencerStore.getState().propagatePoseChange(id, angles);
+      },
+
+      clear: () => set({ poses: [], selectedPoseId: null }),
     }),
     {
       name: 'hexagram-saved-poses',

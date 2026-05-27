@@ -150,6 +150,10 @@ export const ReorderPosesSchema = z.object({
   order: z.array(z.string()),
 });
 
+export const PropagatePoseSchema = z.object({
+  angles: z.array(z.number()),
+});
+
 export type CreatePoseInput = z.infer<typeof CreatePoseSchema>;
 export type UpdatePoseInput = z.infer<typeof UpdatePoseSchema>;
 

@@ -8,6 +8,7 @@ import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
 import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { confirmDialog } from '../store/useConfirmStore';
 import { guardStepEdit } from '../store/stepEditGuard';
+import { guardPoseEdit } from '../store/poseEditGuard';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
@@ -364,6 +365,10 @@ export function SequencerPanel() {
     // Si la pose de l'étape courante a été modifiée sans être appliquée,
     // on propose de l'enregistrer avant de changer (ou de désélectionner).
     if (!(await guardStepEdit())) return;
+    // Si une pose de la boîte « Poses » était sélectionnée et modifiée, on la
+    // traite aussi (exclusion mutuelle : activer une étape désélectionne la pose).
+    if (!(await guardPoseEdit())) return;
+    useSavedPosesStore.getState().setSelectedPoseId(null);
     useSequencerStore.getState().setSelectedStepIndex(isAlreadySelected ? -1 : colIdx);
     if (!isAlreadySelected) {
       useHexapodStore.getState().applyPose(step.pose);
