@@ -78,12 +78,24 @@ const DEFAULT_UI_PREFS: UiPrefs = {
   activeTab: 'conception',
 };
 
+/** Détection d'un pointeur grossier (doigt) pour pré-activer le mode tablette. */
+function detectCoarsePointer(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches
+  );
+}
+
 interface ToolboxStore {
   configs: Record<string, ToolboxConfig>;
   uiPrefs: UiPrefs;
+  /** Mode tablette : préférence locale à l'appareil (jamais persistée dans le profil). */
+  tabletMode: boolean;
   draggingId: string | null;
   hoveredPanel: PanelSide | null;
   hoveredInsertIndex: number;
+  setTabletMode: (v: boolean) => void;
   setMinimized: (id: string, v: boolean) => void;
   dock: (id: string, panel: PanelSide, insertIndex?: number) => void;
   undock: (id: string, pos: { x: number; y: number }) => void;
@@ -104,9 +116,12 @@ export const useToolboxStore = create<ToolboxStore>()(
     (set) => ({
       configs: DEFAULTS,
       uiPrefs: DEFAULT_UI_PREFS,
+      tabletMode: detectCoarsePointer(),
       draggingId: null,
       hoveredPanel: null,
       hoveredInsertIndex: 0,
+
+      setTabletMode: (v) => set({ tabletMode: v }),
 
       setMinimized: (id, v) =>
         set((s) => ({ configs: { ...s.configs, [id]: { ...s.configs[id], minimized: v } } })),
@@ -161,13 +176,19 @@ export const useToolboxStore = create<ToolboxStore>()(
     }),
     {
       name: 'hexagram-toolboxes',
-      partialize: (s) => ({ configs: s.configs, uiPrefs: s.uiPrefs }),
+      partialize: (s) => ({ configs: s.configs, uiPrefs: s.uiPrefs, tabletMode: s.tabletMode }),
       merge: (persisted: unknown, current) => {
-        const p = persisted as { configs?: Record<string, ToolboxConfig>; uiPrefs?: Partial<UiPrefs> };
+        const p = persisted as {
+          configs?: Record<string, ToolboxConfig>;
+          uiPrefs?: Partial<UiPrefs>;
+          tabletMode?: boolean;
+        };
         return {
           ...current,
           configs: { ...DEFAULTS, ...(p.configs ?? {}) },
           uiPrefs: { ...DEFAULT_UI_PREFS, ...(p.uiPrefs ?? {}) },
+          // Choix manuel persisté prioritaire ; sinon auto-détection (doigt).
+          tabletMode: p.tabletMode ?? current.tabletMode,
         };
       },
     }

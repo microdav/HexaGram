@@ -34,6 +34,8 @@ export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
   const activeTab = useToolboxStore((s) => s.uiPrefs.activeTab ?? 'conception');
+  const tabletMode = useToolboxStore((s) => s.tabletMode);
+  const setTabletMode = useToolboxStore((s) => s.setTabletMode);
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
   const setRightOpen = useToolboxStore((s) => s.setRightOpen);
   const setActiveTab = useToolboxStore((s) => s.setActiveTab);
@@ -237,13 +239,23 @@ export default function App() {
   }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs]);
 
   return (
-    <div className="app">
+    <div className={`app${tabletMode ? " tablet" : ""}`}>
       <header className="topbar">
         <HexaLogo size={30} />
         <h1>HexaGram</h1>
         <span className="subtitle">hexapode 18 DOF</span>
         <div className="topbar-right">
           {!user && <span className="demo-badge">Mode démo</span>}
+          <button
+            type="button"
+            className={`tablet-toggle${tabletMode ? " active" : ""}`}
+            onClick={() => setTabletMode(!tabletMode)}
+            aria-pressed={tabletMode ? "true" : "false"}
+            title={tabletMode ? "Mode tablette activé — cliquer pour repasser en mode souris" : "Activer le mode tablette (commandes tactiles)"}
+          >
+            <span className="tablet-toggle-icon" aria-hidden="true">▭</span>
+            <span className="tablet-toggle-label">Tablette</span>
+          </button>
           <UserButton />
         </div>
       </header>

@@ -4530,3 +4530,137 @@ html, body, #root {
   outline: 1px solid rgba(245, 197, 24, 0.4);
   outline-offset: -1px;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Mode tablette
+   ══════════════════════════════════════════════════════════ */
+
+/* Toggle dans l'en-tête */
+.tablet-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tablet-toggle:hover { color: var(--text); border-color: var(--text-dim); }
+.tablet-toggle.active {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+}
+.tablet-toggle-icon { font-size: 14px; line-height: 1; }
+
+/* Bouton « déplacer » d'une boîte (remplace le glisser souris) */
+.toolbox-move-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+/* En mode tablette, la poignée reste toujours visible et tapable */
+.app.tablet .toolbox-drag-handle { opacity: 1; }
+.app.tablet .toolbox-header { cursor: default; }
+.app.tablet .toolbox-move-btn {
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+.app.tablet .toolbox-move-btn:hover { background: var(--bg-panel); }
+
+/* Panneau de placement (popover centré, échappe à overflow:hidden via fixed) */
+.toolbox-mover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0, 0, 0, 0.45);
+}
+.toolbox-mover {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4001;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 260px;
+}
+.toolbox-mover-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.toolbox-mover-close:hover { background: var(--bg-panel); color: var(--text); }
+
+/* Croix directionnelle pour repositionner une boîte flottante */
+.toolbox-mover-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 48px);
+  grid-template-rows: repeat(3, 48px);
+  gap: 6px;
+  justify-content: center;
+  margin: 4px auto 0;
+}
+.tb-move {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+.tb-move:hover { border-color: var(--accent); color: var(--accent); }
+.tb-move-up    { grid-area: 1 / 2; }
+.tb-move-left  { grid-area: 2 / 1; }
+.tb-move-right { grid-area: 2 / 3; }
+.tb-move-down  { grid-area: 3 / 2; }
+
+.toolbox-mover-actions {
+  display: flex;
+  gap: 8px;
+}
+.tb-act {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tb-act:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.tb-act:disabled { opacity: 0.4; cursor: default; }
+
+@media (max-width: 560px) {
+  .tablet-toggle-label { display: none; }
+}

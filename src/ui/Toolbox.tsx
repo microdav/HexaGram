@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useToolboxStore } from '../store/useToolboxStore';
 import type { PanelSide } from '../store/useToolboxStore';
@@ -10,9 +10,102 @@ interface Props {
   compact?: boolean;
 }
 
+/** Pas de déplacement (px) pour le repositionnement d'une boîte flottante au doigt. */
+const NUDGE = 48;
+
+/**
+ * Panneau de placement tactile (mode tablette) : remplace le glisser-déposer
+ * souris par des boutons explicites — réordonner, changer de panneau, détacher,
+ * ou repositionner une boîte flottante par paliers.
+ */
+function ToolboxMover({ id, onClose }: { id: string; onClose: () => void }) {
+  const configs = useToolboxStore((s) => s.configs);
+  const dock = useToolboxStore((s) => s.dock);
+  const undock = useToolboxStore((s) => s.undock);
+  const setFloatPos = useToolboxStore((s) => s.setFloatPos);
+
+  const config = configs[id];
+  if (!config) return null;
+
+  const panel = config.panel;
+  const isFloating = panel === null;
+
+  const siblings = panel
+    ? Object.entries(configs)
+        .filter(([, c]) => c.panel === panel)
+        .sort(([, a], [, b]) => a.order - b.order)
+        .map(([k]) => k)
+    : [];
+  const idx = siblings.indexOf(id);
+  const isFirst = idx <= 0;
+  const isLast = idx === siblings.length - 1;
+
+  const nudge = (dx: number, dy: number) => {
+    const cur = config.floatPos ?? { x: 300, y: 120 };
+    setFloatPos(id, { x: Math.max(0, cur.x + dx), y: Math.max(0, cur.y + dy) });
+  };
+
+  return (
+    <>
+      <div className="toolbox-mover-backdrop" onClick={onClose} />
+      <div className="toolbox-mover" role="dialog" aria-label="Déplacer la boîte">
+        <button type="button" className="toolbox-mover-close" onClick={onClose} aria-label="Fermer">
+          ✕
+        </button>
+
+        {isFloating ? (
+          <>
+            <div className="toolbox-mover-pad">
+              <button type="button" className="tb-move tb-move-up" onClick={() => nudge(0, -NUDGE)} aria-label="Monter">↑</button>
+              <button type="button" className="tb-move tb-move-left" onClick={() => nudge(-NUDGE, 0)} aria-label="Gauche">←</button>
+              <button type="button" className="tb-move tb-move-right" onClick={() => nudge(NUDGE, 0)} aria-label="Droite">→</button>
+              <button type="button" className="tb-move tb-move-down" onClick={() => nudge(0, NUDGE)} aria-label="Descendre">↓</button>
+            </div>
+            <div className="toolbox-mover-actions">
+              <button type="button" className="tb-act" onClick={() => { dock(id, 'left'); onClose(); }}>◧ Ancrer à gauche</button>
+              <button type="button" className="tb-act" onClick={() => { dock(id, 'right'); onClose(); }}>Ancrer à droite ◨</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="toolbox-mover-actions">
+              <button type="button" className="tb-act" disabled={isFirst} onClick={() => dock(id, panel, idx - 1)}>↑ Monter</button>
+              <button type="button" className="tb-act" disabled={isLast} onClick={() => dock(id, panel, idx + 1)}>↓ Descendre</button>
+            </div>
+            <div className="toolbox-mover-actions">
+              {panel === 'left' ? (
+                <button type="button" className="tb-act" onClick={() => { dock(id, 'right'); onClose(); }}>Envoyer à droite →</button>
+              ) : panel === 'right' ? (
+                <button type="button" className="tb-act" onClick={() => { dock(id, 'left'); onClose(); }}>← Envoyer à gauche</button>
+              ) : (
+                <>
+                  <button type="button" className="tb-act" onClick={() => { dock(id, 'left'); onClose(); }}>◧ Gauche</button>
+                  <button type="button" className="tb-act" onClick={() => { dock(id, 'right'); onClose(); }}>Droite ◨</button>
+                </>
+              )}
+            </div>
+            <div className="toolbox-mover-actions">
+              <button
+                type="button"
+                className="tb-act"
+                onClick={() => { undock(id, config.floatPos ?? { x: 300, y: 120 }); onClose(); }}
+              >
+                ⊞ Détacher
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function Toolbox({ id, title, children, compact = false }: Props) {
   const config = useToolboxStore((s) => s.configs[id]);
   const draggingId = useToolboxStore((s) => s.draggingId);
+  const tabletMode = useToolboxStore((s) => s.tabletMode);
+
+  const [moverOpen, setMoverOpen] = useState(false);
 
   const draggingRef = useRef(false);
   const dragRef = useRef<{
@@ -121,10 +214,23 @@ export function Toolbox({ id, title, children, compact = false }: Props) {
   if (compact) {
     return (
       <div className="toolbox-inline" data-toolbox-id={id}>
-        <span className="toolbox-drag-handle toolbox-drag-handle--sm" onMouseDown={handleMouseDown} title="Déplacer">
-          ⠿
-        </span>
+        {tabletMode ? (
+          <button
+            type="button"
+            className="toolbox-drag-handle toolbox-drag-handle--sm toolbox-move-btn"
+            onClick={() => setMoverOpen((v) => !v)}
+            title="Déplacer"
+            aria-label="Déplacer la boîte"
+          >
+            ⠿
+          </button>
+        ) : (
+          <span className="toolbox-drag-handle toolbox-drag-handle--sm" onMouseDown={handleMouseDown} title="Déplacer">
+            ⠿
+          </span>
+        )}
         {children}
+        {tabletMode && moverOpen && <ToolboxMover id={id} onClose={() => setMoverOpen(false)} />}
       </div>
     );
   }
@@ -143,8 +249,23 @@ export function Toolbox({ id, title, children, compact = false }: Props) {
       style={cssVars}
       data-toolbox-id={id}
     >
-      <div className="toolbox-header" onMouseDown={handleMouseDown}>
-        <span className="toolbox-drag-handle">⠿</span>
+      <div
+        className="toolbox-header"
+        onMouseDown={tabletMode ? undefined : handleMouseDown}
+      >
+        {tabletMode ? (
+          <button
+            type="button"
+            className="toolbox-drag-handle toolbox-move-btn"
+            onClick={() => setMoverOpen((v) => !v)}
+            title="Déplacer"
+            aria-label="Déplacer la boîte"
+          >
+            ⠿
+          </button>
+        ) : (
+          <span className="toolbox-drag-handle">⠿</span>
+        )}
         <span className="toolbox-title">{title}</span>
         <button
           type="button"
@@ -157,6 +278,7 @@ export function Toolbox({ id, title, children, compact = false }: Props) {
         </button>
       </div>
       {!config.minimized && <div className="toolbox-body">{children}</div>}
+      {tabletMode && moverOpen && <ToolboxMover id={id} onClose={() => setMoverOpen(false)} />}
     </div>
   );
 }
