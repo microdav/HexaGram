@@ -30,6 +30,7 @@ import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState"
 import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
 import { guardPoseEdit, getPendingPoseEdit } from "./store/poseEditGuard";
 import { guardProfileEdit, isProfileDirty } from "./store/profileEditGuard";
+import { guardProgramEdit } from "./store/programEditGuard";
 
 export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
@@ -133,11 +134,20 @@ export default function App() {
   const guardDesignLeave = async (): Promise<boolean> =>
     (await guardStepEdit()) && (await guardPoseEdit()) && (await guardProfileEdit());
 
+  // Garde de l'onglet courant : Conception (pose/étape/profil) ou Programmation
+  // (brouillon de programme non enregistré). Les autres onglets ne gardent rien.
+  const guardLeaveCurrentTab = async (): Promise<boolean> => {
+    if (activeTab === 'conception') return guardDesignLeave();
+    if (activeTab === 'programmation') return guardProgramEdit();
+    return true;
+  };
+
   // Changement d'onglet protégé : on propose d'enregistrer les modifications en
-  // cours (pose d'étape, réglages de profil) avant de quitter la page Conception.
+  // cours avant de quitter l'onglet (pose/profil en Conception, programme en
+  // Programmation).
   const guardedSetActiveTab = async (tab: Parameters<typeof setActiveTab>[0]) => {
-    if (activeTab === 'conception' && tab !== 'conception') {
-      if (!(await guardDesignLeave())) return;
+    if (tab !== activeTab) {
+      if (!(await guardLeaveCurrentTab())) return;
     }
     setActiveTab(tab);
   };
@@ -262,7 +272,7 @@ export default function App() {
       </header>
 
       <nav className="app-tabs">
-        {user && <ProjectTab onBeforeSwitch={guardDesignLeave} />}
+        {user && <ProjectTab onBeforeSwitch={guardLeaveCurrentTab} />}
         <button
           type="button"
           className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}

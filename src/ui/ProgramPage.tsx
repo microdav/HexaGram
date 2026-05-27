@@ -7,6 +7,8 @@ import { useProfilesStore } from "../store/useProfilesStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import { useToastStore } from "../store/useToastStore";
+import { confirmTri } from "../store/useConfirmStore";
+import { registerProgramGuard } from "../store/programEditGuard";
 import { PoseThumbnail } from "./PoseThumbnail";
 import type { Pose } from "../model/pose";
 import type { Program, ProgramStep, LoopTarget } from "../model/program";
@@ -29,6 +31,20 @@ function newStepId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Bande de miniatures des steps non-interpolés, les unes à la suite des autres. */
+function StepThumbStrip({ steps }: { steps: SequencerStep[] | undefined }) {
+  if (!steps || steps.length === 0) return null;
+  return (
+    <div className="flow-step-thumbs">
+      {steps.map((s) => (
+        <div key={s.id} className="flow-step-thumb" title={s.name}>
+          <PoseThumbnail id={s.id} pose={s.pose} alt={s.name} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ProgramPage() {
   const programs = useProgramsStore((s) => s.programs);
   const loading = useProgramsStore((s) => s.loading);
@@ -45,12 +61,16 @@ export function ProgramPage() {
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const listSequences = useSavedSequencesStore((s) => s.list);
   const loadSequence = useSavedSequencesStore((s) => s.load);
+  const getSequence = useSavedSequencesStore((s) => s.getSequence);
   const savedPoses = useSavedPosesStore((s) => s.poses);
   const listSavedPoses = useSavedPosesStore((s) => s.list);
   const sequencerSteps = useSequencerStore((s) => s.steps);
   const showToast = useToastStore((s) => s.show);
 
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Empreinte JSON du brouillon au dernier chargement / enregistrement : sert à
+  // détecter les modifications non enregistrées (dirty = draft ≠ baseline).
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -64,6 +84,10 @@ export function ProgramPage() {
   const [pickerSeqId, setPickerSeqId] = useState<string | null>(null);
   const [pickerSteps, setPickerSteps] = useState<SequencerStep[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
+
+  // Steps non-interpolés des séquences référencées par les étapes 'ref',
+  // chargés à la demande pour afficher les miniatures sous chaque select.
+  const [refStepsCache, setRefStepsCache] = useState<Record<string, SequencerStep[]>>({});
 
   // Listes nécessaires à la page. Programmes/séquences sont projet-scopées :
   // on relance le list quand activeProjectId devient disponible (App.tsx liste
@@ -81,12 +105,13 @@ export function ProgramPage() {
   useEffect(() => {
     if (!selectedId) {
       setDraft(null);
+      setBaseline(null);
       return;
     }
     if (draft?.id === selectedId) return;
     let cancelled = false;
     loadProgram(selectedId)
-      .then((p) => { if (!cancelled) setDraft(p); })
+      .then((p) => { if (!cancelled) { setDraft(p); setBaseline(JSON.stringify(p)); } })
       .catch(() => { if (!cancelled) setSelectedId(null); });
     return () => { cancelled = true; };
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -99,6 +124,36 @@ export function ProgramPage() {
       .catch(() => setPickerSteps([]))
       .finally(() => setPickerLoading(false));
   }, [pickerSeqId]);
+
+  // Charge les steps des séquences référencées (hors interpolation) pour les
+  // miniatures. Indexé par sequenceId ; ne recharge que les ids absents du cache.
+  useEffect(() => {
+    if (!draft) return;
+    const ids = Array.from(new Set(
+      draft.steps.flatMap((s) => (s.type === 'ref' && s.sequenceId ? [s.sequenceId] : []))
+    ));
+    const missing = ids.filter((id) => !(id in refStepsCache));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      missing.map((id) =>
+        getSequence(id)
+          .then((seq) => [id, seq.steps.filter((s) => s.type !== 'interpolated')] as const)
+          .catch(() => [id, [] as SequencerStep[]] as const)
+      )
+    ).then((entries) => {
+      if (!cancelled) setRefStepsCache((c) => ({ ...c, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [draft?.steps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Garde de sortie : pointée vers le dernier `guardLeave` à chaque rendu pour
+  // qu'App (changement d'onglet) et les actions internes lisent l'état courant.
+  const guardRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
+  useEffect(() => {
+    registerProgramGuard(() => guardRef.current());
+    return () => registerProgramGuard(null);
+  }, []);
 
   const patch = (p: Partial<Draft>) => setDraft((d) => d ? { ...d, ...p } : d);
 
@@ -129,36 +184,45 @@ export function ProgramPage() {
     setShowSeqPicker(false);
   };
 
-  const handleSelect = (id: string) => {
+  const handleSelect = async (id: string) => {
+    if (id === selectedId) return;
+    if (!(await guardRef.current())) return;
     setSelectedId(id);
     setConfirmDelete(false);
     setShowAddOptions(false);
     // L'effet [selectedId] charge le draft.
   };
 
-  const handleNew = () => {
+  const handleNew = async () => {
+    if (!(await guardRef.current())) return;
     setSelectedId(null);
-    setDraft(makeDraft(activeProfileId ?? ""));
+    const d = makeDraft(activeProfileId ?? "");
+    setDraft(d);
+    setBaseline(JSON.stringify(d));
     setConfirmDelete(false);
     setShowAddOptions(false);
   };
 
-  const handleSave = async () => {
-    if (!draft) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!draft) return false;
     setSaving(true);
     try {
       if (draft.id) {
         const updated = await updateProgram(draft.id, draft);
         setDraft(updated);
+        setBaseline(JSON.stringify(updated));
         showToast(`Programme « ${updated.name} » sauvegardé`);
       } else {
         const created = await createProgram(draft);
         setSelectedId(created.id);
         setDraft(created);
+        setBaseline(JSON.stringify(created));
         showToast(`Programme « ${created.name} » créé`);
       }
+      return true;
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Erreur de sauvegarde");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -170,6 +234,7 @@ export function ProgramPage() {
     try {
       await removeProgram(draft.id);
       setDraft(null);
+      setBaseline(null);
       setSelectedId(null);
       setConfirmDelete(false);
       showToast("Programme supprimé");
@@ -234,6 +299,25 @@ export function ProgramPage() {
 
   const pickerRef = useRef<string | null>(null);
   pickerRef.current = pickerSeqId;
+
+  // Modifications non enregistrées : le brouillon diffère de l'état chargé/sauvé.
+  const isDirty = !!draft && baseline !== null && JSON.stringify(draft) !== baseline;
+
+  // Garde proposée à la sortie : Enregistrer / Abandonner / Annuler.
+  const guardLeave = async (): Promise<boolean> => {
+    if (!isDirty || !draft) return true;
+    const res = await confirmTri({
+      title: "Modifications non enregistrées",
+      message: `Le programme « ${draft.name} » a des modifications non enregistrées.`,
+      confirmLabel: "Enregistrer",
+      discardLabel: "Abandonner",
+      cancelLabel: "Annuler",
+    });
+    if (res === "cancel") return false;
+    if (res === "confirm") return handleSave();
+    return true; // abandonner → on poursuit sans sauver
+  };
+  guardRef.current = guardLeave;
 
   return (
     <div className="program-page">
@@ -322,20 +406,26 @@ export function ProgramPage() {
                       </div>
 
                       {step.type === 'ref' ? (
-                        <div className="flow-row">
-                          <span className="flow-hint">Séq. :</span>
-                          <select aria-label="Séquence de l'étape" className="flow-select" value={step.sequenceId} onChange={(e) => updateRefSeq(idx, e.target.value)}>
-                            <option value="">— choisir —</option>
-                            {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                        </div>
+                        <>
+                          <div className="flow-row">
+                            <span className="flow-hint">Séq. :</span>
+                            <select aria-label="Séquence de l'étape" className="flow-select flow-select-seq" value={step.sequenceId} onChange={(e) => updateRefSeq(idx, e.target.value)}>
+                              <option value="">— choisir —</option>
+                              {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                          </div>
+                          <StepThumbStrip steps={step.sequenceId ? refStepsCache[step.sequenceId] : undefined} />
+                        </>
                       ) : (
-                        <div className="flow-row">
-                          <span className="flow-hint">{step.steps.length} étape{step.steps.length !== 1 ? 's' : ''} inline</span>
-                          <button type="button" className="btn btn-sm flow-btn-right" title="Remplacer par le séquenceur actuel" onClick={() => replaceInlineStep(idx)}>
-                            Remplacer
-                          </button>
-                        </div>
+                        <>
+                          <div className="flow-row">
+                            <span className="flow-hint">{step.steps.length} étape{step.steps.length !== 1 ? 's' : ''} inline</span>
+                            <button type="button" className="btn btn-sm flow-btn-right" title="Remplacer par le séquenceur actuel" onClick={() => replaceInlineStep(idx)}>
+                              Remplacer
+                            </button>
+                          </div>
+                          <StepThumbStrip steps={step.steps.filter((s) => s.type !== 'interpolated')} />
+                        </>
                       )}
                     </div>
                   </Fragment>

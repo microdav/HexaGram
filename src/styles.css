@@ -3159,6 +3159,35 @@ html, body, #root {
 }
 .flow-select:focus { outline: none; border-color: var(--accent); }
 
+/* Le select de séquence ne s'étire pas au-delà de 200px. */
+.flow-select-seq {
+  flex: 0 1 200px;
+  max-width: 200px;
+}
+
+/* Bande de miniatures des steps non-interpolés sous le select. */
+.flow-step-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 8px;
+}
+.flow-step-thumb {
+  width: 48px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.flow-step-thumb .pose-thumb {
+  max-width: 100%;
+  max-height: 100%;
+}
+
 /* Add section */
 .flow-add-btn {
   background: none;

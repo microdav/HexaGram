@@ -18,7 +18,7 @@ export function ProjectTab({ onBeforeSwitch }: ProjectTabProps) {
   const isActive = activeTab === 'projet';
 
   const handleClick = async () => {
-    if (activeTab === 'conception' && onBeforeSwitch && !(await onBeforeSwitch())) return;
+    if (activeTab !== 'projet' && onBeforeSwitch && !(await onBeforeSwitch())) return;
     list();
     setActiveTab('projet');
   };
