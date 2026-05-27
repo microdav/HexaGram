@@ -241,7 +241,7 @@ export function SequencerPanel() {
     if (!ok) return;
     try {
       await useSavedSequencesStore.getState().remove(activeSequenceId);
-      useSequencerStore.getState().setSequenceName('Séquence');
+      useSequencerStore.getState().loadSteps([], 'Séquence');
     } catch { /* ignore */ }
   };
 
