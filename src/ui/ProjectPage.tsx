@@ -18,6 +18,7 @@ import {
   COMMAND_ELECTRONICS_CATALOG,
   type CommandElectronicsSpec,
 } from "../model/commandElectronics";
+import { BoardSvg } from "./BoardSvg";
 
 type DetailTab = "general" | "hardware" | "content" | "import";
 
@@ -275,6 +276,16 @@ function GenericCombobox<T extends { id: string; brand: string; model: string }>
 function ControllerSpecCard({ spec }: { spec: ServoControllerSpec }) {
   return (
     <div className="hw-spec-card">
+      <div className="hw-spec-illus">
+        <BoardSvg
+          brand={spec.brand}
+          model={spec.model}
+          dimensionsMm={spec.dimensionsMm}
+          interfaces={spec.interfaces}
+          channels={spec.channels}
+          width={200}
+        />
+      </div>
       <div className="hw-spec-row"><span>Canaux</span><span>{spec.channels}</span></div>
       <div className="hw-spec-row"><span>Interfaces</span><span>{spec.interfaces.join(", ")}</span></div>
       <div className="hw-spec-row"><span>Tension entrée</span><span>{spec.voltageInputV[0]}–{spec.voltageInputV[1]} V</span></div>
@@ -292,6 +303,16 @@ function ControllerSpecCard({ spec }: { spec: ServoControllerSpec }) {
 function CommandSpecCard({ spec }: { spec: CommandElectronicsSpec }) {
   return (
     <div className="hw-spec-card">
+      <div className="hw-spec-illus">
+        <BoardSvg
+          brand={spec.brand}
+          model={spec.model}
+          dimensionsMm={spec.dimensionsMm}
+          interfaces={spec.interfaces}
+          gpio={spec.gpio}
+          width={200}
+        />
+      </div>
       <div className="hw-spec-row"><span>CPU</span><span>{spec.cpu}</span></div>
       {spec.flashKb !== undefined && (
         <div className="hw-spec-row"><span>Flash</span><span>{spec.flashKb >= 1024 ? `${spec.flashKb / 1024} Mo` : `${spec.flashKb} Ko`}</span></div>

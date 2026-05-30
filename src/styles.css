@@ -5288,3 +5288,243 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 
 /* Poignée de redimensionnement : capte le glissé tactile sans scroller la page */
 .seq-resize-handle { touch-action: none; }
+
+/* ── Onglet Électronique ─────────────────────────────────────────────────── */
+.electro-page {
+  padding: 16px 20px;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Corps : navigation verticale (gauche) + panneau de contenu (droite) */
+.electro-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+.electro-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 180px;
+}
+.electro-subtab {
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.electro-subtab:hover { background: var(--bg-panel); color: var(--text); }
+.electro-subtab.active {
+  background: var(--bg-panel);
+  border-color: var(--border);
+  color: var(--accent);
+  font-weight: 600;
+}
+.electro-subpanel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  padding-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.app.tablet .electro-subnav { flex-basis: 210px; }
+.app.tablet .electro-subtab { padding: 14px 16px; font-size: 16px; }
+.electro-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.electro-title h2 { margin: 0 0 2px; font-size: 20px; }
+.electro-sub { margin: 0; color: var(--text-dim); font-size: 13px; max-width: 70ch; }
+
+.electro-banner {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  border: 1px solid var(--border);
+}
+.electro-banner--warn { background: rgba(255, 92, 92, 0.08); border-color: rgba(255, 92, 92, 0.4); }
+.electro-banner--info { background: rgba(0, 216, 255, 0.06); border-color: rgba(0, 216, 255, 0.3); }
+
+.electro-conn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.electro-conn-info { display: flex; align-items: center; gap: 12px; }
+.electro-conn-status { font-weight: 600; }
+.electro-conn-detail { font-size: 12px; color: var(--text-dim); }
+.electro-conn-proto { font-style: italic; }
+.electro-conn-actions { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.electro-baud { display: flex; flex-direction: column; font-size: 11px; color: var(--text-dim); gap: 2px; }
+.electro-baud select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: 13px;
+}
+
+.electro-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(255,255,255,0.04); }
+.electro-dot--connected { background: #34d399; }
+.electro-dot--connecting { background: #fbbf24; animation: electro-pulse 1s infinite; }
+.electro-dot--error { background: #ff5c5c; }
+.electro-dot--disconnected,
+.electro-dot--unsupported { background: #6b7280; }
+@keyframes electro-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.electro-globals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.electro-hint { font-size: 12px; color: var(--text-dim); flex: 1 1 260px; }
+
+.electro-legs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+}
+.electro-leg {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.electro-leg-title { font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+
+.electro-servo {
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.electro-servo:first-of-type { border-top: none; }
+.electro-servo--ident { background: rgba(0, 216, 255, 0.07); border-radius: 6px; }
+
+.electro-servo-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.electro-servo-name { font-weight: 600; min-width: 52px; }
+.electro-channel { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); }
+.electro-channel input {
+  width: 56px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-size: 13px;
+}
+.electro-channel--dup input { border-color: #ff5c5c; }
+.electro-dup-flag { color: #ff5c5c; }
+.electro-invert { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); margin-left: auto; }
+
+.electro-servo-test { display: flex; align-items: center; gap: 8px; }
+.electro-servo-test input[type="range"] { flex: 1; }
+.electro-angle { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; font-size: 13px; }
+
+.electro-servo-cal { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.electro-cal-label { color: var(--text-dim); }
+.electro-cal-val { font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
+.electro-cal-reset { margin-left: 4px; }
+
+.electro-logwrap { margin-top: 4px; }
+.electro-log-toggle {
+  background: none; border: none; color: var(--text-dim);
+  cursor: pointer; font-size: 12px; padding: 4px 0;
+}
+.electro-log {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 11px; max-height: 180px; overflow-y: auto;
+  color: var(--text-dim); white-space: pre-wrap; margin: 4px 0 0;
+}
+
+/* Mode tablette : cibles tactiles agrandies */
+.app.tablet .electro-channel input { width: 70px; padding: 8px; font-size: 15px; }
+.app.tablet .electro-servo-test { gap: 12px; }
+.app.tablet .electro-servo-cal .btn.btn-sm { padding: 8px 14px; font-size: 15px; }
+
+/* ── Aide carte SSC-32U (onglet Électronique) ────────────────────────────── */
+.electro-help {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.electro-help-title { font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+.electro-help details {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+.electro-help details:first-of-type { border-top: none; }
+.electro-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+  list-style: revert;
+}
+.electro-help summary:hover { color: var(--text); }
+.electro-help p { margin: 6px 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+
+.ssc-spec-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+.ssc-spec-table th {
+  text-align: left; width: 38%; padding: 4px 8px 4px 0;
+  color: var(--text-dim); font-weight: 500; vertical-align: top;
+}
+.ssc-spec-table td { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.ssc-spec-table tr:last-child td { border-bottom: none; }
+
+.ssc-list { margin: 6px 0; padding-left: 20px; font-size: 13px; line-height: 1.55; }
+.ssc-list li { margin: 3px 0; }
+.ssc-list--ol { counter-reset: none; }
+
+.ssc-diagram {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text-dim);
+  margin: 8px 0;
+}
+.ssc-note { font-size: 12.5px; background: rgba(245,197,24,0.06); border-left: 3px solid var(--accent); padding: 6px 10px; border-radius: 0 4px 4px 0; }
+.ssc-note--info { background: rgba(0,216,255,0.06); border-left-color: #60a5fa; }
+
+.ssc-dont-summary { color: #ff5c5c; }
+.ssc-dont-list {
+  margin: 6px 0; padding-left: 20px; font-size: 13px; line-height: 1.55;
+}
+.ssc-dont-list li { margin: 5px 0; }
+.ssc-dont-list li::marker { content: "✕ "; color: #ff5c5c; }
+
+/* ── Illustrations SVG des cartes ─────────────────────────────────────────── */
+.board-svg { display: block; max-width: 100%; height: auto; }
+.hw-spec-illus {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ssc-schema-wrap {
+  margin: 8px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+.electro-conn-thumb {
+  flex: 0 0 auto;
+  width: 76px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 2px;
+}

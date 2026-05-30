@@ -1,12 +1,19 @@
 import { create } from "zustand";
 import { api } from "../api/client";
 import type { ServoSpec } from "../model/servoTypes";
+import {
+  defaultElectronics,
+  normalizeElectronics,
+  type ProjectElectronics,
+} from "../model/electronics";
 
 export interface ProjectHardware {
   servoTypeId: string | null;
   servoControllerId: string | null;
   commandElectronicsId: string | null;
   customServoTypes: ServoSpec[];
+  /** Liaison servo↔canal + calibration du 0 + protocole — pilotage physique. */
+  electronics: ProjectElectronics;
 }
 
 export const DEFAULT_HARDWARE: ProjectHardware = {
@@ -14,6 +21,7 @@ export const DEFAULT_HARDWARE: ProjectHardware = {
   servoControllerId: null,
   commandElectronicsId: null,
   customServoTypes: [],
+  electronics: defaultElectronics(),
 };
 
 export interface ProjectPreferences {
@@ -60,6 +68,7 @@ interface ProjectsState {
   load: (id: string) => Promise<Project>;
   update: (id: string, patch: { name?: string; description?: string; hardware?: ProjectHardware; preferences?: ProjectPreferences }) => Promise<Project>;
   updateHardware: (patch: Partial<ProjectHardware>) => Promise<void>;
+  updateElectronics: (patch: Partial<ProjectElectronics>) => Promise<void>;
   updatePreferences: (patch: Partial<ProjectPreferences>) => Promise<void>;
   remove: (id: string) => Promise<void>;
   importFrom: (
@@ -76,6 +85,7 @@ function normalizeHardware(raw: Partial<ProjectHardware> | undefined): ProjectHa
     servoControllerId: raw?.servoControllerId ?? null,
     commandElectronicsId: raw?.commandElectronicsId ?? null,
     customServoTypes: raw?.customServoTypes ?? [],
+    electronics: normalizeElectronics(raw?.electronics),
   };
 }
 
@@ -159,6 +169,14 @@ export const useProjectStore = create<ProjectsState>((set, get) => ({
     const current = get().activeProject;
     if (!current) return;
     const newHardware = { ...current.hardware, ...patch };
+    await get().update(current.id, { hardware: newHardware });
+  },
+
+  updateElectronics: async (patch) => {
+    const current = get().activeProject;
+    if (!current) return;
+    const newElectronics = normalizeElectronics({ ...current.hardware.electronics, ...patch });
+    const newHardware = { ...current.hardware, electronics: newElectronics };
     await get().update(current.id, { hardware: newHardware });
   },
 

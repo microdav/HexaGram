@@ -10,7 +10,7 @@ export interface ToolboxConfig {
   floatPos: { x: number; y: number };
 }
 
-export type AppTab = 'projet' | 'conception' | 'programmation';
+export type AppTab = 'projet' | 'conception' | 'programmation' | 'electronique';
 
 export interface UiPrefs {
   leftOpen: boolean;

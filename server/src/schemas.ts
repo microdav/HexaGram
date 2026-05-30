@@ -239,12 +239,24 @@ const ServoSpecSchema = z.object({
   custom: z.boolean().optional(),
 });
 
+export const ServoBindingSchema = z.object({
+  channel: z.number().int().nullable(),
+  centerOffsetDeg: z.number(),
+  invert: z.boolean(),
+});
+
+export const ProjectElectronicsSchema = z.object({
+  serial: z.object({ baudRate: z.number().int().positive() }),
+  bindings: z.record(z.string(), ServoBindingSchema),
+});
+
 export const ProjectHardwareSchema = z.object({
   servoTypeId: z.string().nullable().optional(),
   servoControllerId: z.string().nullable().optional(),
   commandElectronicsId: z.string().nullable().optional(),
   customServoTypes: z.array(ServoSpecSchema).optional(),
-});
+  electronics: ProjectElectronicsSchema.optional(),
+}).passthrough();
 
 export const ProjectPreferencesSchema = z.object({
   /** Direction caméra (vecteur regard→caméra normalisé) pour les vignettes du séquenceur. */

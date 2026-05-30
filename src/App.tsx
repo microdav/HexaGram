@@ -17,6 +17,7 @@ import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
 import { ProjectTab } from "./ui/ProjectTab";
 import { ProjectPage } from "./ui/ProjectPage";
+import { ElectroniquePage } from "./ui/ElectroniquePage";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
@@ -297,6 +298,17 @@ export default function App() {
         >
           Programmation graphique
         </button>
+        {user && (
+          <button
+            type="button"
+            className={`app-tab${activeTab === 'electronique' ? ' active' : ''}`}
+            onClick={() => guardedSetActiveTab('electronique')}
+            disabled={!activeProjectId}
+            title={!activeProjectId ? "Sélectionnez ou créez un projet d'abord" : "Connexion carte, liaison et calibration des servos"}
+          >
+            Électronique
+          </button>
+        )}
       </nav>
 
       <AuthModal open={openModal} onClose={() => setOpenModal(false)} />
@@ -356,6 +368,8 @@ export default function App() {
       )}
 
       {activeTab === 'programmation' && <ProgramPage />}
+
+      {activeTab === 'electronique' && user && activeProjectId && <ElectroniquePage />}
 
       {/* Renderer offscreen partagé : vignettes du séquenceur, de la toolbox Poses,
           et du bloc Init en Programmation graphique. Doit rester monté quel que
