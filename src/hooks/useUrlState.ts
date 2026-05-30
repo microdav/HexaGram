@@ -20,7 +20,7 @@ export interface UrlInputs {
 }
 
 const VALID_TABS: AppTab[] = ["projet", "conception", "programmation", "electronique"];
-const VALID_ELECTRO_SUBS: ElectroSubTab[] = ["architecture", "calibration", "aide"];
+const VALID_ELECTRO_SUBS: ElectroSubTab[] = ["architecture", "calibration"];
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
 

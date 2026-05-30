@@ -13,7 +13,7 @@ export interface ToolboxConfig {
 export type AppTab = 'projet' | 'conception' | 'programmation' | 'electronique';
 
 /** Sous-onglets de la page Électronique (routables dans l'URL). */
-export type ElectroSubTab = 'architecture' | 'calibration' | 'aide';
+export type ElectroSubTab = 'architecture' | 'calibration';
 
 export interface UiPrefs {
   leftOpen: boolean;

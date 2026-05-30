@@ -6,13 +6,20 @@
 // « à venir » sont des emplacements désactivés, prêts à être activés quand le
 // modèle gérera capteurs et périphériques.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { SERVOS, LEG_NAMES } from "../model/hexapod";
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 import { findServoType } from "../model/servoTypes";
-import { BoardSvg } from "./BoardSvg";
+import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
+import { Ssc32uHelp } from "./Ssc32uHelp";
+
+// Guide officiel SSC-32U (déposé dans public/docs/, servi à la racine), FR + EN.
+const SSC32U_DOC_URLS: Record<"fr" | "en", string> = {
+  fr: "/docs/lynxmotion_ssc-32u_usb_user_guide-fr.pdf",
+  en: "/docs/lynxmotion_ssc-32u_usb_user_guide-en.pdf",
+};
 
 /** Interface de liaison la plus probable entre deux cartes (intersection). */
 function linkInterface(a: string[], b: string[]): string {
@@ -75,6 +82,20 @@ export function ElectroArchitecture() {
 
   const cmdToCtrl = board && controller ? linkInterface(board.interfaces, controller.interfaces) : null;
 
+  // Popin d'aide sur la carte contrôleur (remplace l'ancien sous-onglet « Aide carte »).
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTab, setHelpTab] = useState<"aide" | "doc">("aide");
+  const [docLang, setDocLang] = useState<"fr" | "en">("fr");
+  const [helpMaximized, setHelpMaximized] = useState(false);
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHelpOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [helpOpen]);
+
   if (!hardware) return null;
 
   const nothingDefined = !board && !controller;
@@ -125,18 +146,31 @@ export function ElectroArchitecture() {
         </div>
 
         {/* Contrôleur de servos */}
-        <div className={`arch-node${controller ? "" : " arch-node--empty"}`}>
+        <div className={`arch-node arch-node--ctrl${controller ? "" : " arch-node--empty"}`}>
           <div className="arch-node-role">Contrôleur de servos</div>
           {controller ? (
             <>
-              <BoardSvg
-                brand={controller.brand}
-                model={controller.model}
-                dimensionsMm={controller.dimensionsMm}
-                interfaces={controller.interfaces}
-                channels={controller.channels}
-                width={150}
-              />
+              <button
+                type="button"
+                className="arch-help-btn"
+                onClick={() => setHelpOpen(true)}
+                title="Aide sur cette carte"
+                aria-label="Aide sur cette carte"
+              >
+                ?
+              </button>
+              {controller.id === "lynxmotion-ssc-32u" ? (
+                <Ssc32uBoard width={150} />
+              ) : (
+                <BoardSvg
+                  brand={controller.brand}
+                  model={controller.model}
+                  dimensionsMm={controller.dimensionsMm}
+                  interfaces={controller.interfaces}
+                  channels={controller.channels}
+                  width={150}
+                />
+              )}
               <div className="arch-node-name">{controller.brand} {controller.model}</div>
               <div className="arch-node-meta">{controller.channels} canaux · {controller.pulseUs.min}–{controller.pulseUs.max} µs</div>
             </>
@@ -200,6 +234,96 @@ export function ElectroArchitecture() {
           (I2C, SPI, GPIO…) dans une prochaine version.
         </p>
       </div>
+
+      {/* ── Popin d'aide carte ─────────────────────────────────────────── */}
+      {helpOpen && (
+        <div
+          className="electro-help-modal-backdrop"
+          onClick={() => setHelpOpen(false)}
+          role="presentation"
+        >
+          <div
+            className={`electro-help-modal${helpMaximized ? " electro-help-modal--max" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Aide sur la carte contrôleur"
+          >
+            <button
+              type="button"
+              className="electro-help-modal-expand"
+              onClick={() => setHelpMaximized((v) => !v)}
+              title={helpMaximized ? "Réduire" : "Agrandir"}
+              aria-label={helpMaximized ? "Réduire la fenêtre" : "Agrandir la fenêtre"}
+            >
+              {helpMaximized ? "🗗" : "⛶"}
+            </button>
+            <button
+              type="button"
+              className="electro-help-modal-close"
+              onClick={() => setHelpOpen(false)}
+              aria-label="Fermer l'aide"
+            >
+              ✕
+            </button>
+
+            <div className="electro-help-tabs">
+              <button
+                type="button"
+                className={`electro-help-tab${helpTab === "aide" ? " active" : ""}`}
+                onClick={() => setHelpTab("aide")}
+              >
+                Aide rapide
+              </button>
+              <button
+                type="button"
+                className={`electro-help-tab${helpTab === "doc" ? " active" : ""}`}
+                onClick={() => setHelpTab("doc")}
+              >
+                Documentation complète
+              </button>
+            </div>
+
+            <div className="electro-help-modal-body">
+              {helpTab === "aide" ? (
+                <div className="electro-help-scroll">
+                  <Ssc32uHelp controllerId={hardware?.servoControllerId ?? null} />
+                </div>
+              ) : (
+                <>
+                  <div className="electro-help-doc-bar">
+                    <div className="electro-help-doc-lang">
+                      <span>Guide officiel Lynxmotion SSC-32U</span>
+                      <button
+                        type="button"
+                        className={`electro-help-lang-btn${docLang === "fr" ? " active" : ""}`}
+                        onClick={() => setDocLang("fr")}
+                      >
+                        Français
+                      </button>
+                      <button
+                        type="button"
+                        className={`electro-help-lang-btn${docLang === "en" ? " active" : ""}`}
+                        onClick={() => setDocLang("en")}
+                      >
+                        English
+                      </button>
+                    </div>
+                    <a href={SSC32U_DOC_URLS[docLang]} target="_blank" rel="noopener noreferrer">
+                      Ouvrir dans un nouvel onglet ↗
+                    </a>
+                  </div>
+                  <iframe
+                    className="electro-help-doc-frame"
+                    src={SSC32U_DOC_URLS[docLang]}
+                    title={`Documentation SSC-32U (${docLang === "fr" ? "français" : "anglais"})`}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

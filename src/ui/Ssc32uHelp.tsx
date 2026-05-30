@@ -9,15 +9,15 @@ import { Ssc32uSchematic } from "./BoardSvg";
 // la fiche du servo et le manuel PDF (la sérigraphie de la carte fait foi).
 
 const SPECS: Array<[string, string]> = [
-  ["Canaux", "32 (4 bancs de 8 — 0–15 sur VS1, 16–31 sur VS2)"],
+  ["Canaux", "32 servos en 2 sections de 16 (0–15 sur VS1, 16–31 sur VS2), connecteurs groupés par 4"],
   ["Impulsion", "500–2500 µs (centre 1500 µs), résolution 1 µs"],
   ["Course servo", "≈ 180°"],
-  ["Liaison", "USB (FTDI → port COM virtuel) + série TTL ; socket XBee (sans-fil)"],
-  ["Débit série", "9600 (défaut) / 38400 / 115200 — cavaliers BAUD"],
-  ["Alim logique (VL)", "auto-sélection : USB, ou VS, ou VL externe (~5–9 V)"],
+  ["Liaison", "USB (FTDI → port COM virtuel) + série TTL (TX/RX/G) ; socket XBee (sans-fil)"],
+  ["Débit série", "9600 (défaut) / 38400 / 115200 — réglé par le bouton Baud (pas de cavalier)"],
+  ["Alim logique", "auto-sélection MAX(VL, VS1) − 0,7 V régulée en 5 V — rien à brancher sur VL tant que VS1 ≥ 5,3 V"],
   ["Alim servos (VS1/VS2)", "selon le servo — typiquement 4,8–6 V (NiMH 5×AA ≈ 6 V)"],
-  ["Entrées", "4 entrées statiques A–D (capteurs)"],
-  ["Microcontrôleur", "Atmel AVR (firmware SSC-32U)"],
+  ["Entrées/sorties", "8 broches A–H (lecture ana/num de capteurs) ; A/B = I2C (SCL/SDA)"],
+  ["Microcontrôleur", "Atmel ATmega328P (firmware SSC-32U)"],
 ];
 
 const DONTS: string[] = [
@@ -70,9 +70,10 @@ export function Ssc32uHelp({ controllerId }: { controllerId: string | null }) {
           <li><strong>VS1</strong> — alimente les servos des voies <strong>0 à 15</strong>.</li>
           <li><strong>VS2</strong> — alimente les servos des voies <strong>16 à 31</strong>.</li>
           <li>
-            <strong>VL</strong> — alimente la logique. Sur la SSC-32U la logique est en
-            <strong> auto-sélection</strong> (USB, ou VS, ou VL externe) : en pratique l'USB suffit
-            pour configurer/tester.
+            <strong>VL</strong> — alimente la logique. La SSC-32U sélectionne <strong>automatiquement</strong>
+            la plus haute tension entre VL et VS1 : tant que <strong>VS1 ≥ 5,3 V</strong>, il n'y a
+            <strong> rien à brancher sur VL</strong>. On n'alimente VL séparément que pour des cas
+            précis (VS1 trop bas à 4,8 V, ou garder la logique vivante quand on coupe la puissance servos).
           </li>
         </ul>
 
@@ -80,10 +81,18 @@ export function Ssc32uHelp({ controllerId }: { controllerId: string | null }) {
           <Ssc32uSchematic />
         </div>
 
+        <p className="ssc-note ssc-note--info">
+          ⚠ <strong>L'USB n'alimente pas le microcontrôleur</strong> — uniquement la puce FTDI. Le
+          port COM apparaît sur l'ordinateur, mais le cerveau de la carte (ATmega) reste éteint tant
+          que <strong>VS1 (ou VL)</strong> n'est pas alimenté. La LED <strong>PWR</strong> ne s'allume
+          que lorsque la logique reçoit du courant.
+        </p>
+
         <p className="ssc-note">
-          Montage type le plus simple : <strong>USB</strong> pour la logique + une <strong>alim
-          servo 6 V</strong> (2–3 A) sur <strong>VS1</strong>, cavalier <strong>VS1=VS2</strong> en
-          place pour alimenter les 32 voies depuis une seule source. La masse est commune sur la carte.
+          Montage type le plus simple : une seule <strong>alim 6 V</strong> (2–3 A) sur
+          <strong> VS1</strong>, cavaliers <strong>VS1=VS2</strong> en place pour alimenter les 32
+          voies depuis une seule source ; l'<strong>USB</strong> sert à la communication (port COM).
+          La masse est commune sur la carte.
         </p>
       </details>
 
@@ -91,17 +100,22 @@ export function Ssc32uHelp({ controllerId }: { controllerId: string | null }) {
         <summary>Cavaliers (jumpers)</summary>
         <ul className="ssc-list">
           <li>
-            <strong>VS1=VS2</strong> — relie les deux bancs servo : une seule alim sur VS1
-            alimente les 32 voies. À <em>retirer</em> si vous utilisez deux alims distinctes.
+            <strong>VS1=VS2</strong> (deux cavaliers, <em>posés d'usine</em>) — relient les deux bancs
+            servo : une seule alim sur VS1 alimente les 32 voies. Deux cavaliers (et non un) pour
+            encaisser le courant. À <em>retirer</em> si vous utilisez deux alims distinctes ; posés,
+            alimentez VS1 <em>ou</em> VS2, jamais les deux.
           </li>
           <li>
-            <strong>Alim logique</strong> — pas de cavalier à poser : la SSC-32U a une
-            auto-sélection (gros condensateurs anti-brown-out). Le cavalier VS1=VL de l'ancienne
-            SSC-32 n'est plus nécessaire.
+            <strong>VL=VS</strong> (2 broches à droite du bornier, <em>non posé et non fourni</em>) —
+            forçage <em>optionnel</em> : oblige la logique à se servir de VS1 au lieu de l'auto-sélection.
+            À laisser <strong>ouvert</strong> dans la quasi-totalité des cas. Si vous le posez,
+            <strong> n'utilisez pas</strong> le bornier VL.
           </li>
           <li>
-            <strong>BAUD</strong> (2 cavaliers) — sélectionnent 9600 / 38400 / 115200. D'usine =
-            <strong> 9600</strong>. Réglez la « Vitesse » ci-dessus sur la même valeur.
+            <strong>Débit série (Baud)</strong> — réglé par le <strong>bouton-poussoir</strong> de la
+            carte (et non par cavalier) : maintenez-le appuyé pour faire défiler 9600 / 38400 / 115200
+            (LED verte / rouge / les deux). D'usine = <strong>9600</strong>. Réglez la « Vitesse »
+            ci-dessus sur la même valeur.
           </li>
         </ul>
         <p className="ssc-note">
@@ -124,11 +138,11 @@ export function Ssc32uHelp({ controllerId }: { controllerId: string | null }) {
           pouvoir monter les palonniers droits, puis mémoriser l'offset.
         </p>
         <p className="ssc-note ssc-note--info">
-          <strong>En USB seul (sans alim VS) :</strong> la carte se connecte et accepte les
-          commandes (la logique est alimentée par l'USB). Vous pouvez donc déjà <strong>mapper les
-          canaux</strong>, vérifier le protocole et préparer la config — <em>mais les servos ne
-          bougeront pas</em> tant que VS1/VS2 ne sont pas alimentés. L'USB ne peut pas fournir le
-          courant des servos.
+          <strong>USB seul ne suffit pas :</strong> l'USB n'alimente que la puce FTDI — le port COM
+          apparaît, mais le microcontrôleur reste éteint tant que <strong>VS1 (ou VL)</strong> n'est
+          pas alimenté. La carte ne répondra donc à aucune commande sans alim. Branchez toujours une
+          alim 6 V sur VS1 (LED <strong>PWR</strong> allumée) : la logique <em>et</em> les servos sont
+          alors prêts.
         </p>
         <p>
           Procédure conseillée (alim VS 6 V branchée) :

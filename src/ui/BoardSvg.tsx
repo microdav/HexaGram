@@ -197,6 +197,212 @@ export function BoardSvg({
   );
 }
 
+// ── Illustration fidèle de la SSC-32U ────────────────────────────────────────
+//
+// Vue « réaliste » de la carte (d'après une photo du PCB réel) : sérigraphie
+// verte, 32 voies servo réparties en 8 bancs de 4 sur les deux grands bords,
+// micro-USB, MCU AVR + quartz, drivers, socket XBee, bouton Baud, bornier
+// d'alimentation à vis et condensateurs. Purement décorative / didactique.
+
+const SSC32_GREEN_SILK = "#eafff0";
+
+/** Banc de 4 voies servo (4 colonnes × 3 broches dorées) + étiquette. */
+function SscBank({
+  x,
+  y,
+  label,
+  labelAbove,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  labelAbove: boolean;
+}) {
+  const cols = [0, 1, 2, 3];
+  const rows = [0, 1, 2];
+  return (
+    <g>
+      <rect x={x} y={y} width={36} height={15} rx={1.5} fill="#0c0e12" />
+      {cols.map((c) =>
+        rows.map((r) => (
+          <circle key={`${c}-${r}`} cx={x + 7 + c * 7.5} cy={y + 3.5 + r * 4} r={1.35} fill={PIN_GOLD} />
+        ))
+      )}
+      <text
+        x={x + 18}
+        y={labelAbove ? y - 2 : y + 24}
+        fontSize={5.5}
+        textAnchor="middle"
+        fill={SSC32_GREEN_SILK}
+        fillOpacity={0.85}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/** Petit boîtier SOIC sombre avec pattes (driver / logique). */
+function SscChip({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+  const legs = Math.max(2, Math.round(w / 3));
+  return (
+    <g>
+      {Array.from({ length: legs }, (_, i) => {
+        const lx = x + (w / legs) * (i + 0.5) - 0.7;
+        return (
+          <g key={i}>
+            <rect x={lx} y={y - 1.6} width={1.4} height={1.6} fill="#9aa0aa" />
+            <rect x={lx} y={y + h} width={1.4} height={1.6} fill="#9aa0aa" />
+          </g>
+        );
+      })}
+      <rect x={x} y={y} width={w} height={h} rx={1} fill="#0b0c0f" stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
+    </g>
+  );
+}
+
+/** Condensateur électrolytique (cylindre vu de dessus). */
+function SscCap({ cx, cy }: { cx: number; cy: number }) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={9} fill="url(#ssc-cap)" stroke="#26282d" strokeWidth={0.8} />
+      <path d={`M ${cx - 8} ${cy} a 8 8 0 0 1 16 0`} fill="#1b1d22" fillOpacity={0.55} />
+      <text x={cx} y={cy + 2} fontSize={4.5} textAnchor="middle" fill={SSC32_GREEN_SILK} fillOpacity={0.7}>220</text>
+    </g>
+  );
+}
+
+interface Ssc32uBoardProps {
+  width?: number;
+  className?: string;
+}
+
+/** Illustration détaillée de la Lynxmotion SSC-32U (orientation paysage). */
+export function Ssc32uBoard({ width = 150, className }: Ssc32uBoardProps) {
+  const silk = SSC32_GREEN_SILK;
+  return (
+    <svg
+      viewBox="0 0 248 172"
+      width={width}
+      className={className ? `board-svg ${className}` : "board-svg"}
+      role="img"
+      aria-label="Illustration de la carte contrôleur Lynxmotion SSC-32U"
+    >
+      <defs>
+        <linearGradient id="ssc-pcb" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#3f8a54" />
+          <stop offset="1" stopColor="#2a6038" />
+        </linearGradient>
+        <radialGradient id="ssc-cap" cx="0.35" cy="0.3" r="0.85">
+          <stop offset="0" stopColor="#d3d8df" />
+          <stop offset="0.5" stopColor="#8b9099" />
+          <stop offset="1" stopColor="#34373d" />
+        </radialGradient>
+        <linearGradient id="ssc-usb" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#e8c34d" />
+          <stop offset="1" stopColor="#b9912a" />
+        </linearGradient>
+      </defs>
+
+      {/* PCB + léger reflet de vernis */}
+      <rect x={12} y={8} width={224} height={156} rx={8} fill="url(#ssc-pcb)" stroke="rgba(0,0,0,0.45)" strokeWidth={1} />
+      <rect x={12} y={8} width={224} height={50} rx={8} fill="#ffffff" fillOpacity={0.05} />
+
+      {/* Trous de fixation */}
+      {[
+        [24, 20],
+        [224, 20],
+        [24, 152],
+        [224, 152],
+      ].map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r={3} fill="rgba(0,0,0,0.5)" stroke={silk} strokeOpacity={0.55} strokeWidth={0.7} />
+      ))}
+
+      {/* Connecteur micro-USB (bord gauche) */}
+      <rect x={3} y={78} width={20} height={20} rx={2.5} fill="url(#ssc-usb)" stroke="#7c5f1a" strokeWidth={0.6} />
+      <rect x={9} y={82} width={12} height={12} rx={1.5} fill="#4a4d54" />
+      <text x={30} y={75} fontSize={5.5} fill={silk} fillOpacity={0.85}>USB</text>
+
+      {/* Bancs servo — bord supérieur : voies 16-31 */}
+      {["16–19", "20–23", "24–27", "28–31"].map((lab, i) => (
+        <SscBank key={`t${i}`} x={38 + i * 42} y={24} label={lab} labelAbove />
+      ))}
+      {/* Bancs servo — bord inférieur : voies 0-15 */}
+      {["0–3", "4–7", "8–11", "12–15"].map((lab, i) => (
+        <SscBank key={`b${i}`} x={38 + i * 42} y={128} label={lab} labelAbove={false} />
+      ))}
+
+      {/* Socket XBee (deux rangées femelles) */}
+      <text x={80} y={44} fontSize={5.5} textAnchor="middle" fill={silk} fillOpacity={0.85}>XBee</text>
+      {[64, 92].map((sx) => (
+        <g key={sx}>
+          <rect x={sx} y={46} width={7} height={40} rx={1.5} fill="#0c0e12" />
+          {Array.from({ length: 10 }, (_, i) => (
+            <circle key={i} cx={sx + 3.5} cy={49 + i * 4} r={1.2} fill={PIN_GOLD} />
+          ))}
+        </g>
+      ))}
+
+      {/* Bouton « Baud » + LEDs B/C */}
+      <rect x={120} y={48} width={11} height={9} rx={1.5} fill="#1a1c20" stroke="#2c2f35" strokeWidth={0.6} />
+      <rect x={122} y={50} width={7} height={5} rx={1} fill="#3a3d44" />
+      <text x={125} y={45} fontSize={5} textAnchor="middle" fill={silk} fillOpacity={0.8}>Baud</text>
+      <rect x={140} y={49} width={4} height={3} rx={0.6} fill="#7fe6a0" />
+      <rect x={147} y={49} width={4} height={3} rx={0.6} fill="#ff7a7a" />
+
+      {/* Drivers / logique (SOIC) */}
+      <SscChip x={44} y={92} w={17} h={11} />
+      <SscChip x={44} y={108} w={17} h={11} />
+      <SscChip x={176} y={70} w={17} h={10} />
+      <SscChip x={176} y={96} w={17} h={11} />
+
+      {/* MCU AVR (QFP) avec pattes sur 4 côtés */}
+      <g>
+        {Array.from({ length: 7 }, (_, i) => {
+          const p = 90 + i * 3.5;
+          return (
+            <g key={i} fill="#9aa0aa">
+              <rect x={p} y={84.5} width={1.6} height={1.5} />
+              <rect x={p} y={112} width={1.6} height={1.5} />
+              <rect x={114.5} y={p - 2} width={1.5} height={1.6} />
+              <rect x={140} y={p - 2} width={1.5} height={1.6} />
+            </g>
+          );
+        })}
+        <rect x={116} y={86} width={24} height={24} rx={2} fill="#0a0b0e" stroke="rgba(255,255,255,0.08)" strokeWidth={0.6} />
+        <circle cx={120} cy={90} r={1.4} fill="rgba(255,255,255,0.22)" />
+      </g>
+
+      {/* Quartz */}
+      <rect x={148} y={90} width={22} height={12} rx={6} fill="#c7ccd3" stroke="#7a7e85" strokeWidth={0.6} />
+      <rect x={150} y={92} width={18} height={8} rx={5} fill="#aeb3bb" />
+
+      {/* Bornier d'alimentation à vis + condensateurs (bord droit) */}
+      <rect x={199} y={24} width={37} height={28} rx={3} fill="#1c5234" stroke="#3f8a54" strokeWidth={0.8} />
+      {Array.from({ length: 6 }, (_, i) => (
+        <g key={i}>
+          <circle cx={203.5 + i * 5.4} cy={38} r={2.3} fill="#0d0d0d" stroke="#cfcfcf" strokeWidth={0.6} />
+          <line x1={201.7 + i * 5.4} y1={38} x2={205.3 + i * 5.4} y2={38} stroke="#cfcfcf" strokeWidth={0.5} />
+        </g>
+      ))}
+      <text x={217} y={20} fontSize={5.5} textAnchor="middle" fill={silk} fillOpacity={0.85}>VS1 · VS2 · VL</text>
+      <SscCap cx={210} cy={84} />
+      <SscCap cx={210} cy={110} />
+      {/* Régulateur de tension (TO-252) */}
+      <rect x={200} y={128} width={26} height={15} rx={1.5} fill="#1b1c20" stroke="#2c2f35" strokeWidth={0.5} />
+      <rect x={200} y={128} width={26} height={4} rx={1.5} fill="#8b9099" />
+
+      {/* Cavaliers jaunes */}
+      <rect x={70} y={92} width={12} height={6} rx={1} fill="#f5c518" />
+      <rect x={70} y={102} width={12} height={6} rx={1} fill="#f5c518" />
+
+      {/* Sérigraphie */}
+      <text x={118} y={120} fontSize={8} fontWeight={800} textAnchor="middle" fill={silk}>SSC-32U</text>
+      <text x={118} y={126} fontSize={4.6} textAnchor="middle" fill={silk} fillOpacity={0.8}>lynxmotion.com</text>
+    </svg>
+  );
+}
+
 // ── Schéma annoté SSC-32U (aide au branchement) ──────────────────────────────
 
 const SSC_RED = "#7c1322";
@@ -255,7 +461,7 @@ export function Ssc32uSchematic({ className }: { className?: string }) {
       width="100%"
       className={className ? `board-svg ${className}` : "board-svg"}
       role="img"
-      aria-label="Schéma annoté de la carte SSC-32U : bancs servo, alimentations VS1/VS2/VL, cavaliers, USB et XBee"
+      aria-label="Schéma annoté de la carte SSC-32U : bancs servo, alimentations VS1/VS2/VL, cavalier VS1=VS2, bouton Baud, USB et XBee"
     >
       <rect x={6} y={6} width={348} height={188} rx={10} fill={SSC_RED} stroke="rgba(0,0,0,0.45)" />
       <text x={16} y={20} fontSize={11} fontWeight={700} fill={SSC_SILK}>Lynxmotion SSC-32U</text>
@@ -278,9 +484,15 @@ export function Ssc32uSchematic({ className }: { className?: string }) {
       <rect x={150} y={70} width={60} height={34} rx={3} fill="#0c0d10" stroke="rgba(255,255,255,0.1)" />
       <text x={180} y={91} fontSize={8} textAnchor="middle" fill={SSC_SILK} fillOpacity={0.8}>AVR</text>
 
-      {/* Cavaliers */}
+      {/* Cavalier VS1=VS2 (réel, posé d'usine) */}
       <Jumper x={70} y={112} label="VS1=VS2" />
-      <Jumper x={232} y={112} label="BAUD ×2" />
+
+      {/* Bouton-poussoir Baud — le débit série se règle par ce bouton, pas par cavalier */}
+      <g>
+        <rect x={226} y={110} width={16} height={12} rx={2} fill="#1a1c20" stroke="#3a3d44" strokeWidth={0.8} />
+        <rect x={229} y={112.5} width={10} height={7} rx={1.5} fill="#3a3d44" />
+        <text x={234} y={108} fontSize={7} textAnchor="middle" fill={SSC_SILK}>Bouton Baud</text>
+      </g>
 
       {/* Borniers d'alimentation */}
       <Terminal x={40} label="VS1" />

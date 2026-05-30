@@ -14,7 +14,6 @@ import {
 import type { ConnTarget } from "../store/useSerialStore";
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
-import { Ssc32uHelp } from "./Ssc32uHelp";
 import { BoardSvg } from "./BoardSvg";
 import { ElectroArchitecture } from "./ElectroArchitecture";
 
@@ -61,9 +60,15 @@ export function ElectroniquePage() {
   const setConsoleHeight = useSerialStore((s) => s.setConsoleHeight);
   const rxByteCount = useSerialStore((s) => s.rxByteCount);
 
-  // Sous-onglet routé via l'URL (persisté dans uiPrefs).
-  const subTab = useToolboxStore((s) => s.uiPrefs.electroSubTab ?? "architecture");
+  // Sous-onglet routé via l'URL (persisté dans uiPrefs). L'ancien onglet « aide »
+  // a été remplacé par une popin dans Architecture : on replie toute valeur héritée
+  // (dont "aide") sur "architecture".
+  const storedSubTab = useToolboxStore((s) => s.uiPrefs.electroSubTab);
   const setSubTab = useToolboxStore((s) => s.setElectroSubTab);
+  const subTab = storedSubTab === "calibration" ? "calibration" : "architecture";
+  useEffect(() => {
+    if ((storedSubTab as string) === "aide") setSubTab("architecture");
+  }, [storedSubTab, setSubTab]);
   // Rappel « alim servo absente » : masquable une fois lu (la carte ne remonte
   // pas l'état réel de VS, c'est un avertissement contextuel).
   const [powerNoteDismissed, setPowerNoteDismissed] = useState(false);
@@ -433,21 +438,10 @@ export function ElectroniquePage() {
           >
             Liaison &amp; calibration
           </button>
-          <button
-            type="button"
-            className={`electro-subtab${subTab === "aide" ? " active" : ""}`}
-            onClick={() => setSubTab("aide")}
-          >
-            Aide carte
-          </button>
         </nav>
 
         <div className="electro-subpanel">
           {subTab === "architecture" && <ElectroArchitecture />}
-
-          {subTab === "aide" && (
-            <Ssc32uHelp controllerId={hardware?.servoControllerId ?? null} />
-          )}
 
           {subTab === "calibration" && (
             <>
