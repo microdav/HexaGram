@@ -4,6 +4,7 @@ import {
   angleToPulseUs,
   protocolForController,
   resolveHardwareSpecs,
+  defaultBinding,
   GENERIC_ASCII_PROTOCOL,
   type ServoBinding,
 } from "../model/electronics";
@@ -181,9 +182,12 @@ function hardwareContext() {
   return { electronics, protocol, target, ...specs };
 }
 
-function bindingFor(servoId: number): ServoBinding | null {
+function bindingFor(servoId: number): ServoBinding {
+  // Même fallback que l'UI (defaultBinding) : sinon le store renverrait null
+  // quand electronics est absent alors que le slider, lui, reste actif sur le
+  // canal par défaut → commande silencieusement ignorée et non tracée.
   const { electronics } = hardwareContext();
-  return electronics?.bindings?.[servoId] ?? null;
+  return electronics?.bindings?.[servoId] ?? defaultBinding(servoId);
 }
 
 const _console = readConsole();
@@ -266,7 +270,10 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     if (get().status !== "connected") return;
     const { protocol, servo, controller } = hardwareContext();
     const binding = bindingFor(servoId);
-    if (!binding || binding.channel == null) return;
+    if (binding.channel == null) {
+      pushLog(set, "info", `Servo ${servoId} non câblé (aucun canal) — commande ignorée`);
+      return;
+    }
     const us = angleToPulseUs(deg, binding, servo, controller);
     const cmd = protocol.move(binding.channel, us);
     try {

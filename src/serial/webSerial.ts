@@ -12,6 +12,7 @@ interface SerialPortInfoLike {
 interface SerialPortLike {
   open(options: { baudRate: number }): Promise<void>;
   close(): Promise<void>;
+  setSignals?(signals: { dataTerminalReady?: boolean; requestToSend?: boolean }): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
   writable: WritableStream<Uint8Array> | null;
   getInfo(): SerialPortInfoLike;
@@ -71,6 +72,14 @@ export class SerialLink {
     }
     this.port = port;
     this.writer = port.writable.getWriter();
+    // Beaucoup d'adaptateurs FTDI (cas SSC-32U) n'activent la liaison que si
+    // DTR/RTS sont assertés — le logiciel d'origine le fait. Sans ça, l'envoi
+    // peut sembler partir mais la carte ne répond jamais (RX muet).
+    try {
+      await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+    } catch {
+      /* setSignals non supporté / refusé — on continue sans bloquer */
+    }
     this.label = describePort(port);
     return this.label;
   }
