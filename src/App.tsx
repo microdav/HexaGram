@@ -39,6 +39,7 @@ export default function App() {
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
   const activeTab = useToolboxStore((s) => s.uiPrefs.activeTab ?? 'conception');
+  const electroSubTab = useToolboxStore((s) => s.uiPrefs.electroSubTab ?? 'calibration');
   const tabletMode = useToolboxStore((s) => s.tabletMode);
   const setTabletMode = useToolboxStore((s) => s.setTabletMode);
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
@@ -74,6 +75,9 @@ export default function App() {
     const initial = getInitialUrlState();
     if (initial.tab && initial.tab !== useToolboxStore.getState().uiPrefs.activeTab) {
       useToolboxStore.getState().setActiveTab(initial.tab);
+    }
+    if (initial.electroSub) {
+      useToolboxStore.getState().setElectroSubTab(initial.electroSub);
     }
     bootstrap().then(() => {
       if (!useAuthStore.getState().user) {
@@ -241,7 +245,7 @@ export default function App() {
   }, [user, activeTab, setActiveTab]);
 
   // Sync de l'état → URL (replaceState : pas d'entrées d'historique).
-  // URL : /{userLogin}/{projectSlug}/{tab}/{profileSlug?}/{programSlug?}
+  // URL : /{userLogin}/{projectSlug}/{tab}/{profileSlug?|electroSubTab?}/{programSlug?}
   // En mode démo l'URL est juste "/".
   useEffect(() => {
     const profile = profiles.find((p) => p.id === activeProfileId);
@@ -252,8 +256,9 @@ export default function App() {
       tab: activeTab,
       profileName: profile?.name ?? null,
       programName: program?.name ?? null,
+      electroSubTab: activeTab === 'electronique' ? electroSubTab : null,
     });
-  }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs]);
+  }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs, electroSubTab]);
 
   return (
     <div className={`app${tabletMode ? " tablet" : ""}`}>

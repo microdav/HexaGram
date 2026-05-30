@@ -50,7 +50,9 @@ function describePort(port: SerialPortLike): string {
 export class SerialLink {
   private port: SerialPortLike | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private encoder = new TextEncoder();
+  private decoder = new TextDecoder();
   label: string | null = null;
 
   get connected(): boolean {
@@ -79,7 +81,47 @@ export class SerialLink {
     await this.writer.write(this.encoder.encode(cmd));
   }
 
+  /**
+   * Démarre la boucle de lecture du port. `onBytes` reçoit chaque fragment
+   * brut (Uint8Array) tel que renvoyé par la carte — le décodage texte / hex
+   * est laissé à l'appelant pour un diagnostic fidèle. Tourne en tâche de fond
+   * jusqu'à la déconnexion.
+   */
+  startReader(onBytes: (bytes: Uint8Array) => void): void {
+    if (!this.port?.readable || this.reader) return;
+    const reader = this.port.readable.getReader();
+    this.reader = reader;
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value && value.length) onBytes(value);
+        }
+      } catch {
+        /* lecture annulée (déconnexion) ou port fermé */
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          /* reader déjà libéré */
+        }
+      }
+    })();
+  }
+
+  decode(bytes: Uint8Array): string {
+    return this.decoder.decode(bytes);
+  }
+
   async disconnect(): Promise<void> {
+    // Annule la lecture en premier pour débloquer la boucle read().
+    try {
+      await this.reader?.cancel();
+    } catch {
+      /* reader déjà annulé */
+    }
+    this.reader = null;
     try {
       this.writer?.releaseLock();
     } catch {

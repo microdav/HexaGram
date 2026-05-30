@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSerialStore } from "../store/useSerialStore";
+import { useToolboxStore } from "../store/useToolboxStore";
 import { SERVOS, LEG_NAMES } from "../model/hexapod";
 import {
   COMMON_BAUD_RATES,
@@ -15,6 +16,7 @@ import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 import { Ssc32uHelp } from "./Ssc32uHelp";
 import { BoardSvg } from "./BoardSvg";
+import { ElectroArchitecture } from "./ElectroArchitecture";
 
 const JOINT_LABEL: Record<string, string> = {
   coxa: "Coxa",
@@ -51,9 +53,57 @@ export function ElectroniquePage() {
   const centerAll = useSerialStore((s) => s.centerAll);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const identify = useSerialStore((s) => s.identify);
+  const testVersion = useSerialStore((s) => s.testVersion);
+  const clearLog = useSerialStore((s) => s.clearLog);
+  const consoleOpen = useSerialStore((s) => s.consoleOpen);
+  const setConsoleOpen = useSerialStore((s) => s.setConsoleOpen);
+  const consoleHeight = useSerialStore((s) => s.consoleHeight);
+  const setConsoleHeight = useSerialStore((s) => s.setConsoleHeight);
+  const rxByteCount = useSerialStore((s) => s.rxByteCount);
 
-  type SubTab = "calibration" | "aide" | "journal";
-  const [subTab, setSubTab] = useState<SubTab>("calibration");
+  // Sous-onglet routé via l'URL (persisté dans uiPrefs).
+  const subTab = useToolboxStore((s) => s.uiPrefs.electroSubTab ?? "architecture");
+  const setSubTab = useToolboxStore((s) => s.setElectroSubTab);
+  // Rappel « alim servo absente » : masquable une fois lu (la carte ne remonte
+  // pas l'état réel de VS, c'est un avertissement contextuel).
+  const [powerNoteDismissed, setPowerNoteDismissed] = useState(false);
+
+  // Auto-scroll de la console vers le bas à chaque nouveau message.
+  const consoleBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = consoleBodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log, consoleOpen]);
+
+  // Redimensionnement du panneau console (poignée haute).
+  const resizeRef = useRef<{ y: number; h: number } | null>(null);
+  const startConsoleResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    resizeRef.current = { y: e.clientY, h: consoleHeight };
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      if (!resizeRef.current) return;
+      const dy = resizeRef.current.y - ev.clientY;
+      setConsoleHeight(Math.max(120, Math.min(560, resizeRef.current.h + dy)));
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
+  const fmtTime = (t: number) => {
+    const d = new Date(t);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
+  const rxCount = log.filter((e) => e.dir === "rx").length;
 
   const hardware = activeProject?.hardware;
   const electronics = hardware?.electronics ?? null;
@@ -112,6 +162,21 @@ export function ElectroniquePage() {
     return dup;
   }, [electronics]);
 
+  // Liste des servos câblés (canal défini) avec leur libellé articulation.
+  const boundServos = useMemo(() => {
+    const out: Array<{ id: number; channel: number; label: string }> = [];
+    if (electronics) {
+      for (const s of SERVOS) {
+        const ch = electronics.bindings[s.id]?.channel;
+        if (ch != null) {
+          out.push({ id: s.id, channel: ch, label: `${LEG_NAMES[s.legIndex]} · ${JOINT_LABEL[s.joint]}` });
+        }
+      }
+      out.sort((a, b) => a.channel - b.channel);
+    }
+    return out;
+  }, [electronics]);
+
   if (!activeProject) return null;
 
   const connected = status === "connected";
@@ -157,14 +222,113 @@ export function ElectroniquePage() {
 
   return (
     <div className="electro-page">
-      <header className="electro-header">
-        <div className="electro-title">
-          <h2>Électronique</h2>
-          <p className="electro-sub">
-            Connexion USB, liaison des servomoteurs aux articulations et calibration du zéro mécanique.
-          </p>
-        </div>
-      </header>
+      {/* ── Haut : titre (30%) + bloc de connexion (70%) ───────────────── */}
+      <div className="electro-top">
+        <header className="electro-header">
+          <div className="electro-title">
+            <h2>Électronique</h2>
+            <p className="electro-sub">
+              Connexion USB, liaison des servomoteurs aux articulations et calibration du zéro
+              mécanique.
+            </p>
+          </div>
+        </header>
+
+        {/* ── Bloc de connexion ────────────────────────────────────────── */}
+        <section className="electro-conn">
+          <div className="electro-conn-info">
+            {target === "command" && board ? (
+              <BoardSvg
+                brand={board.brand}
+                model={board.model}
+                dimensionsMm={board.dimensionsMm}
+                interfaces={board.interfaces}
+                gpio={board.gpio}
+                width={76}
+                className="electro-conn-thumb"
+              />
+            ) : controller ? (
+              <BoardSvg
+                brand={controller.brand}
+                model={controller.model}
+                dimensionsMm={controller.dimensionsMm}
+                interfaces={controller.interfaces}
+                channels={controller.channels}
+                width={76}
+                className="electro-conn-thumb"
+              />
+            ) : null}
+            <span className={`electro-dot electro-dot--${status}`} />
+            <div>
+              <div className="electro-conn-status">{STATUS_LABEL[status] ?? status}</div>
+              <div className="electro-conn-detail">
+                Cible USB : <strong>{targetLabel}</strong>
+                {portLabel ? ` · ${portLabel}` : ""}
+              </div>
+              <div className="electro-conn-detail electro-conn-proto">
+                Protocole : {protocol.label}
+              </div>
+            </div>
+          </div>
+
+          <div className="electro-conn-actions">
+            {!connected && (hasController || hasCommand) && (
+              <label className="electro-baud">
+                Cible USB
+                <select
+                  value={hasCommand && !hasController ? "command" : target}
+                  disabled={busy}
+                  onChange={(e) => setTarget(e.target.value as ConnTarget)}
+                >
+                  {hasController && (
+                    <option value="controller">
+                      {controller ? `${controller.model} (direct)` : "Contrôleur (direct)"}
+                    </option>
+                  )}
+                  {hasCommand && (
+                    <option value="command">{board ? board.model : "Carte de commande"}</option>
+                  )}
+                </select>
+              </label>
+            )}
+
+            <label className="electro-baud">
+              Vitesse
+              <select
+                value={baudRate}
+                disabled={connected || busy}
+                onChange={(e) => onChangeBaud(Number(e.target.value))}
+              >
+                {COMMON_BAUD_RATES.map((b) => (
+                  <option key={b} value={b}>
+                    {b} bauds{isSsc && b === 9600 ? " (défaut SSC-32U)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {connected ? (
+              <>
+                <button type="button" className="btn btn-danger" onClick={() => void releaseAll()}>
+                  ⏻ Arrêt d'urgence (couple off)
+                </button>
+                <button type="button" className="btn" onClick={() => void disconnect()}>
+                  Déconnecter
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={status === "unsupported" || busy}
+                onClick={() => void connect()}
+              >
+                {busy ? "Connexion…" : "Connecter la carte (USB)"}
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
 
       {status === "unsupported" && (
         <div className="electro-banner electro-banner--warn">
@@ -180,101 +344,6 @@ export function ElectroniquePage() {
         </div>
       )}
 
-      {/* ── Barre de connexion ─────────────────────────────────────────── */}
-      <section className="electro-conn">
-        <div className="electro-conn-info">
-          {target === "command" && board ? (
-            <BoardSvg
-              brand={board.brand}
-              model={board.model}
-              dimensionsMm={board.dimensionsMm}
-              interfaces={board.interfaces}
-              gpio={board.gpio}
-              width={76}
-              className="electro-conn-thumb"
-            />
-          ) : controller ? (
-            <BoardSvg
-              brand={controller.brand}
-              model={controller.model}
-              dimensionsMm={controller.dimensionsMm}
-              interfaces={controller.interfaces}
-              channels={controller.channels}
-              width={76}
-              className="electro-conn-thumb"
-            />
-          ) : null}
-          <span className={`electro-dot electro-dot--${status}`} />
-          <div>
-            <div className="electro-conn-status">{STATUS_LABEL[status] ?? status}</div>
-            <div className="electro-conn-detail">
-              Cible USB : <strong>{targetLabel}</strong>
-              {portLabel ? ` · ${portLabel}` : ""}
-            </div>
-            <div className="electro-conn-detail electro-conn-proto">
-              Protocole : {protocol.label}
-            </div>
-          </div>
-        </div>
-
-        <div className="electro-conn-actions">
-          {!connected && (hasController || hasCommand) && (
-            <label className="electro-baud">
-              Cible USB
-              <select
-                value={hasCommand && !hasController ? "command" : target}
-                disabled={busy}
-                onChange={(e) => setTarget(e.target.value as ConnTarget)}
-              >
-                {hasController && (
-                  <option value="controller">
-                    {controller ? `${controller.model} (direct)` : "Contrôleur (direct)"}
-                  </option>
-                )}
-                {hasCommand && (
-                  <option value="command">{board ? board.model : "Carte de commande"}</option>
-                )}
-              </select>
-            </label>
-          )}
-
-          <label className="electro-baud">
-            Vitesse
-            <select
-              value={baudRate}
-              disabled={connected || busy}
-              onChange={(e) => onChangeBaud(Number(e.target.value))}
-            >
-              {COMMON_BAUD_RATES.map((b) => (
-                <option key={b} value={b}>
-                  {b} bauds{isSsc && b === 9600 ? " (défaut SSC-32U)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {connected ? (
-            <>
-              <button type="button" className="btn btn-danger" onClick={() => void releaseAll()}>
-                ⏻ Arrêt d'urgence (couple off)
-              </button>
-              <button type="button" className="btn" onClick={() => void disconnect()}>
-                Déconnecter
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={status === "unsupported" || busy}
-              onClick={() => void connect()}
-            >
-              {busy ? "Connexion…" : "Connecter la carte (USB)"}
-            </button>
-          )}
-        </div>
-      </section>
-
       {!connected && hasController && hasCommand && (
         <div className="electro-banner electro-banner--info">
           Ce projet utilise <strong>deux cartes</strong> : {board?.model} (commande) et{" "}
@@ -287,9 +356,76 @@ export function ElectroniquePage() {
 
       {errorMsg && <div className="electro-banner electro-banner--warn">{errorMsg}</div>}
 
+      {/* ── Connecté : infos détaillées + rappel alimentation servo ─────── */}
+      {connected && (
+        <>
+          {!powerNoteDismissed && (
+            <div className="electro-banner electro-banner--warn electro-power-note">
+              <div>
+                ⚡ <strong>Carte connectée en USB.</strong> L'USB n'alimente que la logique : sans
+                alimentation <strong>VS1/VS2</strong> (≈ 6 V), les commandes partent bien mais{" "}
+                <strong>les servos ne bougeront pas</strong>. Branchez une alim servo sur VS1
+                (cavalier VS1=VS2) pour les faire tourner.
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setPowerNoteDismissed(true)}
+              >
+                J'ai compris
+              </button>
+            </div>
+          )}
+
+          <section className="electro-infogrid">
+            <div className="electro-info">
+              <span className="electro-info-k">Cible USB</span>
+              <span className="electro-info-v">{targetLabel}</span>
+            </div>
+            <div className="electro-info">
+              <span className="electro-info-k">Port</span>
+              <span className="electro-info-v">{portLabel ?? "—"}</span>
+            </div>
+            <div className="electro-info">
+              <span className="electro-info-k">Protocole</span>
+              <span className="electro-info-v">{protocol.label}</span>
+            </div>
+            <div className="electro-info">
+              <span className="electro-info-k">Vitesse</span>
+              <span className="electro-info-v">{baudRate} bauds</span>
+            </div>
+            <div className="electro-info">
+              <span className="electro-info-k">Servos câblés</span>
+              <span className="electro-info-v">
+                {boundServos.length} / {SERVOS.length}
+              </span>
+            </div>
+            <div className="electro-info">
+              <span className="electro-info-k">Dernière commande</span>
+              <span className="electro-info-v electro-info-mono">
+                {log.length ? log[log.length - 1].text : "aucune"}
+              </span>
+            </div>
+          </section>
+
+          {boundServos.length > 0 && (
+            <div className="electro-bound-list">
+              Câblage : {boundServos.map((b) => `canal ${b.channel} → ${b.label}`).join("  ·  ")}
+            </div>
+          )}
+        </>
+      )}
+
       {/* ── Corps : sous-onglets verticaux ─────────────────────────────── */}
       <div className="electro-body">
         <nav className="electro-subnav">
+          <button
+            type="button"
+            className={`electro-subtab${subTab === "architecture" ? " active" : ""}`}
+            onClick={() => setSubTab("architecture")}
+          >
+            Architecture
+          </button>
           <button
             type="button"
             className={`electro-subtab${subTab === "calibration" ? " active" : ""}`}
@@ -304,24 +440,13 @@ export function ElectroniquePage() {
           >
             Aide carte
           </button>
-          <button
-            type="button"
-            className={`electro-subtab${subTab === "journal" ? " active" : ""}`}
-            onClick={() => setSubTab("journal")}
-          >
-            Journal{log.length > 0 ? ` (${log.length})` : ""}
-          </button>
         </nav>
 
         <div className="electro-subpanel">
+          {subTab === "architecture" && <ElectroArchitecture />}
+
           {subTab === "aide" && (
             <Ssc32uHelp controllerId={hardware?.servoControllerId ?? null} />
-          )}
-
-          {subTab === "journal" && (
-            <pre className="electro-log">
-              {log.length === 0 ? "Aucune commande envoyée." : log.join("\n")}
-            </pre>
           )}
 
           {subTab === "calibration" && (
@@ -341,6 +466,15 @@ export function ElectroniquePage() {
                 </button>
                 <button type="button" className="btn" onClick={resetAllCalibration}>
                   Réinitialiser les offsets
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!connected}
+                  onClick={() => void testVersion()}
+                  title="Envoie VER : la carte renvoie sa version (test de présence, visible dans la console)"
+                >
+                  Tester la carte (VER)
                 </button>
                 <span className="electro-hint">
                   Calibration : amenez le servo à <strong>0°</strong>, puis ajustez l'offset −/+
@@ -464,6 +598,64 @@ export function ElectroniquePage() {
               </section>
             </>
           )}
+        </div>
+      </div>
+
+      {/* ── Panneau console série bas (escamotable) ────────────────────── */}
+      <div
+        className={`electro-console${consoleOpen ? " open" : ""}`}
+        // eslint-disable-next-line react/forbid-component-props
+        style={{ "--electro-console-h": `${consoleHeight}px` } as React.CSSProperties}
+      >
+        <button
+          type="button"
+          className="electro-console-handle"
+          onClick={() => setConsoleOpen(!consoleOpen)}
+          title={`${consoleOpen ? "Fermer" : "Ouvrir"} la console série`}
+        >
+          Console série
+          {rxCount > 0 ? ` · ${rxCount} reçu${rxCount > 1 ? "s" : ""}` : ""} {consoleOpen ? "▾" : "▴"}
+        </button>
+
+        <div className="electro-console-content">
+          <div className="electro-console-resize" onPointerDown={startConsoleResize} />
+
+          <div className="electro-console-bar">
+            <span className="electro-console-title">
+              Émission <span className="ec-tx">→</span> / Réception <span className="ec-rx">←</span>
+            </span>
+            <span className="electro-console-count">
+              {log.length} ligne{log.length > 1 ? "s" : ""} · RX {rxByteCount} octet{rxByteCount > 1 ? "s" : ""}
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={clearLog}
+              disabled={log.length === 0}
+              title="Vider la console"
+            >
+              Clean
+            </button>
+          </div>
+
+          <div className="electro-console-body" ref={consoleBodyRef}>
+            {log.length === 0 ? (
+              <div className="electro-console-empty">
+                Aucun échange. Connectez la carte puis bougez un servo, ou cliquez « Tester la carte
+                (VER) ».
+              </div>
+            ) : (
+              log.map((e, i) => (
+                <div key={i} className={`ec-line ec-line--${e.dir}`}>
+                  <span className="ec-time">{fmtTime(e.t)}</span>
+                  <span className="ec-arrow">
+                    {e.dir === "tx" ? "→" : e.dir === "rx" ? "←" : "•"}
+                  </span>
+                  <span className="ec-text">{e.text}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

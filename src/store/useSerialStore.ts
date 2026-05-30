@@ -26,7 +26,15 @@ export type SerialStatus =
  */
 export type ConnTarget = "controller" | "command";
 
-const MAX_LOG = 40;
+const MAX_LOG = 200;
+
+/** Une entrée de console série : émission (tx), réception (rx) ou info locale. */
+export interface SerialLogEntry {
+  dir: "tx" | "rx" | "info";
+  text: string;
+  /** Horodatage ms (rempli au moment de l'ajout). */
+  t: number;
+}
 
 interface SerialState {
   status: SerialStatus;
@@ -35,8 +43,13 @@ interface SerialState {
   /** Carte ciblée par le câble USB (cf. ConnTarget). */
   target: ConnTarget;
   errorMsg: string | null;
-  /** Journal des dernières commandes envoyées (debug / transparence). */
-  log: string[];
+  /** Console série : commandes émises (tx), messages reçus (rx), infos. Ordre chronologique. */
+  log: SerialLogEntry[];
+  /** Total d'octets bruts reçus depuis la connexion (diagnostic RX). */
+  rxByteCount: number;
+  /** Panneau console bas : ouvert / hauteur (px), persistés localement. */
+  consoleOpen: boolean;
+  consoleHeight: number;
   /** Angle de test logique courant par servo (éphémère, non persisté). */
   testAngles: Record<number, number>;
   /** Servo en cours d'identification (wiggle) — pour feedback UI. */
@@ -44,6 +57,9 @@ interface SerialState {
 
   setBaudRate: (b: number) => void;
   setTarget: (t: ConnTarget) => void;
+  setConsoleOpen: (v: boolean) => void;
+  setConsoleHeight: (h: number) => void;
+  clearLog: () => void;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
 
@@ -57,6 +73,8 @@ interface SerialState {
   releaseAll: () => Promise<void>;
   /** Fait osciller un servo pour l'identifier physiquement. */
   identify: (servoId: number) => Promise<void>;
+  /** Interroge la version firmware (SSC-32U : commande `VER`). Test de présence. */
+  testVersion: () => Promise<void>;
 }
 
 // Instance unique de liaison série pour toute l'app.
@@ -82,7 +100,66 @@ function readTarget(): ConnTarget {
   }
 }
 
+const CONSOLE_KEY = "hexagram.serial.console";
+function readConsole(): { open: boolean; height: number } {
+  try {
+    const raw = localStorage.getItem(CONSOLE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as { open?: boolean; height?: number };
+      return { open: !!p.open, height: p.height && p.height > 0 ? p.height : 200 };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { open: false, height: 200 };
+}
+function writeConsole(open: boolean, height: number): void {
+  try {
+    localStorage.setItem(CONSOLE_KEY, JSON.stringify({ open, height }));
+  } catch {
+    /* ignore */
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Ajoute une entrée tx/info à la console. Les lignes vides sont ignorées. */
+function pushLog(
+  set: (fn: (s: SerialState) => Partial<SerialState>) => void,
+  dir: SerialLogEntry["dir"],
+  text: string
+) {
+  const clean = text.replace(/\r/g, "").replace(/\n+$/g, "");
+  if (!clean) return;
+  set((s) => ({ log: [...s.log, { dir, text: clean, t: nowMs() }].slice(-MAX_LOG) }));
+}
+
+/**
+ * Journalise un fragment RX brut SANS jamais le perdre : texte si imprimable,
+ * sinon représentation hex. Met à jour le compteur d'octets reçus. Indispensable
+ * au diagnostic : permet de distinguer « rien ne revient » de « ça revient mais
+ * ce ne sont que des CR/octets non imprimables ».
+ */
+function pushRx(
+  set: (fn: (s: SerialState) => Partial<SerialState>) => void,
+  bytes: Uint8Array,
+  text: string
+) {
+  const printable = text.replace(/\r/g, "").replace(/\n+$/g, "");
+  const display =
+    printable.length > 0
+      ? printable
+      : "[" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ") + "]";
+  set((s) => ({
+    log: [...s.log, { dir: "rx" as const, text: display, t: nowMs() }].slice(-MAX_LOG),
+    rxByteCount: s.rxByteCount + bytes.length,
+  }));
+}
+
+// Date.now() est interdit dans certains contextes harness mais OK ici (runtime navigateur).
+function nowMs(): number {
+  return Date.now();
+}
 
 /** Contexte matériel courant pour formater/convertir les commandes. */
 function hardwareContext() {
@@ -109,6 +186,8 @@ function bindingFor(servoId: number): ServoBinding | null {
   return electronics?.bindings?.[servoId] ?? null;
 }
 
+const _console = readConsole();
+
 export const useSerialStore = create<SerialState>((set, get) => ({
   status: isWebSerialSupported() ? "disconnected" : "unsupported",
   portLabel: null,
@@ -116,6 +195,9 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   target: readTarget(),
   errorMsg: null,
   log: [],
+  rxByteCount: 0,
+  consoleOpen: _console.open,
+  consoleHeight: _console.height,
   testAngles: {},
   identifying: null,
 
@@ -137,12 +219,28 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     set({ target: t });
   },
 
+  setConsoleOpen: (v) => {
+    writeConsole(v, get().consoleHeight);
+    set({ consoleOpen: v });
+  },
+
+  setConsoleHeight: (h) => {
+    writeConsole(get().consoleOpen, h);
+    set({ consoleHeight: h });
+  },
+
+  clearLog: () => set({ log: [], rxByteCount: 0 }),
+
   connect: async () => {
     if (get().status === "unsupported") return;
     set({ status: "connecting", errorMsg: null });
     try {
       const label = await link.connect(get().baudRate);
-      set({ status: "connected", portLabel: label });
+      set({ status: "connected", portLabel: label, rxByteCount: 0 });
+      pushLog(set, "info", `Connecté à ${label} @ ${get().baudRate} bauds`);
+      // Démarre l'écoute des réponses de la carte (← rx). On journalise les
+      // octets bruts pour ne jamais perdre une réponse (même non imprimable).
+      link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
       useToastStore.getState().show(`Carte connectée (${label})`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Connexion échouée";
@@ -159,6 +257,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   disconnect: async () => {
     await link.disconnect();
     set({ status: "disconnected", portLabel: null, errorMsg: null });
+    pushLog(set, "info", "Déconnecté");
     useToastStore.getState().show("Carte déconnectée");
   },
 
@@ -172,10 +271,11 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     const cmd = protocol.move(binding.channel, us);
     try {
       await link.writeString(cmd);
-      set((s) => ({ log: [`→ ${cmd.trim()}`, ...s.log].slice(0, MAX_LOG) }));
+      pushLog(set, "tx", cmd);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Écriture échouée";
       set({ status: "error", errorMsg: msg });
+      pushLog(set, "info", `Erreur écriture : ${msg}`);
     }
   },
 
@@ -210,7 +310,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
         /* on continue le relâchement des autres canaux malgré une erreur */
       }
     }
-    set((s) => ({ log: ["→ RELÂCHE TOUT (couple off)", ...s.log].slice(0, MAX_LOG) }));
+    pushLog(set, "info", "Relâche tout (couple off)");
     useToastStore.getState().show("Couple coupé sur tous les servos");
   },
 
@@ -227,6 +327,22 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       }
     } finally {
       set({ identifying: null });
+    }
+  },
+
+  testVersion: async () => {
+    if (get().status !== "connected") return;
+    // SSC-32U : `VER<CR>` renvoie la chaîne de version (test de présence carte).
+    // Pour les autres protocoles, on tente la même commande — sans garantie de réponse.
+    const cmd = "VER\r";
+    try {
+      await link.writeString(cmd);
+      pushLog(set, "tx", cmd);
+      pushLog(set, "info", "VER envoyé — réponse attendue ci-dessous (si la carte répond)");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Écriture échouée";
+      set({ status: "error", errorMsg: msg });
+      pushLog(set, "info", `Erreur écriture : ${msg}`);
     }
   },
 }));

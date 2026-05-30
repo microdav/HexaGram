@@ -5341,9 +5341,21 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 }
 .app.tablet .electro-subnav { flex-basis: 210px; }
 .app.tablet .electro-subtab { padding: 14px 16px; font-size: 16px; }
-.electro-header { display: flex; justify-content: space-between; align-items: flex-start; }
+/* Haut de page : titre 30% / bloc connexion 70% */
+.electro-top {
+  display: grid;
+  grid-template-columns: 30% 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+.electro-header { display: flex; align-items: center; }
 .electro-title h2 { margin: 0 0 2px; font-size: 20px; }
-.electro-sub { margin: 0; color: var(--text-dim); font-size: 13px; max-width: 70ch; }
+.electro-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
+
+/* Sous ~720px : on repasse en colonne (titre au-dessus du bloc connexion) */
+@media (max-width: 720px) {
+  .electro-top { grid-template-columns: 1fr; }
+}
 
 .electro-banner {
   border-radius: 8px;
@@ -5365,6 +5377,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 16px;
+  flex: 1;
+  min-width: 0;
 }
 .electro-conn-info { display: flex; align-items: center; gap: 12px; }
 .electro-conn-status { font-weight: 600; }
@@ -5528,3 +5542,226 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   background: var(--bg);
   padding: 2px;
 }
+
+/* ── Infos de connexion détaillées (onglet Électronique) ──────────────────── */
+.electro-power-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.electro-power-note .btn { flex: 0 0 auto; white-space: nowrap; }
+
+.electro-infogrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.electro-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.electro-info-k { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+.electro-info-v { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.electro-info-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-weight: 500; color: var(--accent); }
+
+.electro-bound-list {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 2px 4px;
+}
+
+/* ── Sous-onglet Architecture (onglet Électronique) ───────────────────────── */
+.arch { display: flex; flex-direction: column; gap: 16px; }
+.arch-intro { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
+.arch-chain {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.arch-node {
+  flex: 1 1 200px;
+  min-width: 180px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.arch-node--empty { opacity: 0.6; border-style: dashed; justify-content: center; }
+.arch-node--servos { flex: 1.4 1 260px; }
+.arch-node-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.arch-node-name { font-weight: 600; font-size: 14px; }
+.arch-node-meta { font-size: 12px; color: var(--text-dim); }
+.arch-node-placeholder { color: var(--text-dim); font-style: italic; padding: 20px 0; }
+
+.arch-link {
+  flex: 0 0 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.arch-link-label { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.arch-link-line { width: 100%; height: 2px; background: var(--border); }
+.arch-link-arrow { color: var(--border); font-size: 14px; line-height: 0.5; }
+
+.arch-servo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+.arch-leg {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 2px;
+}
+.arch-servo-glyph { width: 22px; height: 17px; }
+.arch-leg-label { width: 100%; text-align: center; font-size: 9px; color: var(--text-dim); margin-top: 2px; }
+
+.arch-power {
+  font-size: 12.5px;
+  background: rgba(245,197,24,0.06);
+  border-left: 3px solid var(--accent);
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  color: var(--text);
+}
+.arch-power-icon { margin-right: 6px; }
+
+.arch-future {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.015);
+}
+.arch-future-title { font-weight: 600; margin-bottom: 10px; }
+.arch-soon {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.arch-future-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.arch-future-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.arch-future-icon { font-size: 16px; filter: grayscale(0.4); }
+.arch-future-note { margin: 10px 0 0; font-size: 12px; color: var(--text-dim); }
+
+/* Tablette : pile verticale (les liens deviennent des séparateurs horizontaux) */
+@media (max-width: 720px) {
+  .arch-chain { flex-direction: column; }
+  .arch-link { flex-basis: auto; flex-direction: row; width: 100%; padding: 4px 0; }
+  .arch-link-line { width: 40px; height: 2px; }
+  .arch-link-arrow { transform: rotate(90deg); }
+}
+
+/* ── Console série bas escamotable (onglet Électronique) ──────────────────── */
+.electro-console {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+}
+.electro-console-handle {
+  position: absolute;
+  bottom: 100%;
+  right: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.electro-console-handle:hover { color: var(--text); }
+.electro-console-content { display: none; height: var(--electro-console-h, 200px); position: relative; flex-direction: column; }
+.electro-console.open .electro-console-content { display: flex; }
+.electro-console-handle .ec-rx { color: #34d399; }
+
+.electro-console-resize {
+  height: 6px;
+  cursor: ns-resize;
+  flex: 0 0 auto;
+  touch-action: none;
+}
+.electro-console-resize:hover { background: rgba(245,197,24,0.12); }
+
+.electro-console-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.electro-console-title { font-size: 12px; color: var(--text-dim); }
+.electro-console-title .ec-tx { color: var(--accent); font-weight: 700; }
+.electro-console-title .ec-rx { color: #34d399; font-weight: 700; }
+.electro-console-count { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+.electro-console-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 12px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.electro-console-empty { color: var(--text-dim); font-style: italic; padding: 8px 0; }
+.ec-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-all; }
+.ec-time { color: var(--text-dim); opacity: 0.6; flex: 0 0 auto; }
+.ec-arrow { flex: 0 0 14px; text-align: center; font-weight: 700; }
+.ec-line--tx .ec-arrow { color: var(--accent); }
+.ec-line--rx .ec-arrow { color: #34d399; }
+.ec-line--info .ec-arrow { color: var(--text-dim); }
+.ec-line--tx .ec-text { color: var(--text); }
+.ec-line--rx .ec-text { color: #9fe6b5; }
+.ec-line--info .ec-text { color: var(--text-dim); font-style: italic; }
+
+/* La page doit pouvoir ancrer le panneau bas en absolu. */
+.electro-page { position: relative; }

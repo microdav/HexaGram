@@ -1,4 +1,4 @@
-import type { AppTab } from "../store/useToolboxStore";
+import type { AppTab, ElectroSubTab } from "../store/useToolboxStore";
 
 export interface ParsedUrl {
   user?: string;
@@ -6,6 +6,8 @@ export interface ParsedUrl {
   tab?: AppTab;
   profile?: string;
   program?: string;
+  /** Sous-onglet de la page Électronique (4e segment quand tab === 'electronique'). */
+  electroSub?: ElectroSubTab;
 }
 
 export interface UrlInputs {
@@ -14,9 +16,11 @@ export interface UrlInputs {
   tab?: AppTab;
   profileName?: string | null;
   programName?: string | null;
+  electroSubTab?: ElectroSubTab | null;
 }
 
-const VALID_TABS: AppTab[] = ["projet", "conception", "programmation"];
+const VALID_TABS: AppTab[] = ["projet", "conception", "programmation", "electronique"];
+const VALID_ELECTRO_SUBS: ElectroSubTab[] = ["architecture", "calibration", "aide"];
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
 
@@ -40,8 +44,16 @@ export function readUrlState(): ParsedUrl {
     const t = segments[2];
     if ((VALID_TABS as string[]).includes(t)) out.tab = t as AppTab;
   }
-  if (segments.length >= 4) out.profile = segments[3];
-  if (segments.length >= 5) out.program = segments[4];
+  if (segments.length >= 4) {
+    // En Électronique, le 4e segment est le sous-onglet ; ailleurs c'est le profil.
+    if (out.tab === "electronique") {
+      const sub = segments[3];
+      if ((VALID_ELECTRO_SUBS as string[]).includes(sub)) out.electroSub = sub as ElectroSubTab;
+    } else {
+      out.profile = segments[3];
+    }
+  }
+  if (segments.length >= 5 && out.tab !== "electronique") out.program = segments[4];
   return out;
 }
 
@@ -61,6 +73,7 @@ export function getInitialUrlState(): ParsedUrl {
  *  - `/{userSlug}/{projectSlug}/{tab}`                        → projet + onglet
  *  - `/{userSlug}/{projectSlug}/{tab}/{profileSlug}`          → + profil (conception/programmation)
  *  - `/{userSlug}/{projectSlug}/programmation/{profile}/{program}` → + programme
+ *  - `/{userSlug}/{projectSlug}/electronique/{subTab}`        → + sous-onglet électronique
  */
 export function buildPath(state: UrlInputs): string {
   if (!state.userLogin) return "/";
@@ -70,6 +83,10 @@ export function buildPath(state: UrlInputs): string {
   if (!state.tab) return "/" + segments.join("/");
   segments.push(state.tab);
   if (state.tab === "projet") return "/" + segments.join("/");
+  if (state.tab === "electronique") {
+    if (state.electroSubTab) segments.push(state.electroSubTab);
+    return "/" + segments.join("/");
+  }
   if (state.profileName) {
     segments.push(slugify(state.profileName));
     if (state.tab === "programmation" && state.programName) {
