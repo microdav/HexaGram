@@ -11,6 +11,7 @@ import { ToolboxSlot, FloatingToolboxes } from "./ui/ToolboxSlot";
 import { TabletServoEditor } from "./ui/TabletServoEditor";
 import { SequencerPanel } from "./ui/SequencerPanel";
 import { PoseConflictModal } from "./ui/PoseConflictModal";
+import { ToolsMenu } from "./ui/ToolsMenu";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
@@ -261,6 +262,7 @@ export default function App() {
         <span className="subtitle">hexapode 18 DOF</span>
         <div className="topbar-right">
           {!user && <span className="demo-badge">Mode démo</span>}
+          <ToolsMenu />
           <button
             type="button"
             className={`tablet-toggle${tabletMode ? " active" : ""}`}

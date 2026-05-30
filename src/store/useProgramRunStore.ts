@@ -10,6 +10,7 @@ import {
 import { useHexapodStore } from "./useHexapodStore";
 import { useSequencerStore } from "./useSequencerStore";
 import { useSavedSequencesStore } from "./useSavedSequencesStore";
+import { computeLegMounts } from "../model/hexapod";
 
 export const ROOM_PANEL_MIN_W = 280;
 export const ROOM_PANEL_MAX_W = 900;
@@ -134,8 +135,13 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
         try {
           const { stepDelay } = useSequencerStore.getState();
           const getSequence = useSavedSequencesStore.getState().getSequence;
+          // Géométrie/ancrages du robot actif : permettent de générer des
+          // transitions inter-séquences physiques (pieds levés, équilibre,
+          // orientation) plutôt qu'une interpolation linéaire des angles.
+          const { geometry } = useHexapodStore.getState();
+          const mounts = computeLegMounts(geometry);
           const keyframes = await resolveProgramKeyframes(program, getSequence);
-          const frames = buildPlaybackFrames(keyframes, stepDelay);
+          const frames = buildPlaybackFrames(keyframes, stepDelay, { geometry, mounts });
 
           if (frames.length === 0) {
             set({

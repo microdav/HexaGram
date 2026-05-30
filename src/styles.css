@@ -22,6 +22,30 @@ html, body, #root {
   overscroll-behavior: none;
 }
 
+/* ───────────── Barres de défilement (couleurs de l'app) ─────────────
+   Style global appliqué à toute l'app : piste = fond de l'app (--bg),
+   curseur = --bg-panel-2. Firefox via scrollbar-color (hérité depuis html),
+   WebKit/Chromium via les pseudo-éléments ::-webkit-scrollbar. */
+html { scrollbar-color: var(--bg-panel-2) var(--bg); }
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--bg-panel-2);
+  border: 2px solid var(--bg);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--bg);
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -4819,6 +4843,171 @@ html, body, #root {
   border-color: var(--accent);
 }
 .tablet-toggle-icon { font-size: 14px; line-height: 1; }
+
+/* Bouton « Outils » de la topbar (calqué sur .tablet-toggle) */
+.tools-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tools-toggle:hover { color: var(--text); border-color: var(--text-dim); }
+.tools-toggle.active { color: var(--text); border-color: var(--text-dim); }
+.tools-toggle-icon { font-size: 14px; line-height: 1; }
+.tools-toggle-caret { font-size: 9px; color: var(--text-dim); }
+
+/* Menu déroulant « Outils » (calqué sur .user-menu) */
+.tools-menu-wrapper { position: relative; }
+.tools-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  overflow: hidden;
+}
+.tools-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tools-menu-item:last-child { border-bottom: none; }
+.tools-menu-item:hover { background: var(--bg-panel-2); }
+
+/* ───────────── Modal Outils (import/export JSON) ───────────── */
+.tools-modal {
+  width: 92vw;
+  max-width: 1100px;
+  height: 84vh;
+  padding: 14px 16px;
+}
+.tools-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tools-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.tools-close:hover { color: var(--text); }
+.tools-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.tools-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-right: 4px;
+  border-right: 1px solid var(--border);
+}
+.tools-tree-section {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 10px 0 2px;
+}
+.tools-tree-section:first-child { margin-top: 0; }
+.tools-tree-item {
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s, border-color 0.1s;
+}
+.tools-tree-item:hover { background: var(--bg-panel); }
+.tools-tree-item.active {
+  background: rgba(245, 197, 24, 0.14);
+  border-color: var(--accent);
+}
+.tools-tree-item.live { font-style: italic; color: var(--text-dim); }
+.tools-tree-item.live.active { color: var(--text); }
+.tools-tree-empty {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 8px;
+}
+.tools-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.tools-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tools-actions-spacer { flex: 1; }
+.tools-file-input { display: none; }
+.tools-mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tools-mode.disabled { color: var(--text-dim); cursor: not-allowed; }
+.tools-editor {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* La chaîne wrapper (.cm-theme) > .cm-editor doit remplir la hauteur pour que
+   le scroller interne de CodeMirror s'active sur les longs JSON. */
+.tools-editor > * { height: 100%; }
+.tools-editor .cm-editor { height: 100%; }
+.tools-editor .cm-scroller { overflow: auto; font-size: 12px; }
+.tools-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-height: 16px;
+}
+.tools-status.error { color: #ff6b6b; }
 
 /* Bouton « déplacer » d'une boîte (remplace le glisser souris) */
 .toolbox-move-btn {

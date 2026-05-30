@@ -16,8 +16,6 @@ import { SERVOS } from '../model/hexapod';
 import { ToolboxSlot } from './ToolboxSlot';
 import { PoseThumbnail } from './PoseThumbnail';
 import { POSE_DRAG_MIME } from './PosesPanel';
-import { SequenceExportModal } from './SequenceExportModal';
-import { SequenceImportModal } from './SequenceImportModal';
 import { SequenceAddStepModal } from './SequenceAddStepModal';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
@@ -75,9 +73,6 @@ export function SequencerPanel() {
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Export / Import modals
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   // Modal d'ajout d'étape (neutre / dupliquer / importer d'une autre séquence)
   const [showAddStepModal, setShowAddStepModal] = useState(false);
 
@@ -176,9 +171,6 @@ export function SequencerPanel() {
       setTimeout(() => renameInputRef.current?.select(), 30);
     }
   }, [showRenameModal, sequenceName]);
-
-  const handleOpenExport = () => setShowExportModal(true);
-  const handleOpenImport = () => setShowImportModal(true);
 
   // Save sequence to backend
   const handleSaveSequence = async () => {
@@ -438,12 +430,6 @@ export function SequencerPanel() {
         </div>
       )}
 
-      {/* ── Export sequence modal ────────────────────────── */}
-      <SequenceExportModal open={showExportModal} onClose={() => setShowExportModal(false)} />
-
-      {/* ── Import sequence modal ────────────────────────── */}
-      <SequenceImportModal open={showImportModal} onClose={() => setShowImportModal(false)} />
-
       {/* ── Add-step modal (neutre / dupliquer / importer) ─── */}
       <SequenceAddStepModal open={showAddStepModal} onClose={() => setShowAddStepModal(false)} />
 
@@ -613,22 +599,6 @@ export function SequencerPanel() {
                         '--om-right': `${window.innerWidth - optionsRect.right}px`,
                       } as React.CSSProperties}
                     >
-                      <button
-                        type="button"
-                        className="seq-options-item"
-                        onClick={() => { setShowOptions(false); handleOpenImport(); }}
-                      >
-                        Importer une séquence…
-                      </button>
-                      <button
-                        type="button"
-                        className="seq-options-item"
-                        onClick={() => { setShowOptions(false); handleOpenExport(); }}
-                        disabled={steps.length === 0}
-                      >
-                        Exporter la séquence…
-                      </button>
-                      <div className="seq-options-sep" />
                       <button
                         type="button"
                         className="seq-options-item"

@@ -3,6 +3,8 @@ import type { Program } from "./program";
 import type { SavedSequence } from "../store/useSavedSequencesStore";
 import type { SequencerStep } from "../store/useSequencerStore";
 import { MAX_FPS } from "../store/useSequencerStore";
+import type { HexapodGeometry, LegMount } from "./hexapod";
+import { buildTransitionFrames, type TransitionOptions } from "./transitionPlanner";
 
 /**
  * Une keyframe de lecture : pose définie + l'index de l'étape du programme dont
@@ -65,15 +67,38 @@ export async function resolveProgramKeyframes(
 }
 
 /**
- * Construit la liste d'images jouables en insérant des images interpolées
- * linéairement entre keyframes consécutives. Même cadence d'insertion que
- * `buildInterpolated` du séquenceur (≈ stepDelay × MAX_FPS images par transition).
+ * Contexte cinématique optionnel pour la génération d'images. Fourni par la
+ * salle d'exécution (géométrie + ancrages du robot actif). Lorsqu'il est
+ * présent, les passages d'une séquence à une autre (changement de `stepIndex`,
+ * y compris init → 1ʳᵉ séquence) sont générés par le planificateur de
+ * transition — pieds levés, équilibre et orientation préservés — au lieu d'une
+ * interpolation linéaire des angles.
+ */
+export interface PlaybackContext {
+  geometry: HexapodGeometry;
+  mounts: LegMount[];
+  transition?: TransitionOptions;
+}
+
+/**
+ * Construit la liste d'images jouables.
+ *
+ * À l'intérieur d'une même séquence (keyframes de même `stepIndex`), on insère
+ * des images interpolées linéairement, à la cadence de `buildInterpolated` du
+ * séquenceur (≈ stepDelay × MAX_FPS images par transition).
+ *
+ * Au passage d'une séquence à la suivante (`stepIndex` différent), si un
+ * `PlaybackContext` est fourni, on insère des images de transition physiquement
+ * saines (cf. {@link buildTransitionFrames}). Sans contexte, on retombe sur
+ * l'interpolation linéaire (compatibilité ascendante).
+ *
  * Pas d'interpolation de bouclage : un saut de boucle est traité comme une
  * discontinuité par l'intégrateur de locomotion.
  */
 export function buildPlaybackFrames(
   keyframes: ProgramKeyframe[],
   stepDelay: number,
+  ctx?: PlaybackContext,
 ): ProgramFrame[] {
   if (keyframes.length === 0) return [];
   if (keyframes.length === 1) {
@@ -87,13 +112,27 @@ export function buildPlaybackFrames(
     const a = keyframes[i];
     const b = keyframes[i + 1];
     frames.push({ pose: a.pose.slice(), stepIndex: a.stepIndex, isKeyframe: true });
-    for (let f = 1; f <= insertCount; f++) {
-      const t = f / (insertCount + 1);
-      frames.push({
-        pose: a.pose.map((angle, k) => angle + (b.pose[k] - angle) * t),
-        stepIndex: b.stepIndex,
-        isKeyframe: false,
+
+    const isSequenceBoundary = a.stepIndex !== b.stepIndex;
+    if (isSequenceBoundary && ctx) {
+      // Transition inter-séquences : génération physique (pieds levés, équilibre).
+      const mid = buildTransitionFrames(a.pose, b.pose, ctx.geometry, ctx.mounts, {
+        fps: MAX_FPS,
+        ...ctx.transition,
       });
+      for (const pose of mid) {
+        frames.push({ pose, stepIndex: b.stepIndex, isKeyframe: false });
+      }
+    } else {
+      // Intra-séquence (ou pas de contexte) : interpolation linéaire des angles.
+      for (let f = 1; f <= insertCount; f++) {
+        const t = f / (insertCount + 1);
+        frames.push({
+          pose: a.pose.map((angle, k) => angle + (b.pose[k] - angle) * t),
+          stepIndex: b.stepIndex,
+          isKeyframe: false,
+        });
+      }
     }
   }
   const last = keyframes[keyframes.length - 1];
