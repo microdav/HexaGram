@@ -227,7 +227,7 @@ function PeriphChip({ periph }: { periph: ProjectPeripheral }) {
   return (
     <div className="arch-periph-chip" title={spec?.description ?? label}>
       <span aria-hidden="true">{icon}</span> {label}
-      {bus ? <span className="arch-periph-bus">{bus}</span> : null}
+      {periph.pin ? <span className="arch-periph-bus">{periph.pin}</span> : bus ? <span className="arch-periph-bus">{bus}</span> : null}
     </div>
   );
 }
@@ -330,8 +330,12 @@ export function ElectroArchitecture() {
     savePeripherals(peripherals.filter((p) => p.uid !== uid));
   const setPeripheralPlacement = (uid: string, placement: PeripheralPlacement) =>
     savePeripherals(peripherals.map((p) => (p.uid === uid ? { ...p, placement } : p)));
+  const setPeripheralPin = (uid: string, pin: string) =>
+    savePeripherals(peripherals.map((p) => (p.uid === uid ? { ...p, pin: pin || null } : p)));
   const periphsAbove = peripherals.filter((p) => p.placement === "above");
   const periphsBelow = peripherals.filter((p) => p.placement === "below");
+  // Broches proposées : GPIO de la carte de commande (0…gpio-1), sinon plage générique.
+  const pinList = Array.from({ length: Math.min(board?.gpio ?? 40, 60) }, (_, i) => i);
 
   // Nombre de servos pour l'estimation : ceux câblés, sinon les 18 nominaux.
   const nServos = wiredCount > 0 ? wiredCount : SERVOS.length;
@@ -621,6 +625,7 @@ export function ElectroArchitecture() {
                   <th>Nom</th>
                   <th>Catégorie</th>
                   <th>Liaison</th>
+                  <th>Broche</th>
                   <th>Emplacement</th>
                   <th aria-label="Actions"></th>
                 </tr>
@@ -641,6 +646,20 @@ export function ElectroArchitecture() {
                       </td>
                       <td>{spec ? PERIPHERAL_CATEGORIES[spec.category].label : "—"}</td>
                       <td>{spec?.interfaces.join(" · ") ?? "—"}</td>
+                      <td>
+                        <select
+                          value={p.pin ?? ""}
+                          onChange={(e) => setPeripheralPin(p.uid, e.target.value)}
+                          aria-label="Broche / GPIO"
+                        >
+                          <option value="">—</option>
+                          {pinList.map((n) => (
+                            <option key={n} value={`GPIO ${n}`}>
+                              GPIO {n}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td>
                         <select
                           value={p.placement}

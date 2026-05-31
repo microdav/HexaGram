@@ -86,7 +86,9 @@ export interface ProjectPeripheral {
   label?: string | null;
   /** Position dans le schéma : au-dessus / en-dessous de la carte de commande. */
   placement: PeripheralPlacement;
-  /** Annotation libre (broche, usage…). */
+  /** Broche / GPIO de la carte de commande auquel le périphérique est relié. */
+  pin?: string | null;
+  /** Annotation libre (usage…). */
   note?: string | null;
 }
 
@@ -99,6 +101,7 @@ export function normalizePeripherals(raw: unknown): ProjectPeripheral[] {
       specId: typeof r.specId === "string" ? r.specId : "",
       label: typeof r.label === "string" ? r.label : null,
       placement: r.placement === "below" ? "below" : "above",
+      pin: typeof r.pin === "string" ? r.pin : null,
       note: typeof r.note === "string" ? r.note : null,
     }))
     .filter((p) => p.specId);

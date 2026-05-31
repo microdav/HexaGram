@@ -270,6 +270,7 @@ export const ProjectPeripheralSchema = z.object({
   specId: z.string(),
   label: z.string().nullable().optional(),
   placement: z.enum(["above", "below"]).optional(),
+  pin: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
 });
 
