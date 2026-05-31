@@ -318,3 +318,74 @@ export type ProjectPreferences = z.infer<typeof ProjectPreferencesSchema>;
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
 export type ImportProjectInput = z.infer<typeof ImportProjectSchema>;
+
+// ── Référentiels matériels (admin) ───────────────────────────────────────────
+// ServoSpecSchema est défini plus haut (section Projects) — réutilisé ici.
+
+export const ServoControllerSpecSchema = z.object({
+  id: z.string().min(1).max(60),
+  brand: z.string().min(1).max(80),
+  model: z.string().min(1).max(80),
+  channels: z.number().int().nonnegative(),
+  interfaces: z.array(z.string().max(40)),
+  voltageInputV: z.tuple([z.number(), z.number()]),
+  voltageServoV: z.tuple([z.number(), z.number()]).optional(),
+  pulseUs: z.object({ min: z.number(), max: z.number() }),
+  resolutionUs: z.number(),
+  weightG: z.number(),
+  dimensionsMm: z.object({ l: z.number(), w: z.number(), h: z.number() }),
+  notes: z.string().max(500).optional(),
+});
+
+export const CommandElectronicsSpecSchema = z.object({
+  id: z.string().min(1).max(60),
+  brand: z.string().min(1).max(80),
+  model: z.string().min(1).max(80),
+  type: z.enum(["microcontroller", "sbc", "soc"]),
+  cpu: z.string().max(120),
+  flashKb: z.number().optional(),
+  ramKb: z.number().optional(),
+  gpio: z.number().int().nonnegative(),
+  interfaces: z.array(z.string().max(40)),
+  voltageV: z.number(),
+  currentMa: z.object({ idle: z.number(), active: z.number() }),
+  weightG: z.number(),
+  dimensionsMm: z.object({ l: z.number(), w: z.number(), h: z.number() }),
+  notes: z.string().max(500).optional(),
+});
+
+export const PeripheralSpecSchema = z.object({
+  id: z.string().min(1).max(60),
+  category: z.enum(["imu", "distance", "led", "button", "voltage", "display", "audio", "other"]),
+  name: z.string().min(1).max(80),
+  description: z.string().max(300),
+  interfaces: z.array(z.string().max(40)),
+  icon: z.string().max(8),
+});
+
+/** Schéma de validation d'une entrée de catalogue selon son `kind`. */
+export const CATALOG_SCHEMAS = {
+  servoType: ServoSpecSchema,
+  servoController: ServoControllerSpecSchema,
+  commandElectronics: CommandElectronicsSpecSchema,
+  peripheral: PeripheralSpecSchema,
+} as const;
+
+export type CatalogKind = keyof typeof CATALOG_SCHEMAS;
+
+export function isCatalogKind(k: string): k is CatalogKind {
+  return k in CATALOG_SCHEMAS;
+}
+
+// ── Gestion des utilisateurs (admin) ─────────────────────────────────────────
+export const AdminResetPasswordSchema = z.object({
+  password: z.string().min(6).max(100),
+});
+
+export const AdminUpdateUserSchema = z.object({
+  isAdmin: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type AdminResetPasswordInput = z.infer<typeof AdminResetPasswordSchema>;
+export type AdminUpdateUserInput = z.infer<typeof AdminUpdateUserSchema>;

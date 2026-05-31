@@ -2,6 +2,7 @@
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { CATALOG_SEED, CATALOG_KINDS } from "./catalogs/seedData";
 
 // node:sqlite est expérimental en Node 22/24 — types non encore dans @types/node
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,6 +78,20 @@ db.exec(`
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
+
+  -- Référentiels matériels éditables (servomoteurs, cartes servo, cartes de
+  -- commande, capteurs). Source de vérité côté serveur, seedée au démarrage
+  -- depuis le snapshot intégré (catalogs/seedData.ts).
+  CREATE TABLE IF NOT EXISTS catalog_entries (
+    kind TEXT NOT NULL,
+    entry_id TEXT NOT NULL,
+    data TEXT NOT NULL,
+    builtin INTEGER NOT NULL DEFAULT 0,
+    sort INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (kind, entry_id)
+  );
 `);
 
 // ── Migrations idempotentes ──────────────────────────────────────────────────
@@ -103,6 +118,45 @@ addColumnIfMissing("projects",       "preferences", "TEXT NOT NULL DEFAULT '{}'"
 // champs sont portés par chaque step à l'intérieur du JSON `steps`.
 addColumnIfMissing("poses",          "thumbnail",         "TEXT");
 addColumnIfMissing("poses",          "thumbnail_context", "TEXT");
+// Droits d'administration et état d'activation des comptes.
+addColumnIfMissing("users",          "is_admin",          "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("users",          "is_active",         "INTEGER NOT NULL DEFAULT 1");
+
+// ── Administrateur central : microdav ────────────────────────────────────────
+// Promotion idempotente d'un compte existant (sans toucher au mot de passe).
+// microdav ne peut jamais perdre l'admin ni être désactivé/supprimé (cf. admin.ts).
+export const CENTRAL_ADMIN_LOGIN = "microdav";
+
+function promoteCentralAdmin(): void {
+  const res = db
+    .prepare("UPDATE users SET is_admin = 1 WHERE login = ?")
+    .run(CENTRAL_ADMIN_LOGIN);
+  if (res.changes > 0) {
+    console.log(`[hexagram-api] microdav promu administrateur central`);
+  }
+}
+
+// ── Seed des référentiels matériels ──────────────────────────────────────────
+// Insère les entrées intégrées manquantes (idempotent : ne touche pas aux
+// entrées déjà présentes, donc préserve les éditions admin et les ajouts).
+function seedCatalogs(): void {
+  const now = Date.now();
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO catalog_entries
+       (kind, entry_id, data, builtin, sort, created_at, updated_at)
+     VALUES (?, ?, ?, 1, ?, ?, ?)`
+  );
+  let inserted = 0;
+  for (const kind of CATALOG_KINDS) {
+    CATALOG_SEED[kind].forEach((entry, index) => {
+      const res = insert.run(kind, entry.id, JSON.stringify(entry.data), index, now, now);
+      inserted += res.changes;
+    });
+  }
+  if (inserted > 0) {
+    console.log(`[hexagram-api] seed référentiels : ${inserted} entrée(s) ajoutée(s)`);
+  }
+}
 
 // ── Migration des données existantes vers un projet par utilisateur ─────────
 
@@ -199,5 +253,7 @@ function runProjectMigration(): void {
 }
 
 runProjectMigration();
+promoteCentralAdmin();
+seedCatalogs();
 
 export default db;

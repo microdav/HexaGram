@@ -1,3 +1,5 @@
+import { useCatalogStore } from "../store/useCatalogStore";
+
 export interface ServoSpec {
   id: string;
   brand: string;
@@ -129,7 +131,10 @@ export function saveCustomServoType(spec: ServoSpec): void {
 }
 
 export function getAllServoTypes(extra: ServoSpec[] = []): ServoSpec[] {
-  return [...SERVO_CATALOG, ...loadCustomServoTypes(), ...extra];
+  // Le catalogue de base provient désormais du store (hydraté depuis la base),
+  // avec repli sur SERVO_CATALOG intégré tant que le store n'est pas peuplé.
+  const base = useCatalogStore.getState().servoTypes;
+  return [...(base.length ? base : SERVO_CATALOG), ...loadCustomServoTypes(), ...extra];
 }
 
 export function findServoType(

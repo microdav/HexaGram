@@ -10,10 +10,13 @@ export interface ToolboxConfig {
   floatPos: { x: number; y: number };
 }
 
-export type AppTab = 'projet' | 'conception' | 'programmation' | 'electronique';
+export type AppTab = 'projet' | 'conception' | 'programmation' | 'electronique' | 'admin';
 
 /** Sous-onglets de la page Électronique (routables dans l'URL). */
 export type ElectroSubTab = 'architecture' | 'calibration' | 'sequence';
+
+/** Sous-onglets de la page Administration (routables dans l'URL). */
+export type AdminSubTab = 'users' | 'referentiels';
 
 export interface UiPrefs {
   leftOpen: boolean;
@@ -22,6 +25,8 @@ export interface UiPrefs {
   activeTab: AppTab;
   /** Sous-onglet actif de la page Électronique. */
   electroSubTab: ElectroSubTab;
+  /** Sous-onglet actif de la page Administration. */
+  adminSubTab: AdminSubTab;
 }
 
 const LEFT_PANEL_W = 260;
@@ -82,6 +87,7 @@ const DEFAULT_UI_PREFS: UiPrefs = {
   sequencerOpen: false,
   activeTab: 'conception',
   electroSubTab: 'architecture',
+  adminSubTab: 'users',
 };
 
 /** Détection d'un pointeur grossier (doigt) pour pré-activer le mode tablette. */
@@ -118,6 +124,7 @@ interface ToolboxStore {
   setSequencerOpen: (v: boolean) => void;
   setActiveTab: (tab: AppTab) => void;
   setElectroSubTab: (tab: ElectroSubTab) => void;
+  setAdminSubTab: (tab: AdminSubTab) => void;
   applyUiPrefs: (prefs: Partial<UiPrefs>) => void;
 }
 
@@ -185,6 +192,7 @@ export const useToolboxStore = create<ToolboxStore>()(
       setSequencerOpen: (v) => set((s) => ({ uiPrefs: { ...s.uiPrefs, sequencerOpen: v } })),
       setActiveTab: (tab) => set((s) => ({ uiPrefs: { ...s.uiPrefs, activeTab: tab } })),
       setElectroSubTab: (tab) => set((s) => ({ uiPrefs: { ...s.uiPrefs, electroSubTab: tab } })),
+      setAdminSubTab: (tab) => set((s) => ({ uiPrefs: { ...s.uiPrefs, adminSubTab: tab } })),
       applyUiPrefs: (prefs) => set((s) => ({ uiPrefs: { ...s.uiPrefs, ...prefs } })),
     }),
     {

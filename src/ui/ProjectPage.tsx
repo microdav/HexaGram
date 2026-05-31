@@ -6,18 +6,10 @@ import { useProgramsStore } from "../store/useProgramsStore";
 import { useToastStore } from "../store/useToastStore";
 import { confirmDialog } from "../store/useConfirmStore";
 import { api } from "../api/client";
-import {
-  SERVO_CATALOG,
-  type ServoSpec,
-} from "../model/servoTypes";
-import {
-  SERVO_CONTROLLER_CATALOG,
-  type ServoControllerSpec,
-} from "../model/servoControllers";
-import {
-  COMMAND_ELECTRONICS_CATALOG,
-  type CommandElectronicsSpec,
-} from "../model/commandElectronics";
+import { type ServoSpec } from "../model/servoTypes";
+import { type ServoControllerSpec } from "../model/servoControllers";
+import { type CommandElectronicsSpec } from "../model/commandElectronics";
+import { useCatalogStore } from "../store/useCatalogStore";
 import { BoardSvg } from "./BoardSvg";
 
 type DetailTab = "general" | "hardware" | "content" | "import";
@@ -475,16 +467,19 @@ function HardwarePanel({ projectId, initialHardware }: {
   const [hardware, setHardware] = useState<ProjectHardware>(initialHardware);
   const [showNewServoForm, setShowNewServoForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const servoCatalog = useCatalogStore((s) => s.servoTypes);
+  const controllerCatalog = useCatalogStore((s) => s.servoControllers);
+  const commandCatalog = useCatalogStore((s) => s.commandElectronics);
 
   useEffect(() => { setHardware(initialHardware); setShowNewServoForm(false); }, [initialHardware, projectId]);
 
   const allTypes = useMemo(
-    () => [...SERVO_CATALOG, ...hardware.customServoTypes],
-    [hardware.customServoTypes]
+    () => [...servoCatalog, ...hardware.customServoTypes],
+    [servoCatalog, hardware.customServoTypes]
   );
   const selectedServo = allTypes.find((t) => t.id === hardware.servoTypeId) ?? null;
-  const selectedController = SERVO_CONTROLLER_CATALOG.find((c) => c.id === hardware.servoControllerId);
-  const selectedCommand = COMMAND_ELECTRONICS_CATALOG.find((c) => c.id === hardware.commandElectronicsId);
+  const selectedController = controllerCatalog.find((c) => c.id === hardware.servoControllerId);
+  const selectedCommand = commandCatalog.find((c) => c.id === hardware.commandElectronicsId);
 
   const dirty = useMemo(() => JSON.stringify(hardware) !== JSON.stringify(initialHardware), [hardware, initialHardware]);
 
@@ -534,7 +529,7 @@ function HardwarePanel({ projectId, initialHardware }: {
         <GenericCombobox
           value={hardware.servoControllerId}
           onChange={(id) => setHardware((h) => ({ ...h, servoControllerId: id }))}
-          items={SERVO_CONTROLLER_CATALOG}
+          items={controllerCatalog}
           placeholder="aucun"
           extraLabel={(c) => `${c.channels} ch`}
         />
@@ -546,7 +541,7 @@ function HardwarePanel({ projectId, initialHardware }: {
         <GenericCombobox
           value={hardware.commandElectronicsId}
           onChange={(id) => setHardware((h) => ({ ...h, commandElectronicsId: id }))}
-          items={COMMAND_ELECTRONICS_CATALOG}
+          items={commandCatalog}
           placeholder="aucune"
         />
         {selectedCommand && <CommandSpecCard spec={selectedCommand} />}

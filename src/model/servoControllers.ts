@@ -1,3 +1,5 @@
+import { useCatalogStore } from "../store/useCatalogStore";
+
 export interface ServoControllerSpec {
   id: string;
   brand: string;
@@ -124,5 +126,6 @@ export const SERVO_CONTROLLER_CATALOG: ServoControllerSpec[] = [
 ];
 
 export function findServoController(id: string): ServoControllerSpec | undefined {
-  return SERVO_CONTROLLER_CATALOG.find((c) => c.id === id);
+  const base = useCatalogStore.getState().servoControllers;
+  return (base.length ? base : SERVO_CONTROLLER_CATALOG).find((c) => c.id === id);
 }

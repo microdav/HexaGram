@@ -6,6 +6,8 @@
 // catalogue (specId) + un placement (au-dessus / en-dessous de la carte) pour le
 // schéma d'architecture.
 
+import { useCatalogStore } from "../store/useCatalogStore";
+
 export type PeripheralCategory =
   | "imu"
   | "distance"
@@ -70,7 +72,8 @@ export const PERIPHERAL_CATALOG: PeripheralSpec[] = [
 ];
 
 export function findPeripheral(id: string): PeripheralSpec | undefined {
-  return PERIPHERAL_CATALOG.find((p) => p.id === id);
+  const base = useCatalogStore.getState().peripherals;
+  return (base.length ? base : PERIPHERAL_CATALOG).find((p) => p.id === id);
 }
 
 // ── Périphériques sélectionnés dans un projet ────────────────────────────────

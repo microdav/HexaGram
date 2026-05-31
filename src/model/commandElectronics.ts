@@ -1,3 +1,5 @@
+import { useCatalogStore } from "../store/useCatalogStore";
+
 export type ElectronicsType = "microcontroller" | "sbc" | "soc";
 
 export interface CommandElectronicsSpec {
@@ -247,5 +249,6 @@ export const COMMAND_ELECTRONICS_CATALOG: CommandElectronicsSpec[] = [
 ];
 
 export function findCommandElectronics(id: string): CommandElectronicsSpec | undefined {
-  return COMMAND_ELECTRONICS_CATALOG.find((c) => c.id === id);
+  const base = useCatalogStore.getState().commandElectronics;
+  return (base.length ? base : COMMAND_ELECTRONICS_CATALOG).find((c) => c.id === id);
 }
