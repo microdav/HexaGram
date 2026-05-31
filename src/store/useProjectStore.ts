@@ -6,6 +6,8 @@ import {
   normalizeElectronics,
   type ProjectElectronics,
 } from "../model/electronics";
+import { defaultPower, normalizePower, type ProjectPower } from "../model/power";
+import { normalizePeripherals, type ProjectPeripheral } from "../model/peripherals";
 
 export interface ProjectHardware {
   servoTypeId: string | null;
@@ -14,6 +16,12 @@ export interface ProjectHardware {
   customServoTypes: ServoSpec[];
   /** Liaison servo↔canal + calibration du 0 + protocole — pilotage physique. */
   electronics: ProjectElectronics;
+  /** Alimentation : sources de puissance vers le contrôleur et la carte de commande. */
+  power: ProjectPower;
+  /** Carte de commande active dans l'architecture (sinon : USB direct sur le contrôleur). */
+  commandEnabled: boolean;
+  /** Capteurs & périphériques reliés à la carte de commande. */
+  peripherals: ProjectPeripheral[];
 }
 
 export const DEFAULT_HARDWARE: ProjectHardware = {
@@ -22,6 +30,9 @@ export const DEFAULT_HARDWARE: ProjectHardware = {
   commandElectronicsId: null,
   customServoTypes: [],
   electronics: defaultElectronics(),
+  power: defaultPower(),
+  commandEnabled: true,
+  peripherals: [],
 };
 
 export interface ProjectPreferences {
@@ -86,6 +97,9 @@ function normalizeHardware(raw: Partial<ProjectHardware> | undefined): ProjectHa
     commandElectronicsId: raw?.commandElectronicsId ?? null,
     customServoTypes: raw?.customServoTypes ?? [],
     electronics: normalizeElectronics(raw?.electronics),
+    power: normalizePower(raw?.power),
+    commandEnabled: raw?.commandEnabled !== false,
+    peripherals: normalizePeripherals(raw?.peripherals),
   };
 }
 

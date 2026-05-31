@@ -76,6 +76,12 @@ interface SerialState {
   identify: (servoId: number) => Promise<void>;
   /** Interroge la version firmware (SSC-32U : commande `VER`). Test de présence. */
   testVersion: () => Promise<void>;
+  /**
+   * Envoie une commande brute déjà formatée (terminateur compris) telle quelle à
+   * la carte, et la journalise. Utilisé par l'envoi de script de séquence, où les
+   * lignes sont construites en amont (groupes de canaux, T…).
+   */
+  sendRaw: (cmd: string) => Promise<void>;
 }
 
 // Instance unique de liaison série pour toute l'app.
@@ -346,6 +352,18 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       await link.writeString(cmd);
       pushLog(set, "tx", cmd);
       pushLog(set, "info", "VER envoyé — réponse attendue ci-dessous (si la carte répond)");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Écriture échouée";
+      set({ status: "error", errorMsg: msg });
+      pushLog(set, "info", `Erreur écriture : ${msg}`);
+    }
+  },
+
+  sendRaw: async (cmd) => {
+    if (get().status !== "connected") return;
+    try {
+      await link.writeString(cmd);
+      pushLog(set, "tx", cmd);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Écriture échouée";
       set({ status: "error", errorMsg: msg });

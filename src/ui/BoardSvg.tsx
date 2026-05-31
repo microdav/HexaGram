@@ -36,6 +36,45 @@ const PIN_GOLD = "#e3b34a";
 const HEADER_BG = "#101216";
 const USB_SILVER = "#aab0bb";
 
+// Pictogrammes (chemins sur une grille 24×24).
+const WIFI_PATH =
+  "M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.07 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z";
+const BLUETOOTH_PATH =
+  "M17.71 7.71 12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z";
+
+/** Badge rond avec un pictogramme (WiFi / Bluetooth) sur le PCB. */
+function WirelessBadge({
+  cx,
+  cy,
+  d,
+  color,
+  size = 13,
+}: {
+  cx: number;
+  cy: number;
+  d: string;
+  color: string;
+  size?: number;
+}) {
+  const s = size / 24;
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={size * 0.66}
+        fill="rgba(255,255,255,0.12)"
+        stroke={color}
+        strokeOpacity={0.4}
+        strokeWidth={0.7}
+      />
+      <g transform={`translate(${cx - size / 2} ${cy - size / 2}) scale(${s})`}>
+        <path d={d} fill={color} />
+      </g>
+    </g>
+  );
+}
+
 interface BoardSvgProps {
   brand: string;
   model: string;
@@ -100,7 +139,9 @@ export function BoardSvg({
   className,
 }: BoardSvgProps) {
   const { pcb, silk } = pcbOf(brand);
-  const wireless = hasIface(interfaces, "wifi") || hasIface(interfaces, "ble") || hasIface(interfaces, "bluetooth");
+  const wifi = hasIface(interfaces, "wifi");
+  const bt = hasIface(interfaces, "ble") || hasIface(interfaces, "bluetooth");
+  const wireless = wifi || bt || hasIface(interfaces, "wireless");
   const usb = hasIface(interfaces, "usb");
 
   // Géométrie : ratio réel borné pour rester lisible.
@@ -159,13 +200,33 @@ export function BoardSvg({
       />
       <circle cx={bx + bw * 0.45} cy={by + bh * 0.34} r={1.4} fill="rgba(255,255,255,0.18)" />
 
-      {/* Antenne sans-fil (coin haut droit) */}
-      {wireless && (
+      {/* Antenne sans-fil générique (coin haut droit) — seulement si ni WiFi ni BT. */}
+      {wireless && !wifi && !bt && (
         <g stroke={silk} strokeOpacity={0.85} fill="none" strokeWidth={1.2}>
           <path d={`M ${bx + bw - 26} ${by + 10} h 16 l -8 10 z`} fill={silk} fillOpacity={0.18} stroke="none" />
           <path d={`M ${bx + bw - 20} ${by + 6} a 8 8 0 0 1 8 0`} />
           <path d={`M ${bx + bw - 23} ${by + 3} a 12 12 0 0 1 14 0`} />
         </g>
+      )}
+
+      {/* Symboles WiFi (vert) / Bluetooth (bleu), côté droit, centrés verticalement */}
+      {wifi && (
+        <WirelessBadge
+          cx={bx + bw - 19}
+          cy={by + bh * 0.5 - (bt ? 17 : 0)}
+          d={WIFI_PATH}
+          color="#3ddc84"
+          size={20}
+        />
+      )}
+      {bt && (
+        <WirelessBadge
+          cx={bx + bw - 19}
+          cy={by + bh * 0.5 + (wifi ? 17 : 0)}
+          d={BLUETOOTH_PATH}
+          color="#2f9bff"
+          size={20}
+        />
       )}
 
       {/* Headers */}

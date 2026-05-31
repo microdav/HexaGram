@@ -250,12 +250,38 @@ export const ProjectElectronicsSchema = z.object({
   bindings: z.record(z.string(), ServoBindingSchema),
 });
 
+export const PowerRailSchema = z.object({
+  enabled: z.boolean(),
+  kind: z.enum(["battery", "bench", "usb"]).optional(),
+  source: z.string().max(120),
+  voltageV: z.number().nullable(),
+  capacityMah: z.number().nullable(),
+  maxCurrentA: z.number().nullable().optional(),
+});
+
+export const ProjectPowerSchema = z.object({
+  servo: PowerRailSchema,
+  servoLogicShared: z.boolean(),
+  command: PowerRailSchema,
+});
+
+export const ProjectPeripheralSchema = z.object({
+  uid: z.string(),
+  specId: z.string(),
+  label: z.string().nullable().optional(),
+  placement: z.enum(["above", "below"]).optional(),
+  note: z.string().nullable().optional(),
+});
+
 export const ProjectHardwareSchema = z.object({
   servoTypeId: z.string().nullable().optional(),
   servoControllerId: z.string().nullable().optional(),
   commandElectronicsId: z.string().nullable().optional(),
   customServoTypes: z.array(ServoSpecSchema).optional(),
   electronics: ProjectElectronicsSchema.optional(),
+  power: ProjectPowerSchema.optional(),
+  commandEnabled: z.boolean().optional(),
+  peripherals: z.array(ProjectPeripheralSchema).optional(),
 }).passthrough();
 
 export const ProjectPreferencesSchema = z.object({

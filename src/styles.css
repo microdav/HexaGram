@@ -5402,6 +5402,42 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .electro-globals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .electro-hint { font-size: 12px; color: var(--text-dim); flex: 1 1 260px; }
 
+/* ── Sous-onglet « Séquence → carte » ───────────────────────────────────── */
+.electro-seq { display: flex; flex-direction: column; gap: 14px; }
+.electro-seq-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.electro-seq-pick select { min-width: 220px; }
+.electro-seq-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.electro-seq-time input { width: 80px; }
+.electro-seq-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.electro-seq-meta strong { color: var(--text); }
+.electro-seq-meta-note { font-style: italic; }
+.electro-seq-editor {
+  height: 440px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.electro-seq-editor .cm-editor { height: 100%; }
+.app.tablet .electro-seq-editor { height: 360px; }
+.app.tablet .electro-seq-opt { font-size: 15px; }
+
 .electro-legs {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
@@ -5808,6 +5844,327 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   color: var(--text);
 }
 .arch-power-icon { margin-right: 6px; }
+
+/* ── Carte de commande : activation / état désactivé ────────────────────── */
+.arch-node--disabled { opacity: 0.55; }
+.arch-node--disabled .arch-node-name { text-decoration: line-through; }
+.arch-node-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.arch-node-bypass { font-style: italic; color: var(--accent); }
+.arch-link-line--bypass { border-top: 2px dashed var(--border); background: none; }
+
+/* ── Alimentation (éditable) ────────────────────────────────────────────── */
+.arch-power-section {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 14px;
+  background: rgba(245, 197, 24, 0.05);
+}
+.arch-power-section-title { font-weight: 600; margin-bottom: 10px; }
+.arch-power-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.arch-power-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.arch-power-card-head { display: flex; flex-direction: column; gap: 2px; }
+.arch-power-card-title { font-weight: 600; font-size: 14px; }
+.arch-power-card-target { font-size: 12px; color: var(--text-dim); }
+.arch-power-fields { display: flex; flex-direction: column; gap: 8px; }
+.arch-power-fields--off { opacity: 0.6; }
+.arch-power-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.arch-power-shared { color: var(--text-dim); }
+.arch-power-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.arch-power-field input,
+.arch-power-field select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.arch-power-row { display: flex; gap: 10px; }
+.arch-power-note { font-size: 11.5px; color: var(--text-dim); font-style: italic; }
+
+/* ── Bilan d'un rail (suffisant / juste / insuffisant…) ─────────────────── */
+.arch-budget {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.arch-budget-headline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.arch-budget-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+.arch-budget-label { flex: 1; color: var(--text-dim); }
+.arch-budget-val { font-variant-numeric: tabular-nums; }
+.arch-budget-ico { width: 14px; text-align: center; flex: 0 0 auto; }
+.v-ok, .v-oversized { color: #4cc97a; }
+.v-tight { color: #f5c518; }
+.v-warn { color: #ff9f43; }
+.v-insufficient { color: #ff5c5c; }
+.v-unknown, .v-info { color: var(--text-dim); }
+
+/* ── Conseils & composants ──────────────────────────────────────────────── */
+.arch-advice {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.arch-advice-title { font-weight: 600; font-size: 14px; }
+.arch-advice-item {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.arch-advice-item.adv-danger { border-left-color: #ff5c5c; }
+.arch-advice-item.adv-warn { border-left-color: #ff9f43; }
+.arch-advice-item.adv-tip { border-left-color: var(--accent); }
+.arch-advice-item.adv-ok { border-left-color: #4cc97a; }
+.arch-advice-ico { flex: 0 0 auto; }
+.arch-advice-text strong { font-size: 13px; }
+.arch-advice-detail { font-size: 12px; color: var(--text-dim); line-height: 1.4; margin-top: 2px; }
+
+/* ── Puce d'alimentation intégrée au nœud du schéma ─────────────────────── */
+.arch-node-power {
+  margin-top: 6px;
+  align-self: center;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(245, 197, 24, 0.1);
+  border: 1px solid rgba(245, 197, 24, 0.35);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+/* ── Onglets sous le schéma d'architecture ──────────────────────────────── */
+.arch-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-top: 4px;
+}
+.arch-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.arch-tab:hover { color: var(--text); }
+.arch-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.arch-tab-panel { padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.app.tablet .arch-tab { padding: 12px 16px; font-size: 16px; }
+
+/* ── Capteurs/périph dans le schéma (autour de la carte de commande) ─────── */
+.arch-cmd-stack {
+  flex: 1 1 200px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.arch-cmd-stack .arch-node { flex: 1 1 auto; }
+.arch-periphs { display: flex; flex-direction: column; align-items: center; }
+.arch-periph-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+.arch-periph-link { width: 2px; height: 12px; background: var(--border); }
+.arch-periph-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.arch-periph-bus {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  border-left: 1px solid var(--border);
+  padding-left: 4px;
+}
+
+/* ── Onglet Capteurs : barre + tableau ──────────────────────────────────── */
+.arch-periph-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.arch-periph-count { color: var(--text-dim); font-size: 13px; }
+.arch-periph-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.arch-periph-table th,
+.arch-periph-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.arch-periph-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+.arch-periph-td-icon { font-size: 18px; width: 28px; }
+.arch-periph-td-name { font-weight: 600; }
+.arch-periph-td-desc { font-size: 11.5px; color: var(--text-dim); }
+.arch-periph-table select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 6px;
+}
+
+/* ── Popin de sélection de périphérique ─────────────────────────────────── */
+.periph-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.periph-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: min(720px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.periph-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.periph-modal-head h3 { margin: 0; font-size: 16px; }
+.periph-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+}
+.periph-modal-bar { padding: 12px 16px 8px; }
+.periph-search {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.periph-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+.periph-filter {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.periph-filter:hover { color: var(--text); }
+.periph-filter.active { color: var(--text); border-color: var(--accent); background: rgba(245, 197, 24, 0.1); }
+.periph-results { overflow-y: auto; padding: 0 16px; flex: 1; }
+.periph-empty { color: var(--text-dim); font-style: italic; padding: 16px 0; }
+.periph-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.periph-item-icon { font-size: 20px; flex: 0 0 auto; }
+.periph-item-text { flex: 1; min-width: 0; }
+.periph-item-name { font-weight: 600; font-size: 13px; }
+.periph-item-desc { font-size: 12px; color: var(--text-dim); }
+.periph-item-bus {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.periph-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.periph-hint { font-size: 12px; color: var(--text-dim); }
+.app.tablet .arch-power-toggle,
+.app.tablet .arch-node-toggle { font-size: 15px; }
 
 .arch-future {
   border: 1px dashed var(--border);

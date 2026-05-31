@@ -16,6 +16,7 @@ import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 import { BoardSvg } from "./BoardSvg";
 import { ElectroArchitecture } from "./ElectroArchitecture";
+import { ElectroSequencePanel } from "./ElectroSequencePanel";
 
 const JOINT_LABEL: Record<string, string> = {
   coxa: "Coxa",
@@ -65,7 +66,8 @@ export function ElectroniquePage() {
   // (dont "aide") sur "architecture".
   const storedSubTab = useToolboxStore((s) => s.uiPrefs.electroSubTab);
   const setSubTab = useToolboxStore((s) => s.setElectroSubTab);
-  const subTab = storedSubTab === "calibration" ? "calibration" : "architecture";
+  const subTab =
+    storedSubTab === "calibration" || storedSubTab === "sequence" ? storedSubTab : "architecture";
   useEffect(() => {
     if ((storedSubTab as string) === "aide") setSubTab("architecture");
   }, [storedSubTab, setSubTab]);
@@ -438,6 +440,13 @@ export function ElectroniquePage() {
           >
             Liaison &amp; calibration
           </button>
+          <button
+            type="button"
+            className={`electro-subtab${subTab === "sequence" ? " active" : ""}`}
+            onClick={() => setSubTab("sequence")}
+          >
+            Séquence → carte
+          </button>
         </nav>
 
         <div className="electro-subpanel">
@@ -592,6 +601,8 @@ export function ElectroniquePage() {
               </section>
             </>
           )}
+
+          {subTab === "sequence" && <ElectroSequencePanel />}
         </div>
       </div>
 

@@ -130,7 +130,9 @@ function pushHistory(history: SequencerStep[][], steps: SequencerStep[]): Sequen
 }
 
 // Reconstruit la liste complète (définies + interpolées avec bouclage) à partir des seules étapes définies.
-function buildInterpolated(defined: SequencerStep[], stepDelay: number): SequencerStep[] {
+// Exporté pour permettre à d'autres écrans (ex. génération du script série dans
+// l'onglet Électronique) de reproduire à l'identique les images jouées.
+export function buildInterpolated(defined: SequencerStep[], stepDelay: number): SequencerStep[] {
   if (defined.length < 2) return defined.slice();
   const insertCount = Math.max(0, Math.round(stepDelay * MAX_FPS) - 1);
   const result: SequencerStep[] = [];
