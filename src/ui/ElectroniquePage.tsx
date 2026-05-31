@@ -14,7 +14,7 @@ import {
 import type { ConnTarget } from "../store/useSerialStore";
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
-import { BoardSvg } from "./BoardSvg";
+import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
 import { ElectroArchitecture } from "./ElectroArchitecture";
 import { ElectroSequencePanel } from "./ElectroSequencePanel";
 
@@ -254,6 +254,8 @@ export function ElectroniquePage() {
                 width={76}
                 className="electro-conn-thumb"
               />
+            ) : controller && isSsc ? (
+              <Ssc32uBoard width={76} className="electro-conn-thumb" />
             ) : controller ? (
               <BoardSvg
                 brand={controller.brand}
