@@ -6,6 +6,8 @@ import sequencesRouter from "./sequences";
 import programsRouter from "./programs";
 import projectsRouter from "./projects";
 import posesRouter from "./poses";
+import catalogsRouter from "./catalogs";
+import adminRouter from "./admin";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -31,6 +33,8 @@ app.use("/api/profiles", profilesRouter);
 app.use("/api/sequences", sequencesRouter);
 app.use("/api/programs", programsRouter);
 app.use("/api/poses", posesRouter);
+app.use("/api/catalogs", catalogsRouter);
+app.use("/api/admin", adminRouter);
 
 // Gestionnaire d'erreur JSON global — retourne toujours du JSON
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

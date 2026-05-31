@@ -18,6 +18,7 @@ import { ProgramPage } from "./ui/ProgramPage";
 import { ProjectTab } from "./ui/ProjectTab";
 import { ProjectPage } from "./ui/ProjectPage";
 import { ElectroniquePage } from "./ui/ElectroniquePage";
+import { AdminPage } from "./ui/AdminPage";
 import { useAuthStore } from "./store/useAuthStore";
 import { useProfilesStore } from "./store/useProfilesStore";
 import { useToolboxStore } from "./store/useToolboxStore";
@@ -28,6 +29,7 @@ import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
 import { useProgramRunStore } from "./store/useProgramRunStore";
+import { useCatalogStore } from "./store/useCatalogStore";
 import { DEMO_STEPS, DEMO_SEQUENCE_NAME } from "./model/demoSequence";
 import { getInitialUrlState, slugify, writeUrlState } from "./hooks/useUrlState";
 import { guardStepEdit, getPendingStepEdit } from "./store/stepEditGuard";
@@ -40,6 +42,7 @@ export default function App() {
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
   const activeTab = useToolboxStore((s) => s.uiPrefs.activeTab ?? 'conception');
   const electroSubTab = useToolboxStore((s) => s.uiPrefs.electroSubTab ?? 'calibration');
+  const adminSubTab = useToolboxStore((s) => s.uiPrefs.adminSubTab ?? 'users');
   const tabletMode = useToolboxStore((s) => s.tabletMode);
   const setTabletMode = useToolboxStore((s) => s.setTabletMode);
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
@@ -79,6 +82,12 @@ export default function App() {
     if (initial.electroSub) {
       useToolboxStore.getState().setElectroSubTab(initial.electroSub);
     }
+    if (initial.adminSub) {
+      useToolboxStore.getState().setAdminSubTab(initial.adminSub);
+    }
+    // Hydrate les référentiels matériels depuis la base (remplace les défauts
+    // intégrés injectés dans main.tsx). Public : fonctionne aussi en mode démo.
+    useCatalogStore.getState().hydrate();
     bootstrap().then(() => {
       if (!useAuthStore.getState().user) {
         useSequencerStore.getState().setTransitionSpeed(0.1);
@@ -231,7 +240,8 @@ export default function App() {
   // On attend que la résolution initiale soit terminée pour ne pas réagir
   // au moment où activeProjectId est encore null pendant le chargement.
   useEffect(() => {
-    if (projectsResolved && user && !activeProjectId && activeTab !== 'projet') {
+    if (projectsResolved && user && !activeProjectId
+        && activeTab !== 'projet' && activeTab !== 'admin') {
       setActiveTab('projet');
     }
   }, [projectsResolved, user, activeProjectId, activeTab, setActiveTab]);
@@ -257,8 +267,9 @@ export default function App() {
       profileName: profile?.name ?? null,
       programName: program?.name ?? null,
       electroSubTab: activeTab === 'electronique' ? electroSubTab : null,
+      adminSubTab: activeTab === 'admin' ? adminSubTab : null,
     });
-  }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs, electroSubTab]);
+  }, [user, activeProject, activeTab, activeProfileId, profiles, selectedProgramId, programs, electroSubTab, adminSubTab]);
 
   return (
     <div className={`app${tabletMode ? " tablet" : ""}`}>
@@ -268,6 +279,17 @@ export default function App() {
         <span className="subtitle">hexapode 18 DOF</span>
         <div className="topbar-right">
           {!user && <span className="demo-badge">Mode démo</span>}
+          {user?.isAdmin && (
+            <button
+              type="button"
+              className={`admin-toggle${activeTab === 'admin' ? ' active' : ''}`}
+              onClick={() => guardedSetActiveTab('admin')}
+              title="Espace d'administration (utilisateurs et référentiels)"
+            >
+              <span className="admin-toggle-icon" aria-hidden="true">🛡</span>
+              <span className="admin-toggle-label">Administration</span>
+            </button>
+          )}
           <ToolsMenu />
           <button
             type="button"
@@ -323,6 +345,8 @@ export default function App() {
       <PoseConflictModal />
 
       {activeTab === 'projet' && user && <ProjectPage />}
+
+      {activeTab === 'admin' && user?.isAdmin && <AdminPage />}
 
       {activeTab === 'conception' && (
         <>

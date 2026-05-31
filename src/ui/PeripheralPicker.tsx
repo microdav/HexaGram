@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  PERIPHERAL_CATALOG,
   PERIPHERAL_CATEGORIES,
   type PeripheralCategory,
 } from "../model/peripherals";
+import { useCatalogStore } from "../store/useCatalogStore";
 
 interface Props {
   open: boolean;
@@ -18,6 +18,7 @@ type Filter = "all" | PeripheralCategory;
 export function PeripheralPicker({ open, onClose, onAdd }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const catalog = useCatalogStore((s) => s.peripherals);
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +31,7 @@ export function PeripheralPicker({ open, onClose, onAdd }: Props) {
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return PERIPHERAL_CATALOG.filter((p) => {
+    return catalog.filter((p) => {
       if (filter !== "all" && p.category !== filter) return false;
       if (!q) return true;
       return (
@@ -39,7 +40,7 @@ export function PeripheralPicker({ open, onClose, onAdd }: Props) {
         p.interfaces.some((i) => i.toLowerCase().includes(q))
       );
     });
-  }, [query, filter]);
+  }, [query, filter, catalog]);
 
   if (!open) return null;
 

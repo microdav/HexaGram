@@ -7,6 +7,7 @@ export interface User {
   country: string | null;
   avatarSeed: string;
   createdAt: number;
+  isAdmin: boolean;
 }
 
 interface AuthState {

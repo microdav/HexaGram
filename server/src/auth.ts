@@ -20,6 +20,7 @@ function safeUser(row: Record<string, unknown>) {
     country: row.country ?? null,
     avatarSeed: row.avatar_seed,
     createdAt: row.created_at,
+    isAdmin: !!row.is_admin,
   };
 }
 
@@ -64,6 +65,10 @@ router.post("/login", (req: Request, res: Response): void => {
     res.status(401).json({ error: "Login ou mot de passe incorrect" });
     return;
   }
+  if (!row.is_active) {
+    res.status(403).json({ error: "Compte désactivé — contactez un administrateur" });
+    return;
+  }
 
   res.json({ token: makeToken(row.id as string), user: safeUser(row) });
 });
@@ -73,6 +78,10 @@ router.get("/me", requireAuth, (req: AuthRequest, res: Response): void => {
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId) as Record<string, unknown> | undefined;
   if (!row) {
     res.status(404).json({ error: "Utilisateur introuvable" });
+    return;
+  }
+  if (!row.is_active) {
+    res.status(403).json({ error: "Compte désactivé" });
     return;
   }
   res.json({ user: safeUser(row) });
