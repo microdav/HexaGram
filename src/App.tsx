@@ -168,8 +168,10 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  // À la connexion : charger les projets et activer celui de l'URL (slug)
-  // si trouvé, sinon le dernier mis à jour
+  // À la connexion (ou au chargement avec session active) : charger la liste des
+  // projets. Si l'URL cible explicitement un projet (lien profond), on l'ouvre ;
+  // sinon on reste sur la page Projets SANS ouvrir automatiquement un projet
+  // (pas de redirection vers la Conception 3D).
   useEffect(() => {
     if (!user) {
       clearProjects();
@@ -188,9 +190,14 @@ export default function App() {
           return;
         }
         const desiredSlug = getInitialUrlState().project;
-        const target = (desiredSlug && list.find((p) => slugify(p.name) === desiredSlug))
-          || [...list].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        await loadProject(target.id);
+        const target = desiredSlug ? list.find((p) => slugify(p.name) === desiredSlug) : null;
+        if (target) {
+          // Lien profond vers un projet : on l'ouvre et on honore l'onglet de l'URL.
+          await loadProject(target.id);
+        } else {
+          // URL de base / connexion : page Projets, sans projet actif.
+          setActiveTab('projet');
+        }
       } finally {
         setProjectsResolved(true);
       }

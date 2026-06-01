@@ -90,6 +90,11 @@ export function ProgramPage() {
   // chargés à la demande pour afficher les miniatures sous chaque select.
   const [refStepsCache, setRefStepsCache] = useState<Record<string, SequencerStep[]>>({});
 
+  // Programmes du profil actif (les programmes sont projet-scopés, on filtre par profil).
+  const profilePrograms = programs.filter(
+    (p) => !activeProfileId || p.profileId === activeProfileId
+  );
+
   // Listes nécessaires à la page. Programmes/séquences sont projet-scopées :
   // on relance le list quand activeProjectId devient disponible (App.tsx liste
   // déjà les programmes mais ce hook reste robuste si l'utilisateur navigue).
@@ -116,6 +121,20 @@ export function ProgramPage() {
       .catch(() => { if (!cancelled) setSelectedId(null); });
     return () => { cancelled = true; };
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // À l'ouverture de l'onglet : sélectionne automatiquement le dernier programme
+  // du profil actif si aucun n'est déjà sélectionné (ni via lien profond URL).
+  // Le drapeau garantit une seule exécution → ne ré-sélectionne pas après « Nouveau ».
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current) return;
+    if (loading) return;
+    if (selectedId) { autoSelectedRef.current = true; return; }
+    if (profilePrograms.length === 0) return;
+    const latest = [...profilePrograms].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    autoSelectedRef.current = true;
+    setSelectedId(latest.id);
+  }, [loading, selectedId, profilePrograms, setSelectedId]);
 
   useEffect(() => {
     if (!pickerSeqId) { setPickerSteps([]); return; }
@@ -293,10 +312,6 @@ export function ProgramPage() {
     );
     patch({ steps });
   };
-
-  const profilePrograms = programs.filter(
-    (p) => !activeProfileId || p.profileId === activeProfileId
-  );
 
   const pickerRef = useRef<string | null>(null);
   pickerRef.current = pickerSeqId;
