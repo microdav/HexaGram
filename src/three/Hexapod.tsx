@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { DoubleSide, Shape } from "three";
-import { computeLegMounts } from "../model/hexapod";
+import { computeLegMounts, type HexapodGeometry } from "../model/hexapod";
+import { buildChassisGeometry } from "../model/chassisShape";
 import { computeBodyTransform } from "../model/kinematics";
 import type { Pose } from "../model/pose";
 import { useHexapodStore } from "../store/useHexapodStore";
@@ -61,6 +62,51 @@ function FrontArrow({ chassisLength, chassisHeight, flipDown }: ArrowProps) {
   );
 }
 
+/**
+ * Mesh du châssis : boîte paramétrique par défaut, ou forme extrudée (avec trous)
+ * dès qu'un contour polygonal est dessiné dans l'éditeur Robot 2D.
+ */
+function ChassisMesh({
+  geometry,
+  transparent,
+  opacity,
+}: {
+  geometry: HexapodGeometry;
+  transparent: boolean;
+  opacity: number;
+}) {
+  const pieces = geometry.body2D?.pieces;
+  const legacyPoints = geometry.body2D?.points;
+  const legacyHoles = geometry.body2D?.holes;
+  const height = geometry.chassis.height;
+
+  // Une géométrie extrudée par morceau baké ; repli sur l'ancien contour unique.
+  const geos = useMemo(() => {
+    if (pieces && pieces.length) return pieces.map((pc) => buildChassisGeometry(pc.outer, pc.holes, height));
+    if (legacyPoints && legacyPoints.length >= 3) return [buildChassisGeometry(legacyPoints, legacyHoles, height)];
+    return null;
+  }, [pieces, legacyPoints, legacyHoles, height]);
+
+  // Libère les géométries précédentes (l'éditeur en régénère à chaque drag).
+  useEffect(() => () => geos?.forEach((g) => g.dispose()), [geos]);
+
+  const mat = (
+    <meshStandardMaterial color="#f5c518" metalness={0.2} roughness={0.5}
+      side={DoubleSide} transparent={transparent} opacity={opacity} />
+  );
+
+  if (geos) {
+    return <>{geos.map((g, i) => <mesh key={i} castShadow receiveShadow geometry={g}>{mat}</mesh>)}</>;
+  }
+  return (
+    <mesh castShadow receiveShadow>
+      <boxGeometry args={[geometry.chassis.length, height, geometry.chassis.width]} />
+      <meshStandardMaterial color="#f5c518" metalness={0.2} roughness={0.5}
+        transparent={transparent} opacity={opacity} />
+    </mesh>
+  );
+}
+
 interface HexapodProps {
   /**
    * Vue « salle d'exécution » : corps toujours opaque, aucun indicateur de
@@ -113,19 +159,12 @@ export function Hexapod({ clean = false, pose: poseOverride = null }: HexapodPro
           transform.quaternion.w,
         ]}
       >
-        {/* Chassis */}
-        <mesh castShadow receiveShadow>
-          <boxGeometry
-            args={[geometry.chassis.length, geometry.chassis.height, geometry.chassis.width]}
-          />
-          <meshStandardMaterial
-            color="#f5c518"
-            metalness={0.2}
-            roughness={0.5}
-            transparent={clean ? false : bodyTransparent}
-            opacity={clean ? 1 : bodyTransparent ? 0.45 : 1}
-          />
-        </mesh>
+        {/* Chassis — boîte simple, ou forme extrudée si un contour 2D est dessiné */}
+        <ChassisMesh
+          geometry={geometry}
+          transparent={clean ? false : bodyTransparent}
+          opacity={clean ? 1 : bodyTransparent ? 0.45 : 1}
+        />
 
         {/* Front face marker */}
         <mesh position={[geometry.chassis.length / 2 + 0.001, 0, 0]}>

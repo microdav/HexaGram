@@ -13,7 +13,7 @@ type Tab = "login" | "signup";
 const ROBOT_TEXT = `[HEXAGRAM] mode connecté
 //** en cours de développement **//
 
-> profils de robot ............. OK
+> base mécanique .............. OK
 > séquences de déplacement
   wave · ripple · tripode ...... OK
 

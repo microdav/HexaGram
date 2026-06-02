@@ -1,14 +1,17 @@
 import { useHexapodStore } from "../store/useHexapodStore";
+import { useToolboxStore } from "../store/useToolboxStore";
 
 
 function NumberInput({
   label,
   value,
   onChange,
+  disabled,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="geom-row">
@@ -18,6 +21,8 @@ function NumberInput({
         step={0.1}
         min={0.5}
         value={(value * 100).toFixed(1)}
+        disabled={disabled}
+        readOnly={disabled}
         onChange={(e) => onChange(Number(e.target.value) / 100)}
       />
       <span className="unit">cm</span>
@@ -72,26 +77,29 @@ function CogSlider({
 export function GeometryContent() {
   const geometry = useHexapodStore((s) => s.geometry);
   const setGeometry = useHexapodStore((s) => s.setGeometry);
+  const setActiveTab = useToolboxStore((s) => s.setActiveTab);
 
   return (
     <>
       <div className="geom-section">
         <div className="leg-title">Châssis</div>
-        <NumberInput
-          label="Longueur"
-          value={geometry.chassis.length}
-          onChange={(v) => setGeometry({ chassis: { ...geometry.chassis, length: v } })}
-        />
-        <NumberInput
-          label="Largeur"
-          value={geometry.chassis.width}
-          onChange={(v) => setGeometry({ chassis: { ...geometry.chassis, width: v } })}
-        />
+        {/* Longueur/largeur sont désormais dessinées dans l'onglet Robot 2D
+            (source de vérité) → lecture seule ici. */}
+        <NumberInput label="Longueur" value={geometry.chassis.length} disabled onChange={() => {}} />
+        <NumberInput label="Largeur" value={geometry.chassis.width} disabled onChange={() => {}} />
         <NumberInput
           label="Hauteur"
           value={geometry.chassis.height}
           onChange={(v) => setGeometry({ chassis: { ...geometry.chassis, height: v } })}
         />
+        <button
+          type="button"
+          className="btn btn-sm geom-edit-2d"
+          onClick={() => setActiveTab("robot2d")}
+          title="Modifier le châssis et les ancrages dans l'éditeur 2D"
+        >
+          ✎ Éditer dans Robot 2D
+        </button>
       </div>
       <div className="geom-section">
         <div className="leg-title">Segments de patte</div>

@@ -15,6 +15,7 @@ import { ToolsMenu } from "./ui/ToolsMenu";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
+import { Robot2DPage } from "./ui/robot2d/Robot2DPage";
 import { ProjectTab } from "./ui/ProjectTab";
 import { ProjectPage } from "./ui/ProjectPage";
 import { ElectroniquePage } from "./ui/ElectroniquePage";
@@ -51,8 +52,7 @@ export default function App() {
   const layoutClass = `layout${leftOpen ? "" : " left-collapsed"}${rightOpen ? "" : " right-collapsed"}`;
   const { openModal, setOpenModal, bootstrap } = useAuthStore();
   const user = useAuthStore((s) => s.user);
-  const listProfiles = useProfilesStore((s) => s.list);
-  const loadProfile = useProfilesStore((s) => s.load);
+  const ensureBase = useProfilesStore((s) => s.ensureBase);
   const clearProfiles = useProfilesStore((s) => s.clear);
   const clearSequences = useSavedSequencesStore((s) => s.clear);
   const clearPrograms = useProgramsStore((s) => s.clear);
@@ -154,6 +154,8 @@ export default function App() {
   // (brouillon de programme non enregistré). Les autres onglets ne gardent rien.
   const guardLeaveCurrentTab = async (): Promise<boolean> => {
     if (activeTab === 'conception') return guardDesignLeave();
+    // Robot 2D édite la même base mécanique → on garde le profil non enregistré.
+    if (activeTab === 'robot2d') return guardProfileEdit();
     if (activeTab === 'programmation') return guardProgramEdit();
     return true;
   };
@@ -204,20 +206,13 @@ export default function App() {
     })();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Au changement de projet : charger profils + activer le profil de l'URL
-  // (slug) si trouvé, sinon le dernier mis à jour. Liste aussi les programmes
-  // pour que le slug programme de l'URL puisse être résolu côté ProgramPage.
+  // Au changement de projet : garantir la « base mécanique » unique (création
+  // par défaut si absente, sinon chargement de la plus récente). Liste aussi
+  // les programmes pour que le slug programme de l'URL soit résolu côté ProgramPage.
   useEffect(() => {
     if (!user || !activeProjectId) return;
     (async () => {
-      await listProfiles();
-      const { profiles } = useProfilesStore.getState();
-      if (profiles.length > 0) {
-        const desiredSlug = getInitialUrlState().profile;
-        const target = (desiredSlug && profiles.find((p) => slugify(p.name) === desiredSlug))
-          || [...profiles].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        await loadProfile(target.id);
-      }
+      await ensureBase();
       // Liste des programmes côté projet (et résolution du slug URL → ID)
       await listPrograms();
       const { programs: progs } = useProgramsStore.getState();
@@ -316,6 +311,15 @@ export default function App() {
         {user && <ProjectTab onBeforeSwitch={guardLeaveCurrentTab} />}
         <button
           type="button"
+          className={`app-tab${activeTab === 'robot2d' ? ' active' : ''}`}
+          onClick={() => guardedSetActiveTab('robot2d')}
+          disabled={!!user && !activeProjectId}
+          title={!!user && !activeProjectId ? "Sélectionnez ou créez un projet d'abord" : "Maquetter le châssis et les pattes (vue de dessus)"}
+        >
+          Robot 2D
+        </button>
+        <button
+          type="button"
           className={`app-tab${activeTab === 'conception' ? ' active' : ''}`}
           onClick={() => guardedSetActiveTab('conception')}
           disabled={!!user && !activeProjectId}
@@ -354,6 +358,8 @@ export default function App() {
       {activeTab === 'projet' && user && <ProjectPage />}
 
       {activeTab === 'admin' && user?.isAdmin && <AdminPage />}
+
+      {activeTab === 'robot2d' && <Robot2DPage />}
 
       {activeTab === 'conception' && (
         <>

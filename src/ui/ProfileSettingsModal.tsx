@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LEG_NAMES, computeLegMounts, type LegLayout } from "../model/hexapod";
+import { LEG_NAMES, computeLegMounts, defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 import { findServoType } from "../model/servoTypes";
 import {
   DEFAULT_SERVO_CALIB,
@@ -389,7 +389,22 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
         await rename(activeProfileId, localName.trim());
       }
       setDescription(localDesc);
+      // Le picker star/linear est un préréglage : changer la disposition
+      // régénère les ancrages 2D (sinon, avec des ancrages présents,
+      // computeLegMounts les ignorerait et le picker n'aurait aucun effet).
+      const layoutChanged = localLegLayout !== (storeGeometry.legLayout ?? "star");
       setGeometry({ legLayout: localLegLayout });
+      if (layoutChanged) {
+        const g = useHexapodStore.getState().geometry;
+        const body2D: Body2D = {
+          version: 1,
+          outline: g.body2D?.outline ?? { length: g.chassis.length, width: g.chassis.width },
+          points: g.body2D?.points ?? null,
+          servoMarkers: g.body2D?.servoMarkers,
+          anchors: defaultAnchorsFromGeometry(g),
+        };
+        setGeometry({ body2D });
+      }
       setServoCalibrationAll(calibration);
       setCollisionPrefs(localCollisionPrefs);
       setWeightConfigStore(localWeightConfig);
@@ -405,7 +420,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
 
   return (
     <Modal open={open} onClose={onClose} className="modal-wide">
-      <h3 className="modal-title">Paramètres du profil</h3>
+      <h3 className="modal-title">Paramètres de la base mécanique</h3>
 
       <div className="settings-layout">
         <nav className="settings-tabs">
@@ -444,7 +459,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
           {tab === "general" && (
             <div className="modal-form">
               <label className="modal-field">
-                <span>Nom du profil</span>
+                <span>Nom de la base mécanique</span>
                 <input
                   type="text"
                   value={localName}
@@ -459,12 +474,16 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                   rows={3}
                   value={localDesc}
                   onChange={(e) => setLocalDesc(e.target.value)}
-                  placeholder="Notes sur ce profil (configuration, notes de calibration…)"
+                  placeholder="Notes sur cette base mécanique (configuration, notes de calibration…)"
                 />
               </label>
 
               <div className="modal-field">
                 <span>Position des pattes</span>
+                <span className="hint">
+                  Préréglage rapide — appliqué à l&apos;enregistrement, il réinitialise
+                  les ancrages dessinés dans l&apos;onglet Robot 2D.
+                </span>
                 <div className="leg-layout-picker">
                   {(["star", "linear"] as LegLayout[]).map((layout) => (
                     <button

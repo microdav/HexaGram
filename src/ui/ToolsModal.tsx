@@ -27,19 +27,23 @@ interface Props {
 
 type ImportMode = 'create' | 'replace';
 
+/** Type de source : entités transférables + le robot complet (base mécanique). */
+type SourceKind = TransferKind | 'robot';
+
 /** Source actuellement chargée dans l'éditeur. */
 interface ActiveSource {
-  kind: TransferKind;
+  kind: SourceKind;
   /** 'live' = pose 3D / séquence en cours ; 'saved' = entité enregistrée. */
   origin: 'live' | 'saved';
   id: string | null;
   name: string;
 }
 
-const KIND_LABEL: Record<TransferKind, string> = {
+const KIND_LABEL: Record<SourceKind, string> = {
   pose: 'pose',
   sequence: 'séquence',
   program: 'programme',
+  robot: 'robot',
 };
 
 function resolveSeq(id: string) {
@@ -78,6 +82,17 @@ export function ToolsModal({ open, onClose }: Props) {
   };
 
   // ───────────── Sélection des sources ─────────────
+
+  // « Mon robot » = base mécanique complète (géométrie + dessin body2D + poses + calibration…).
+  const selectRobot = () => {
+    const data = useHexapodStore.getState().serializeProfile();
+    loadInto(JSON.stringify(data, null, 2), {
+      kind: 'robot',
+      origin: 'live',
+      id: activeProfileId,
+      name: 'Mon robot',
+    });
+  };
 
   const selectLivePose = () => {
     const pose = useHexapodStore.getState().pose;
@@ -186,6 +201,26 @@ export function ToolsModal({ open, onClose }: Props) {
 
   const handleImport = async () => {
     setError(null);
+
+    // Robot complet : applique la base mécanique et la persiste (pas de mode create/replace).
+    if (active?.kind === 'robot') {
+      setBusy(true);
+      try {
+        const data = JSON.parse(text);
+        if (!data || typeof data !== 'object' || !data.geometry) {
+          throw new Error('JSON robot invalide (champ "geometry" manquant).');
+        }
+        useHexapodStore.getState().applyProfile(data);
+        if (activeProfileId) await useProfilesStore.getState().update(activeProfileId);
+        showToast('Robot importé et appliqué');
+      } catch (e) {
+        setError('Import robot impossible : ' + (e instanceof Error ? e.message : 'erreur'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     let parsed;
     try {
       parsed = parseTransfer(text);
@@ -226,7 +261,7 @@ export function ToolsModal({ open, onClose }: Props) {
       await useSavedSequencesStore.getState().save(parsed.name, parsed.steps);
       showToast('Séquence importée');
     } else {
-      if (!activeProfileId) throw new Error('Aucun profil actif pour créer le programme.');
+      if (!activeProfileId) throw new Error('Aucune base mécanique active pour créer le programme.');
       await useProgramsStore.getState().create({
         name: parsed.name,
         profileId: activeProfileId,
@@ -290,6 +325,15 @@ export function ToolsModal({ open, onClose }: Props) {
         <div className="tools-layout">
           {/* Colonne gauche : arbre des sources */}
           <div className="tools-tree">
+            <div className="tools-tree-section">Mon robot</div>
+            <button
+              type="button"
+              className={`tools-tree-item live${active?.kind === 'robot' ? ' active' : ''}`}
+              onClick={selectRobot}
+            >
+              Robot (base mécanique)
+            </button>
+
             <div className="tools-tree-section">Poses</div>
             <button
               type="button"

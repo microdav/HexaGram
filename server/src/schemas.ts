@@ -25,11 +25,36 @@ const ServoCalibrationSchema = z.record(
   })
 );
 
+const Pt2Schema = z.object({ x: z.number(), z: z.number() });
+const Shape2DSchema = z.object({
+  id: z.string(),
+  layer: z.enum(["real", "virtual"]),
+  op: z.enum(["add", "subtract"]),
+  poly: z.array(Pt2Schema),
+});
+const ChassisPieceSchema = z.object({ outer: z.array(Pt2Schema), holes: z.array(z.array(Pt2Schema)) });
+const LegAnchorSchema = z.object({ index: z.number(), x: z.number(), z: z.number(), yawDeg: z.number() });
+const ServoMarkerSchema = z.object({ servoId: z.number(), x: z.number(), z: z.number() });
+const MeasurementSchema = z.object({ id: z.string(), a: Pt2Schema, b: Pt2Schema, offset: z.number() });
+// Maquette « Robot 2D » — sans ce champ, zod le supprimait à l'enregistrement.
+const Body2DSchema = z.object({
+  outline: z.object({ length: z.number(), width: z.number(), cornerRadius: z.number().optional() }).optional(),
+  shapes: z.array(Shape2DSchema).optional(),
+  pieces: z.array(ChassisPieceSchema).optional(),
+  points: z.array(Pt2Schema).nullable().optional(),
+  holes: z.array(z.array(Pt2Schema)).optional(),
+  anchors: z.array(LegAnchorSchema).optional(),
+  servoMarkers: z.array(ServoMarkerSchema).optional(),
+  measurements: z.array(MeasurementSchema).optional(),
+  version: z.number().optional(),
+}).passthrough();
+
 const HexapodGeometrySchema = z.object({
   chassis: z.object({ length: z.number(), width: z.number(), height: z.number() }),
   segments: z.object({ coxa: z.number(), femur: z.number(), tibia: z.number() }),
   cog: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   legLayout: z.enum(["star", "linear"]).optional(),
+  body2D: Body2DSchema.optional(),
 });
 
 const KeyframeSchema = z.object({

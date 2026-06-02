@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { DoubleSide, Shape, Vector3 } from "three";
 import { computeLegMounts, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { buildChassisGeometry } from "../model/chassisShape";
 import { computeBodyTransform } from "../model/kinematics";
 import { degToRad } from "../model/servo";
 import { servoIndex, type Pose } from "../model/pose";
@@ -121,18 +122,32 @@ export function MiniHexapod({ pose, geometry, gravityEnabled, bodyTransparent }:
     transform.position.z,
   ];
 
+  const chassisGeos = useMemo(() => {
+    const pieces = geometry.body2D?.pieces;
+    const h = geometry.chassis.height;
+    if (pieces && pieces.length) return pieces.map((pc) => buildChassisGeometry(pc.outer, pc.holes, h));
+    const pts = geometry.body2D?.points;
+    if (pts && pts.length >= 3) return [buildChassisGeometry(pts, geometry.body2D?.holes, h)];
+    return null;
+  }, [geometry.body2D?.pieces, geometry.body2D?.points, geometry.body2D?.holes, geometry.chassis.height]);
+  useEffect(() => () => chassisGeos?.forEach((g) => g.dispose()), [chassisGeos]);
+
   return (
     <group position={p} quaternion={q}>
-      <mesh>
-        <boxGeometry args={[geometry.chassis.length, geometry.chassis.height, geometry.chassis.width]} />
-        <meshStandardMaterial
-          color={CHASSIS_COLOR}
-          metalness={0.2}
-          roughness={0.5}
-          transparent={bodyTransparent}
-          opacity={bodyTransparent ? 0.45 : 1}
-        />
-      </mesh>
+      {chassisGeos ? (
+        chassisGeos.map((g, i) => (
+          <mesh key={i} geometry={g}>
+            <meshStandardMaterial color={CHASSIS_COLOR} metalness={0.2} roughness={0.5}
+              side={DoubleSide} transparent={bodyTransparent} opacity={bodyTransparent ? 0.45 : 1} />
+          </mesh>
+        ))
+      ) : (
+        <mesh>
+          <boxGeometry args={[geometry.chassis.length, geometry.chassis.height, geometry.chassis.width]} />
+          <meshStandardMaterial color={CHASSIS_COLOR} metalness={0.2} roughness={0.5}
+            transparent={bodyTransparent} opacity={bodyTransparent ? 0.45 : 1} />
+        </mesh>
+      )}
       <mesh position={[geometry.chassis.length / 2 + 0.001, 0, 0]}>
         <boxGeometry args={[0.004, geometry.chassis.height * 0.6, geometry.chassis.width * 0.6]} />
         <meshStandardMaterial color="#1a1a1a" />

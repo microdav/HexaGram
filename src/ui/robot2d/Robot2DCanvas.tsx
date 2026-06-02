@@ -1,0 +1,846 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useHexapodStore } from "../../store/useHexapodStore";
+import { useRobot2DStore, newShapeId } from "../../store/useRobot2DStore";
+import { defaultAnchorsFromGeometry, type LegAnchor, type Pt2, type Shape2D } from "../../model/hexapod";
+import { tessellateCircle } from "../../model/chassisBake";
+import { commitHistory } from "../../store/useRobot2DHistory";
+import { ringIssues } from "../../model/polygon";
+import {
+  circleInfo,
+  dirToYaw,
+  legJointPoints,
+  measureGeom,
+  offsetFromPointer,
+  screenToWorld,
+  snapMeters,
+  snapToVertices,
+  worldToScreen,
+  yawToDir,
+  type View,
+} from "./canvas2d";
+
+type Drag =
+  | { kind: "anchor"; index: number }
+  | { kind: "yaw"; index: number }
+  | { kind: "servo"; servoId: number }
+  | { kind: "measureOffset"; id: string }
+  | { kind: "shapeMove"; id: string; ox: number; oz: number }
+  | { kind: "shapeVertex"; id: string; i: number }
+  | { kind: "draft" }
+  | { kind: "pan"; startX: number; startY: number; panX: number; panY: number };
+
+const JOINT_LABEL: Record<string, string> = { coxa: "C", femur: "F", tibia: "T" };
+const DRAW_TOOLS = new Set(["pen", "rect", "circle", "measure"]);
+
+/** Champ de dimension éditable : affiche la valeur live hors focus, applique à Entrée/blur. */
+function DimField({ valueCm, onApply, title }: { valueCm: number; onApply: (cm: number) => void; title: string }) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState("");
+  const apply = () => { const v = parseFloat(text.replace(",", ".")); if (v > 0) onApply(v); };
+  return (
+    <input
+      className="r2d-dimedit-input"
+      title={title}
+      value={focused ? text : valueCm.toFixed(2)}
+      onFocus={() => { setFocused(true); setText(valueCm.toFixed(2)); }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => { setFocused(false); apply(); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { apply(); (e.target as HTMLInputElement).blur(); } }}
+    />
+  );
+}
+
+export function Robot2DCanvas() {
+  const geometry = useHexapodStore((s) => s.geometry);
+  const setShapes = useHexapodStore((s) => s.setShapes);
+  const setLegAnchor = useHexapodStore((s) => s.setLegAnchor);
+  const setServoMarker = useHexapodStore((s) => s.setServoMarker);
+  const addMeasurement = useHexapodStore((s) => s.addMeasurement);
+  const updateMeasurement = useHexapodStore((s) => s.updateMeasurement);
+  const removeMeasurement = useHexapodStore((s) => s.removeMeasurement);
+
+  const tool = useRobot2DStore((s) => s.tool);
+  const selected = useRobot2DStore((s) => s.selected);
+  const select = useRobot2DStore((s) => s.select);
+  const activeLayer = useRobot2DStore((s) => s.activeLayer);
+  const selectedShapeId = useRobot2DStore((s) => s.selectedShapeId);
+  const selectShape = useRobot2DStore((s) => s.selectShape);
+  const penPoints = useRobot2DStore((s) => s.penPoints);
+  const setPenPoints = useRobot2DStore((s) => s.setPenPoints);
+  const snapEnabled = useRobot2DStore((s) => s.snapEnabled);
+  const snapStepCm = useRobot2DStore((s) => s.snapStepCm);
+  const keyboardStepCm = useRobot2DStore((s) => s.keyboardStepCm);
+  const showServos = useRobot2DStore((s) => s.showServos);
+  const zoom = useRobot2DStore((s) => s.zoom);
+  const setZoom = useRobot2DStore((s) => s.setZoom);
+  const pan = useRobot2DStore((s) => s.pan);
+  const setPan = useRobot2DStore((s) => s.setPan);
+  const fitEpoch = useRobot2DStore((s) => s.fitEpoch);
+  const pendingMeasure = useRobot2DStore((s) => s.pendingMeasure);
+  const setPendingMeasure = useRobot2DStore((s) => s.setPendingMeasure);
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState({ w: 800, h: 600 });
+  const [hover, setHover] = useState<{ x: number; z: number } | null>(null);
+  const [snapHit, setSnapHit] = useState<{ x: number; z: number } | null>(null);
+  const [axisLock, setAxisLock] = useState<"h" | "v" | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; shapeId: string } | null>(null);
+  const [hoverShapeId, setHoverShapeId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ a: Pt2; b: Pt2 } | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setSize({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  const shapes = geometry.body2D?.shapes ?? [];
+  const pieces = geometry.body2D?.pieces ?? [];
+  const measurements = geometry.body2D?.measurements ?? [];
+  const segments = geometry.segments;
+  const markers = geometry.body2D?.servoMarkers;
+  const anchors: LegAnchor[] = useMemo(() => {
+    const a = geometry.body2D?.anchors;
+    return a && a.length === 6 ? [...a].sort((p, q) => p.index - q.index) : defaultAnchorsFromGeometry(geometry);
+  }, [geometry]);
+
+  // Étendue du contenu (m) pour l'ajustement automatique.
+  const contentHalf = useMemo(() => {
+    let hx = 0.1, hz = 0.1;
+    const acc = (p: Pt2) => { hx = Math.max(hx, Math.abs(p.x)); hz = Math.max(hz, Math.abs(p.z)); };
+    for (const s of shapes) for (const p of s.poly) acc(p);
+    const reach = segments.coxa + segments.femur + segments.tibia;
+    for (const a of anchors) {
+      const { dx, dz } = yawToDir(a.yawDeg);
+      hx = Math.max(hx, Math.abs(a.x) + Math.abs(dx) * reach);
+      hz = Math.max(hz, Math.abs(a.z) + Math.abs(dz) * reach);
+    }
+    return { hx: hx + 0.04, hz: hz + 0.04 };
+  }, [shapes, anchors, segments]);
+
+  const contentHalfRef = useRef(contentHalf);
+  contentHalfRef.current = contentHalf;
+  const [fitScale, setFitScale] = useState(1);
+  useEffect(() => {
+    const margin = 24;
+    const availW = Math.max(50, size.w - margin * 2);
+    const availH = Math.max(50, size.h - margin * 2);
+    const ch = contentHalfRef.current;
+    setFitScale(Math.min(availW / (ch.hz * 2), availH / (ch.hx * 2)));
+  }, [size, fitEpoch]);
+
+  const view: View = useMemo(
+    () => ({ cx: size.w / 2 + pan.x, cy: size.h / 2 + pan.y, scale: fitScale * zoom }),
+    [size, fitScale, zoom, pan]
+  );
+
+  // Sommets de toutes les formes (aimantation point-à-point).
+  const allVerts = useMemo(() => shapes.flatMap((s) => s.poly), [shapes]);
+
+  // Cibles d'accroche pour l'outil mesure : sommets de formes + ancrages de
+  // pattes + servos + extrémités des cotes existantes.
+  const snapTargets = useMemo(() => {
+    const pts: Pt2[] = [...allVerts];
+    for (const a of anchors) {
+      pts.push({ x: a.x, z: a.z });
+      const { joints, foot } = legJointPoints(a, segments, markers);
+      for (const j of joints) pts.push({ x: j.x, z: j.z });
+      pts.push(foot);
+    }
+    for (const m of measurements) { pts.push(m.a); pts.push(m.b); }
+    return pts;
+  }, [allVerts, anchors, segments, markers, measurements]);
+
+  const rawWorld = (clientX: number, clientY: number) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return screenToWorld(clientX - rect.left, clientY - rect.top, view);
+  };
+  const snapWorld = (w: Pt2, excludeId?: string): Pt2 => {
+    let p = w;
+    if (snapEnabled) p = { x: snapMeters(p.x, snapStepCm), z: snapMeters(p.z, snapStepCm) };
+    const verts = excludeId ? shapes.filter((s) => s.id !== excludeId).flatMap((s) => s.poly) : allVerts;
+    return snapToVertices(p, verts, 10, view);
+  };
+  const toWorld = (cx: number, cy: number, excludeId?: string) => snapWorld(rawWorld(cx, cy), excludeId);
+
+  const bboxCenter = (poly: Pt2[]): Pt2 => {
+    const xs = poly.map((p) => p.x), zs = poly.map((p) => p.z);
+    return { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 };
+  };
+
+  // Cibles d'accroche pour le CENTRE d'une forme déplacée : sommets, milieux
+  // d'arêtes (= centres des côtés d'un rectangle) et centre de chaque autre forme.
+  const centerSnapTargets = (excludeId: string): Pt2[] => {
+    const out: Pt2[] = [];
+    for (const s of shapes) {
+      if (s.id === excludeId || s.poly.length === 0) continue;
+      const n = s.poly.length;
+      for (let i = 0; i < n; i++) {
+        out.push(s.poly[i]);
+        const b = s.poly[(i + 1) % n];
+        out.push({ x: (s.poly[i].x + b.x) / 2, z: (s.poly[i].z + b.z) / 2 });
+      }
+      out.push(bboxCenter(s.poly));
+    }
+    return out;
+  };
+
+  // Accroche un point candidat (centre de forme) : cible la plus proche ≤ 12 px,
+  // sinon grille. Renvoie le point + si une accroche a eu lieu.
+  const snapCenter = (p: Pt2, excludeId: string): { p: Pt2; hit: boolean } => {
+    const ps = worldToScreen(p.x, p.z, view);
+    let best: Pt2 | null = null, bestD = 12;
+    for (const t of centerSnapTargets(excludeId)) {
+      const s = worldToScreen(t.x, t.z, view);
+      const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) return { p: best, hit: true };
+    if (snapEnabled) return { p: { x: snapMeters(p.x, snapStepCm), z: snapMeters(p.z, snapStepCm) }, hit: false };
+    return { p, hit: false };
+  };
+
+  // Accroche mesure : un point cible proche (≤ 12 px) prime sur la grille.
+  const snapMeasure = (cx: number, cy: number): { p: Pt2; hit: boolean } => {
+    const raw = rawWorld(cx, cy);
+    const ps = worldToScreen(raw.x, raw.z, view);
+    let best: Pt2 | null = null;
+    let bestD = 12;
+    for (const t of snapTargets) {
+      const s = worldToScreen(t.x, t.z, view);
+      const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) return { p: best, hit: true };
+    const step = snapEnabled ? snapStepCm : 0.1; // au moins 1 mm
+    return { p: { x: snapMeters(raw.x, step), z: snapMeters(raw.z, step) }, hit: false };
+  };
+
+  // Point de mesure final : accroche point/grille puis verrouillage d'axe
+  // (horizontal/vertical) par rapport au point de départ, si proche d'un axe.
+  const measurePoint = (cx: number, cy: number): { p: Pt2; hit: boolean; axis: "h" | "v" | null } => {
+    const { p, hit } = snapMeasure(cx, cy);
+    if (pendingMeasure && !hit) {
+      const dx = p.x - pendingMeasure.x, dz = p.z - pendingMeasure.z;
+      const adx = Math.abs(dx), adz = Math.abs(dz);
+      const T = Math.tan((5 * Math.PI) / 180); // tolérance ~5°
+      if (adx > 1e-4 || adz > 1e-4) {
+        // Horizontal écran = X monde constant ; vertical écran = Z monde constant.
+        if (adx <= adz * T) return { p: { x: pendingMeasure.x, z: p.z }, hit, axis: "h" };
+        if (adz <= adx * T) return { p: { x: p.x, z: pendingMeasure.z }, hit, axis: "v" };
+      }
+    }
+    return { p, hit, axis: null };
+  };
+
+  // ── Édition des formes ─────────────────────────────────────────────────────
+  const replaceShape = (id: string, poly: Pt2[]) =>
+    setShapes(shapes.map((s) => (s.id === id ? { ...s, poly } : s)));
+
+  const addShape = (poly: Pt2[]) => {
+    const sh: Shape2D = { id: newShapeId(), layer: activeLayer, op: "add", poly };
+    setShapes([...shapes, sh]);
+    selectShape(sh.id);
+    commitHistory("Forme ajoutée");
+  };
+
+  // Menu contextuel d'une forme (clic droit).
+  const openShapeMenu = (clientX: number, clientY: number, shapeId: string) => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    setMenu({ x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0), shapeId });
+    selectShape(shapeId);
+  };
+  // Ramène le centre de la boîte englobante de la forme à l'origine (0,0).
+  const centerShape = (id: string) => {
+    const sh = shapes.find((s) => s.id === id);
+    if (sh && sh.poly.length) {
+      const xs = sh.poly.map((p) => p.x), zs = sh.poly.map((p) => p.z);
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+      replaceShape(id, sh.poly.map((p) => ({ x: p.x - cx, z: p.z - cz })));
+      commitHistory("Forme centrée");
+    }
+    setMenu(null);
+  };
+  const deleteShapeMenu = (id: string) => {
+    setShapes(shapes.filter((s) => s.id !== id));
+    if (selectedShapeId === id) selectShape(null);
+    commitHistory("Forme supprimée");
+    setMenu(null);
+  };
+  // Redimensionne une forme via l'étiquette : met à l'échelle l'axe demandé
+  // ('w' = largeur Z, 'h' = hauteur X) autour du centre de sa boîte englobante.
+  const resizeShapeDim = (id: string, axis: "w" | "h", newCm: number) => {
+    const sh = shapes.find((s) => s.id === id);
+    if (!sh || sh.poly.length === 0) return;
+    const xs = sh.poly.map((p) => p.x), zs = sh.poly.map((p) => p.z);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const target = newCm / 100;
+    if (axis === "w") {
+      const cur = maxZ - minZ; if (cur < 1e-5) return;
+      const cz = (minZ + maxZ) / 2, f = target / cur;
+      replaceShape(id, sh.poly.map((p) => ({ x: p.x, z: cz + (p.z - cz) * f })));
+    } else {
+      const cur = maxX - minX; if (cur < 1e-5) return;
+      const cx = (minX + maxX) / 2, f = target / cur;
+      replaceShape(id, sh.poly.map((p) => ({ x: cx + (p.x - cx) * f, z: p.z })));
+    }
+    commitHistory("Dimension forme");
+  };
+
+  // Duplique la forme avec un décalage de +5 cm à droite (Z) et 5 cm vers le bas (X−).
+  const duplicateShape = (id: string) => {
+    const sh = shapes.find((s) => s.id === id);
+    if (sh) {
+      const poly = sh.poly.map((p) => ({ x: p.x - 0.05, z: p.z + 0.05 }));
+      const ns: Shape2D = { id: newShapeId(), layer: sh.layer, op: sh.op, poly };
+      setShapes([...shapes, ns]);
+      selectShape(ns.id);
+      commitHistory("Forme dupliquée");
+    }
+    setMenu(null);
+  };
+
+  // Place la forme sur un calque : virtuel (arrière, gabarit gris) ou réel (avant, jaune).
+  const setShapeLayer = (id: string, layer: "real" | "virtual") => {
+    const sh = shapes.find((s) => s.id === id);
+    if (sh && sh.layer !== layer) {
+      setShapes(shapes.map((s) => (s.id === id ? { ...s, layer } : s)));
+      commitHistory(layer === "virtual" ? "Mise en arrière" : "Mise en avant");
+    }
+    setMenu(null);
+  };
+
+  // Redimensionne un cercle (mise à l'échelle uniforme autour du centre) au diamètre donné.
+  const resizeCircleDiam = (id: string, newDiamCm: number) => {
+    const sh = shapes.find((s) => s.id === id);
+    const circ = sh && circleInfo(sh.poly);
+    if (sh && circ && circ.radius > 1e-5) {
+      const f = (newDiamCm / 200) / circ.radius;
+      replaceShape(id, sh.poly.map((p) => ({ x: circ.cx + (p.x - circ.cx) * f, z: circ.cz + (p.z - circ.cz) * f })));
+      commitHistory("Diamètre cercle");
+    }
+  };
+
+  // Copie miroir de la forme par rapport à l'axe central (origine 0,0).
+  // 'h' = axe horizontal (reflète X, avant/arrière) ; 'v' = axe vertical (reflète Z, gauche/droite).
+  const mirrorShape = (id: string, axis: "h" | "v") => {
+    const sh = shapes.find((s) => s.id === id);
+    if (sh && sh.poly.length) {
+      const poly = sh.poly.map((p) => (axis === "h" ? { x: -p.x, z: p.z } : { x: p.x, z: -p.z }));
+      const ns: Shape2D = { id: newShapeId(), layer: sh.layer, op: sh.op, poly };
+      setShapes([...shapes, ns]);
+      selectShape(ns.id);
+      commitHistory("Symétrie créée");
+    }
+    setMenu(null);
+  };
+
+  // ── Drag global ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (d) {
+        if (d.kind === "pan") { setPan({ x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) }); return; }
+        if (d.kind === "draft") { setDraft((dr) => (dr ? { ...dr, b: snapWorld(rawWorld(e.clientX, e.clientY)) } : dr)); return; }
+        const w = toWorld(e.clientX, e.clientY, d.kind === "shapeVertex" ? d.id : undefined);
+        if (d.kind === "anchor") setLegAnchor(d.index, { x: w.x, z: w.z });
+        else if (d.kind === "yaw") {
+          const a = anchors[d.index];
+          const yaw = dirToYaw(w.x - a.x, w.z - a.z);
+          setLegAnchor(d.index, { yawDeg: snapEnabled ? Math.round(yaw) : yaw });
+        } else if (d.kind === "servo") setServoMarker(d.servoId, { x: w.x, z: w.z });
+        else if (d.kind === "measureOffset") {
+          const m = (useHexapodStore.getState().geometry.body2D?.measurements ?? []).find((x) => x.id === d.id);
+          if (m) updateMeasurement(d.id, { offset: offsetFromPointer(m.a, m.b, w) });
+        } else if (d.kind === "shapeVertex") {
+          const sh = shapes.find((s) => s.id === d.id);
+          if (sh) replaceShape(d.id, sh.poly.map((p, k) => (k === d.i ? w : p)));
+        } else if (d.kind === "shapeMove") {
+          const sh = shapes.find((s) => s.id === d.id);
+          if (sh) {
+            const raw = rawWorld(e.clientX, e.clientY);
+            // Centre visé = pointeur − offset de saisie, puis accroche du centre.
+            const { p: snapped, hit } = snapCenter({ x: raw.x - d.ox, z: raw.z - d.oz }, d.id);
+            const c = bboxCenter(sh.poly);
+            const dx = snapped.x - c.x, dz = snapped.z - c.z;
+            if (dx || dz) replaceShape(d.id, sh.poly.map((p) => ({ x: p.x + dx, z: p.z + dz })));
+            setSnapHit(hit ? snapped : null);
+          }
+        }
+        return;
+      }
+      if (tool === "pen" && penPoints.length > 0) {
+        setHover(snapWorld(rawWorld(e.clientX, e.clientY)));
+      }
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d) return;
+      if (d.kind === "draft" && draft) {
+        finalizeDraft(draft);
+        setDraft(null);
+      } else if (d.kind === "anchor") commitHistory("Ancrage déplacé");
+      else if (d.kind === "yaw") commitHistory("Orientation patte");
+      else if (d.kind === "servo") commitHistory("Servo déplacé");
+      else if (d.kind === "shapeVertex") commitHistory("Sommet déplacé");
+      else if (d.kind === "shapeMove") { commitHistory("Forme déplacée"); setSnapHit(null); }
+      else if (d.kind === "measureOffset") commitHistory("Cote décalée");
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+  });
+
+  // Raccourcis : Entrée ferme le crayon, Échap annule, Suppr supprime la forme.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "Enter" && tool === "pen" && penPoints.length >= 3) { addShape(penPoints); setPenPoints([]); }
+      else if (e.key === "Escape") { setPenPoints([]); setDraft(null); selectShape(null); setMenu(null); }
+      else if (e.key === "Delete" && selectedShapeId) {
+        setShapes(shapes.filter((s) => s.id !== selectedShapeId));
+        selectShape(null);
+        commitHistory("Forme supprimée");
+      }
+      // Déplacement fin de la forme sélectionnée aux flèches (pas clavier).
+      else if (selectedShapeId && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        const sh = shapes.find((s) => s.id === selectedShapeId);
+        if (!sh) return;
+        e.preventDefault();
+        const d = keyboardStepCm / 100; // m
+        // Écran : haut = +X (avant), droite = +Z.
+        const dx = e.key === "ArrowUp" ? d : e.key === "ArrowDown" ? -d : 0;
+        const dz = e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0;
+        setShapes(shapes.map((s) => (s.id === selectedShapeId ? { ...s, poly: s.poly.map((p) => ({ x: p.x + dx, z: p.z + dz })) } : s)));
+        commitHistory("Forme déplacée (clavier)");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Rayon d'un cercle d'aperçu, le DIAMÈTRE étant aimanté à la grille (valeurs propres).
+  const draftRadius = (a: Pt2, b: Pt2): number => {
+    const r = Math.hypot(b.x - a.x, b.z - a.z);
+    if (!snapEnabled) return r;
+    const step = snapStepCm / 100;
+    return (Math.round((2 * r) / step) * step) / 2;
+  };
+
+  const finalizeDraft = (d: { a: Pt2; b: Pt2 }) => {
+    if (tool === "rect") {
+      const minX = Math.min(d.a.x, d.b.x), maxX = Math.max(d.a.x, d.b.x);
+      const minZ = Math.min(d.a.z, d.b.z), maxZ = Math.max(d.a.z, d.b.z);
+      if (maxX - minX < 0.005 || maxZ - minZ < 0.005) return;
+      addShape([{ x: maxX, z: minZ }, { x: maxX, z: maxZ }, { x: minX, z: maxZ }, { x: minX, z: minZ }]);
+    } else if (tool === "circle") {
+      const r = draftRadius(d.a, d.b);
+      if (r < 0.005) return;
+      addShape(tessellateCircle(d.a.x, d.a.z, r));
+    }
+  };
+
+  const onWheel = (e: React.WheelEvent) => setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+
+  // Clic sur le fond, selon l'outil.
+  const onBackgroundDown = (e: React.PointerEvent) => {
+    if (menu) setMenu(null); // tout clic ferme le menu contextuel
+    // Clic droit ou Ctrl+clic gauche = panoramique, quel que soit l'outil
+    // (permet de déplacer la vue pendant le tracé au crayon).
+    if (e.button === 2 || (e.button === 0 && e.ctrlKey)) {
+      dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      return;
+    }
+    if (e.button !== 0) return;
+    if (tool === "measure") {
+      const { p } = measurePoint(e.clientX, e.clientY);
+      if (!pendingMeasure) setPendingMeasure(p);
+      else { addMeasurement(pendingMeasure, p); setPendingMeasure(null); setAxisLock(null); commitHistory("Mesure ajoutée"); }
+      return;
+    }
+    const w = toWorld(e.clientX, e.clientY);
+    if (tool === "pen") {
+      // Clic près du 1er point ⇒ ferme la forme.
+      if (penPoints.length >= 3) {
+        const f = worldToScreen(penPoints[0].x, penPoints[0].z, view);
+        const s = worldToScreen(w.x, w.z, view);
+        if (Math.hypot(f.sx - s.sx, f.sy - s.sy) < 12) { addShape(penPoints); setPenPoints([]); return; }
+      }
+      setPenPoints([...penPoints, w]);
+      return;
+    }
+    if (tool === "rect" || tool === "circle") {
+      setDraft({ a: w, b: w });
+      dragRef.current = { kind: "draft" };
+      return;
+    }
+    // select / servo : clic dans le vide = désélection + panoramique
+    if (tool === "select") { selectShape(null); select(null); }
+    dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  };
+
+  const onSvgMove = (e: React.PointerEvent) => {
+    if (tool === "measure") {
+      const { p, hit, axis } = measurePoint(e.clientX, e.clientY);
+      setHover(p); setSnapHit(hit ? p : null); setAxisLock(pendingMeasure ? axis : null);
+    } else if (DRAW_TOOLS.has(tool)) {
+      setHover(snapWorld(rawWorld(e.clientX, e.clientY)));
+    }
+  };
+  const onSvgDouble = (e: React.MouseEvent) => {
+    if (tool === "pen" && penPoints.length >= 3) { e.stopPropagation(); addShape(penPoints); setPenPoints([]); }
+  };
+
+  // ── Géométrie d'affichage ──────────────────────────────────────────────────
+  // Étiquette de dimensions (rectangle + texte) centrée en (cx, y).
+  const dimBadge = (cx: number, y: number, text: string) => {
+    const w = text.length * 6.6 + 14;
+    return (
+      <g className="r2d-dim-badge" transform={`translate(${cx} ${y})`}>
+        <rect x={-w / 2} y={-11} width={w} height={20} rx={4} />
+        <text textAnchor="middle" y={3}>{text}</text>
+      </g>
+    );
+  };
+
+  const polyStr = (pts: Pt2[]) => pts.map((p) => { const s = worldToScreen(p.x, p.z, view); return `${s.sx.toFixed(1)},${s.sy.toFixed(1)}`; }).join(" ");
+  const piecePath = (outer: Pt2[], holes: Pt2[][]) =>
+    [outer, ...holes].map((r) => r.map((p, k) => { const s = worldToScreen(p.x, p.z, view); return `${k === 0 ? "M" : "L"}${s.sx.toFixed(1)} ${s.sy.toFixed(1)}`; }).join(" ") + " Z").join(" ");
+
+  const passthrough = DRAW_TOOLS.has(tool);
+
+  // Grille hiérarchique en centimètres : pas mineur choisi selon le zoom
+  // (0,5 cm quand on zoome assez, sinon 1, 2, 5…). Emphase croissante aux
+  // multiples de 1 cm (medium) puis de 5 cm (major).
+  const pxPerCm = view.scale / 100;
+  const STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100];
+  const minorCm = STEPS.find((s) => s * pxPerCm >= 9) ?? 100;
+  const gridLines: JSX.Element[] = [];
+  if (pxPerCm > 0.05 && isFinite(pxPerCm)) {
+    const cls = (c: number) => {
+      const r = Math.round(c * 1000) / 1000;
+      if (Math.abs(r / 5 - Math.round(r / 5)) < 1e-4) return "r2d-grid-major";
+      if (Math.abs(r - Math.round(r)) < 1e-4) return "r2d-grid-medium";
+      return "r2d-grid-line";
+    };
+    const CAP = 1200;
+    // Lignes verticales = Z monde constant ; horizontales = X monde constant.
+    const zMin = ((0 - view.cx) / view.scale) * 100, zMax = ((size.w - view.cx) / view.scale) * 100;
+    const xMin = ((view.cy - size.h) / view.scale) * 100, xMax = ((view.cy - 0) / view.scale) * 100;
+    const startZ = Math.ceil(zMin / minorCm) * minorCm;
+    const startX = Math.ceil(xMin / minorCm) * minorCm;
+    for (let i = 0; i < CAP; i++) {
+      const c = startZ + i * minorCm;
+      if (c > zMax + 1e-6) break;
+      const sx = view.cx + (c / 100) * view.scale;
+      gridLines.push(<line key={`gv${c.toFixed(2)}`} x1={sx} y1={0} x2={sx} y2={size.h} className={cls(c)} />);
+    }
+    for (let i = 0; i < CAP; i++) {
+      const c = startX + i * minorCm;
+      if (c > xMax + 1e-6) break;
+      const sy = view.cy - (c / 100) * view.scale;
+      gridLines.push(<line key={`gh${c.toFixed(2)}`} x1={0} y1={sy} x2={size.w} y2={sy} className={cls(c)} />);
+    }
+  }
+
+  const onShapeDown = (e: React.PointerEvent, sh: Shape2D) => {
+    if (tool !== "select") return;
+    // Clic droit sur la forme : on bloque le panoramique, le menu s'ouvre via onContextMenu.
+    if (e.button === 2) { e.stopPropagation(); return; }
+    // Ctrl+clic : on laisse remonter au fond pour panoramiquer.
+    if (e.ctrlKey) return;
+    e.stopPropagation();
+    selectShape(sh.id);
+    // Offset entre le point saisi et le centre de la forme (pour snapper le centre).
+    const raw = rawWorld(e.clientX, e.clientY);
+    const c = bboxCenter(sh.poly);
+    dragRef.current = { kind: "shapeMove", id: sh.id, ox: raw.x - c.x, oz: raw.z - c.z };
+  };
+
+  return (
+    <div className="r2d-canvas-wrap" ref={wrapRef}>
+      <svg
+        ref={svgRef}
+        className={`r2d-canvas${tool === "measure" ? " measuring" : ""}${passthrough ? " passthrough" : ""}${tool === "pen" || tool === "rect" || tool === "circle" ? " drawing" : ""}`}
+        width={size.w}
+        height={size.h}
+        onWheel={onWheel}
+        onPointerDown={onBackgroundDown}
+        onPointerMove={onSvgMove}
+        onDoubleClick={onSvgDouble}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <defs>
+          <marker id="r2d-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" className="r2d-dim-arrow-head" />
+          </marker>
+        </defs>
+        <g>{gridLines}</g>
+        <line x1={view.cx} y1={0} x2={view.cx} y2={size.h} className="r2d-axis" />
+        <line x1={0} y1={view.cy} x2={size.w} y2={view.cy} className="r2d-axis" />
+
+        {/* Formes virtuelles (gabarit gris, dessous) */}
+        {shapes.filter((s) => s.layer === "virtual").map((s) => (
+          <polygon key={s.id} points={polyStr(s.poly)}
+            className={`r2d-shape virtual${selectedShapeId === s.id ? " selected" : ""}`}
+            onPointerDown={(e) => onShapeDown(e, s)}
+            onPointerEnter={() => tool === "select" && setHoverShapeId(s.id)}
+            onPointerLeave={() => setHoverShapeId((id) => (id === s.id ? null : id))}
+            onContextMenu={(e) => { if (tool === "select") { e.preventDefault(); e.stopPropagation(); openShapeMenu(e.clientX, e.clientY, s.id); } }} />
+        ))}
+
+        {/* Masque réel baké (morceaux fusionnés) */}
+        {pieces.map((pc, i) => (
+          <path key={`pc${i}`} d={piecePath(pc.outer, pc.holes)} fillRule="evenodd" className="r2d-piece" />
+        ))}
+
+        {/* Formes réelles (matière / découpe) — éditables */}
+        {shapes.filter((s) => s.layer === "real").map((s) => (
+          <polygon key={s.id} points={polyStr(s.poly)}
+            className={`r2d-shape real ${s.op}${selectedShapeId === s.id ? " selected" : ""}`}
+            onPointerDown={(e) => onShapeDown(e, s)}
+            onPointerEnter={() => tool === "select" && setHoverShapeId(s.id)}
+            onPointerLeave={() => setHoverShapeId((id) => (id === s.id ? null : id))}
+            onContextMenu={(e) => { if (tool === "select") { e.preventDefault(); e.stopPropagation(); openShapeMenu(e.clientX, e.clientY, s.id); } }} />
+        ))}
+
+        {/* Indicateur de centre des cercles */}
+        {shapes.map((s) => {
+          const c = circleInfo(s.poly);
+          if (!c) return null;
+          const p = worldToScreen(c.cx, c.cz, view);
+          return (
+            <g key={`cc${s.id}`} className="r2d-circle-center-mark">
+              <line x1={p.sx - 6} y1={p.sy} x2={p.sx + 6} y2={p.sy} />
+              <line x1={p.sx} y1={p.sy - 6} x2={p.sx} y2={p.sy + 6} />
+            </g>
+          );
+        })}
+
+        {/* Étiquette de dimensions (lecture seule) d'une forme survolée non sélectionnée.
+            La forme sélectionnée a une étiquette ÉDITABLE en HTML (hors SVG). */}
+        {tool === "select" && hoverShapeId && hoverShapeId !== selectedShapeId && (() => {
+          const sh = shapes.find((s) => s.id === hoverShapeId);
+          if (!sh || sh.poly.length === 0) return null;
+          const xs = sh.poly.map((p) => p.x), zs = sh.poly.map((p) => p.z);
+          const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+          const t = worldToScreen(maxX, (minZ + maxZ) / 2, view); // sommet « haut » écran = X max
+          const circ = circleInfo(sh.poly);
+          const text = circ
+            ? `r ${(circ.radius * 100).toFixed(2)} · Ø ${(circ.radius * 200).toFixed(2)} cm`
+            : `${((maxZ - minZ) * 100).toFixed(2)} × ${((maxX - minX) * 100).toFixed(2)} cm`;
+          return dimBadge(t.sx, t.sy - 14, text);
+        })()}
+
+        {/* Problèmes de tracé (par forme) */}
+        {shapes.map((s) => {
+          const iss = ringIssues(s.poly);
+          if (!iss.edges.length && !iss.verts.length) return null;
+          const n = s.poly.length;
+          return (
+            <g key={`iss${s.id}`} className="r2d-issue">
+              {iss.edges.map((i) => { const a = worldToScreen(s.poly[i].x, s.poly[i].z, view); const b = worldToScreen(s.poly[(i + 1) % n].x, s.poly[(i + 1) % n].z, view); return <line key={i} x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} className="r2d-issue-edge" />; })}
+              {iss.verts.map((i) => { const p = worldToScreen(s.poly[i].x, s.poly[i].z, view); return <circle key={i} cx={p.sx} cy={p.sy} r={9} className="r2d-issue-vert" />; })}
+            </g>
+          );
+        })}
+
+        {/* Cotes de mesure */}
+        {measurements.map((m) => {
+          const g = measureGeom(m.a, m.b, m.offset, view);
+          return (
+            <g key={m.id} className="r2d-dim">
+              <line x1={g.a.sx} y1={g.a.sy} x2={g.ao.sx} y2={g.ao.sy} className="r2d-dim-ext" />
+              <line x1={g.b.sx} y1={g.b.sy} x2={g.bo.sx} y2={g.bo.sy} className="r2d-dim-ext" />
+              <line x1={g.ao.sx} y1={g.ao.sy} x2={g.bo.sx} y2={g.bo.sy} className="r2d-dim-line" markerStart="url(#r2d-arrow)" markerEnd="url(#r2d-arrow)" />
+              <g transform={`translate(${g.mid.sx} ${g.mid.sy})`} className="r2d-dim-label"
+                onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { kind: "measureOffset", id: m.id }; }}
+                onDoubleClick={(e) => { e.stopPropagation(); removeMeasurement(m.id); commitHistory("Mesure supprimée"); }}>
+                <rect x={-22} y={-10} width={44} height={18} rx={4} />
+                <text textAnchor="middle" y={4}>{(g.len * 100).toFixed(2)} cm</text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Témoin d'accroche (mesure ou centre de forme aimanté) */}
+        {(tool === "measure" || tool === "select") && snapHit && (() => {
+          const s = worldToScreen(snapHit.x, snapHit.z, view);
+          return <circle cx={s.sx} cy={s.sy} r={7} className="r2d-snap-indicator" />;
+        })()}
+
+        {/* Mesure en cours : ligne élastique + longueur live + indicateur d'axe */}
+        {tool === "measure" && pendingMeasure && (() => {
+          const s = worldToScreen(pendingMeasure.x, pendingMeasure.z, view);
+          const h = hover ? worldToScreen(hover.x, hover.z, view) : s;
+          const lenCm = hover ? Math.hypot(hover.x - pendingMeasure.x, hover.z - pendingMeasure.z) * 100 : 0;
+          const midx = (s.sx + h.sx) / 2, midy = (s.sy + h.sy) / 2;
+          const glyph = axisLock === "h" ? "  ↔" : axisLock === "v" ? "  ↕" : "";
+          return (
+            <g className={`r2d-dim pending${axisLock ? " ortho" : ""}`}>
+              <line x1={s.sx} y1={s.sy} x2={h.sx} y2={h.sy} className="r2d-dim-line" markerEnd="url(#r2d-arrow)" />
+              <circle cx={s.sx} cy={s.sy} r={4} className="r2d-dim-pt" />
+              {lenCm > 0.05 && dimBadge(midx, midy - 14, `${lenCm.toFixed(2)} cm${glyph}`)}
+              {axisLock && (
+                <text x={h.sx + 12} y={h.sy - 10} className="r2d-axis-flag">{axisLock === "h" ? "↔" : "↕"}</text>
+              )}
+            </g>
+          );
+        })()}
+
+        {/* Aperçu rect/cercle + dimensions */}
+        {draft && tool === "rect" && (() => {
+          const a = worldToScreen(draft.a.x, draft.a.z, view), b = worldToScreen(draft.b.x, draft.b.z, view);
+          const horiz = Math.abs(draft.b.z - draft.a.z) * 100; // axe Z (largeur écran)
+          const vert = Math.abs(draft.b.x - draft.a.x) * 100;  // axe X (hauteur écran)
+          const cx = (a.sx + b.sx) / 2, topY = Math.min(a.sy, b.sy);
+          return (<>
+            <rect x={Math.min(a.sx, b.sx)} y={Math.min(a.sy, b.sy)} width={Math.abs(b.sx - a.sx)} height={Math.abs(b.sy - a.sy)} className="r2d-draft" />
+            {dimBadge(cx, topY - 16, `${horiz.toFixed(2)} × ${vert.toFixed(2)} cm`)}
+          </>);
+        })()}
+        {draft && tool === "circle" && (() => {
+          const a = worldToScreen(draft.a.x, draft.a.z, view);
+          const rWorld = draftRadius(draft.a, draft.b);
+          const rPx = rWorld * view.scale;
+          return (<>
+            <circle cx={a.sx} cy={a.sy} r={rPx} className="r2d-draft" />
+            <circle cx={a.sx} cy={a.sy} r={3} className="r2d-circle-center" />
+            {dimBadge(a.sx, a.sy - rPx - 16, `r ${(rWorld * 100).toFixed(2)} · Ø ${(rWorld * 200).toFixed(2)} cm`)}
+          </>);
+        })()}
+
+        {/* Tracé crayon en cours */}
+        {tool === "pen" && penPoints.length > 0 && (() => {
+          const pts = penPoints.map((p) => worldToScreen(p.x, p.z, view));
+          const h = hover ? worldToScreen(hover.x, hover.z, view) : pts[pts.length - 1];
+          const d = pts.map((s, k) => `${k === 0 ? "M" : "L"}${s.sx} ${s.sy}`).join(" ") + ` L${h.sx} ${h.sy}`;
+          const last = penPoints[penPoints.length - 1];
+          const segCm = hover ? Math.hypot(hover.x - last.x, hover.z - last.z) * 100 : 0;
+          return (
+            <g className="r2d-pen">
+              <path d={d} className="r2d-pen-line" />
+              {pts.map((s, k) => <circle key={k} cx={s.sx} cy={s.sy} r={k === 0 ? 5 : 3} className={`r2d-pen-pt${k === 0 ? " first" : ""}`} />)}
+              {hover && segCm > 0.05 && dimBadge(h.sx, h.sy - 16, `${segCm.toFixed(2)} cm`)}
+            </g>
+          );
+        })()}
+
+        {/* Poignées de sommets de la forme sélectionnée (édition directe) */}
+        {tool === "select" && selectedShapeId && (() => {
+          const sh = shapes.find((s) => s.id === selectedShapeId);
+          if (!sh) return null;
+          const n = sh.poly.length;
+          return (
+            <g className="r2d-vertices">
+              {sh.poly.map((p, i) => {
+                const s = worldToScreen(p.x, p.z, view);
+                const b = sh.poly[(i + 1) % n];
+                const mid = worldToScreen((p.x + b.x) / 2, (p.z + b.z) / 2, view);
+                return (
+                  <g key={i}>
+                    <circle cx={mid.sx} cy={mid.sy} r={4} className="r2d-vertex-add"
+                      onPointerDown={(e) => { e.stopPropagation(); replaceShape(sh.id, [...sh.poly.slice(0, i + 1), { x: (p.x + b.x) / 2, z: (p.z + b.z) / 2 }, ...sh.poly.slice(i + 1)]); commitHistory("Sommet ajouté"); }} />
+                    <circle cx={s.sx} cy={s.sy} r={6} className="r2d-vertex"
+                      onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { kind: "shapeVertex", id: sh.id, i }; }}
+                      onDoubleClick={(e) => { e.stopPropagation(); if (n > 3) { replaceShape(sh.id, sh.poly.filter((_, k) => k !== i)); commitHistory("Sommet supprimé"); } }} />
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })()}
+
+        {/* Pattes */}
+        {anchors.map((a) => {
+          const isSel = selected?.type === "leg" && selected.index === a.index;
+          const aS = worldToScreen(a.x, a.z, view);
+          const { joints, foot } = legJointPoints(a, segments, markers);
+          const footS = worldToScreen(foot.x, foot.z, view);
+          return (
+            <g key={a.index} className={`r2d-leg${isSel ? " selected" : ""}`}>
+              <line x1={aS.sx} y1={aS.sy} x2={footS.sx} y2={footS.sy} className="r2d-leg-line" />
+              <circle cx={footS.sx} cy={footS.sy} r={3} className="r2d-foot" />
+              {showServos && joints.map((j) => {
+                const jS = worldToScreen(j.x, j.z, view);
+                return (
+                  <g key={j.servoId}>
+                    <rect x={jS.sx - 5} y={jS.sy - 5} width={10} height={10}
+                      className={`r2d-servo${tool === "placeServo" ? " draggable" : ""}`}
+                      onPointerDown={(e) => { if (tool !== "placeServo") return; e.stopPropagation(); select({ type: "leg", index: a.index }); dragRef.current = { kind: "servo", servoId: j.servoId }; }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setServoMarker(j.servoId, null); }}>
+                      <title>{`Servo ${j.servoId} (${j.joint})`}</title>
+                    </rect>
+                    <text x={jS.sx} y={jS.sy + 3} className="r2d-servo-label" textAnchor="middle">{JOINT_LABEL[j.joint]}</text>
+                  </g>
+                );
+              })}
+              {isSel && tool === "select" && (() => {
+                const { dx, dz } = yawToDir(a.yawDeg);
+                const hS = worldToScreen(a.x + dx * (segments.coxa + 0.03), a.z + dz * (segments.coxa + 0.03), view);
+                return (<><line x1={aS.sx} y1={aS.sy} x2={hS.sx} y2={hS.sy} className="r2d-yaw-line" /><circle cx={hS.sx} cy={hS.sy} r={6} className="r2d-handle r2d-handle-yaw" onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { kind: "yaw", index: a.index }; }} /></>);
+              })()}
+              <circle cx={aS.sx} cy={aS.sy} r={7} className={`r2d-anchor${isSel ? " selected" : ""}`}
+                onPointerDown={(e) => { e.stopPropagation(); select({ type: "leg", index: a.index }); if (tool === "select") dragRef.current = { kind: "anchor", index: a.index }; }} />
+              <text x={aS.sx} y={aS.sy - 11} className="r2d-leg-label" textAnchor="middle">{a.index}</text>
+            </g>
+          );
+        })}
+
+        {/* Indication avant */}
+        {(() => { const f = worldToScreen(contentHalf.hx, 0, view); return <text x={f.sx} y={f.sy} className="r2d-front-label" textAnchor="middle">avant ↑</text>; })()}
+      </svg>
+
+      {/* Étiquette de dimensions ÉDITABLE de la forme sélectionnée (redimensionne la forme) */}
+      {tool === "select" && selectedShapeId && !menu && (() => {
+        const sh = shapes.find((s) => s.id === selectedShapeId);
+        if (!sh || sh.poly.length === 0) return null;
+        const xs = sh.poly.map((p) => p.x), zs = sh.poly.map((p) => p.z);
+        const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+        const t = worldToScreen(maxX, (minZ + maxZ) / 2, view); // haut-centre écran
+        const circ = circleInfo(sh.poly);
+        return (
+          <div className="r2d-dimedit" style={{ left: t.sx, top: t.sy - 30 }} onPointerDown={(e) => e.stopPropagation()}>
+            {circ ? (
+              <>
+                <span className="r2d-dimedit-unit">Ø</span>
+                <DimField valueCm={circ.radius * 200} title="Diamètre (cm)" onApply={(cm) => resizeCircleDiam(sh.id, cm)} />
+                <span className="r2d-dimedit-unit">cm · r {(circ.radius * 100).toFixed(2)}</span>
+              </>
+            ) : (
+              <>
+                <DimField valueCm={(maxZ - minZ) * 100} title="Largeur (cm)" onApply={(cm) => resizeShapeDim(sh.id, "w", cm)} />
+                <span className="r2d-dimedit-x">×</span>
+                <DimField valueCm={(maxX - minX) * 100} title="Hauteur (cm)" onApply={(cm) => resizeShapeDim(sh.id, "h", cm)} />
+                <span className="r2d-dimedit-unit">cm</span>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Menu contextuel d'une forme (clic droit) */}
+      {menu && (
+        <div className="r2d-context-menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}>
+          <button type="button" onClick={() => centerShape(menu.shapeId)}>Centrer sur l'espace de travail</button>
+          <button type="button" onClick={() => duplicateShape(menu.shapeId)}>Dupliquer</button>
+          <button type="button" onClick={() => mirrorShape(menu.shapeId, "h")}>Créer symétrie horizontale</button>
+          <button type="button" onClick={() => mirrorShape(menu.shapeId, "v")}>Créer symétrie verticale</button>
+          <div className="r2d-context-sep" />
+          <button type="button" onClick={() => setShapeLayer(menu.shapeId, "virtual")}>Mettre en arrière (masque virtuel)</button>
+          <button type="button" onClick={() => setShapeLayer(menu.shapeId, "real")}>Mettre en avant (masque réel)</button>
+          <div className="r2d-context-sep" />
+          <button type="button" onClick={() => deleteShapeMenu(menu.shapeId)}>Supprimer</button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -367,7 +367,7 @@ function SidebarProjectList({ onCreateClick }: { onCreateClick: () => void }) {
               </div>
               {p.description && <div className="pp-card-desc">{p.description}</div>}
               <div className="pp-card-stats">
-                <span>{p.counts.profiles} profil{p.counts.profiles > 1 ? 's' : ''}</span>
+                <span>{p.counts.profiles} base{p.counts.profiles > 1 ? 's' : ''} méca.</span>
                 <span>·</span>
                 <span>{p.counts.sequences} séq.</span>
                 <span>·</span>
@@ -589,11 +589,11 @@ function ContentPanel() {
       <div className="pp-content-grid">
         <div className="pp-content-col">
           <div className="pp-content-title">
-            Profils robot
+            Base mécanique
             <span className="pp-content-count">{profiles.length}</span>
           </div>
           {profiles.length === 0 ? (
-            <div className="pp-empty-mini">aucun</div>
+            <div className="pp-empty-mini">aucune</div>
           ) : profiles.map((p) => (
             <div key={p.id} className="pp-item-row">
               <div className="pp-item-main">
@@ -603,8 +603,8 @@ function ContentPanel() {
               <button type="button" className="btn btn-sm btn-danger"
                 onClick={async () => {
                   const ok = await confirmDialog({
-                    title: 'Supprimer le profil',
-                    message: `Voulez-vous vraiment supprimer le profil « ${p.name} » ?`,
+                    title: 'Supprimer la base mécanique',
+                    message: `Voulez-vous vraiment supprimer la base mécanique « ${p.name} » ? Une base par défaut sera recréée à la prochaine ouverture du projet.`,
                     confirmLabel: 'Supprimer',
                     variant: 'danger',
                   });
@@ -734,7 +734,7 @@ function ImportPanel() {
         sequenceIds: [...selectedSequences],
         programIds: [...selectedPrograms],
       });
-      showToast(`Importé : ${result.profilesImported} profil(s), ${result.sequencesImported} séq., ${result.programsImported} prog.`);
+      showToast(`Importé : ${result.profilesImported} base(s) méca., ${result.sequencesImported} séq., ${result.programsImported} prog.`);
       setSourceId("");
       setSelectedProfiles(new Set()); setSelectedSequences(new Set()); setSelectedPrograms(new Set());
     } finally {
@@ -779,7 +779,7 @@ function ImportPanel() {
   return (
     <div className="pp-section">
       <p className="pp-hint">
-        Copiez des profils, séquences ou programmes depuis un autre projet vers le projet actif.
+        Copiez la base mécanique, des séquences ou programmes depuis un autre projet vers le projet actif.
         Les éléments importés sont des copies indépendantes (nouveaux identifiants).
       </p>
       <div className="modal-form">
@@ -798,7 +798,7 @@ function ImportPanel() {
             <div className="import-list-empty">Chargement…</div>
           ) : (
             <>
-              {renderList(profiles, selectedProfiles, setSelectedProfiles, "Profils robot")}
+              {renderList(profiles, selectedProfiles, setSelectedProfiles, "Base mécanique")}
               {renderList(sequences, selectedSequences, setSelectedSequences, "Séquences")}
               {renderList(programs, selectedPrograms, setSelectedPrograms, "Programmes")}
             </>

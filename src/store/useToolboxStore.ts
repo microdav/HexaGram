@@ -10,7 +10,7 @@ export interface ToolboxConfig {
   floatPos: { x: number; y: number };
 }
 
-export type AppTab = 'projet' | 'conception' | 'programmation' | 'electronique' | 'admin';
+export type AppTab = 'projet' | 'robot2d' | 'conception' | 'programmation' | 'electronique' | 'admin';
 
 /** Sous-onglets de la page Électronique (routables dans l'URL). */
 export type ElectroSubTab = 'architecture' | 'calibration' | 'sequence';
