@@ -11,6 +11,7 @@ import { type ServoControllerSpec } from "../model/servoControllers";
 import { type CommandElectronicsSpec } from "../model/commandElectronics";
 import { useCatalogStore } from "../store/useCatalogStore";
 import { BoardSvg } from "./BoardSvg";
+import { BaseMecaniquePreview } from "./RobotPreviews";
 
 type DetailTab = "general" | "hardware" | "content" | "import";
 
@@ -452,6 +453,9 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
           {saving ? "Enregistrement…" : "Enregistrer"}
         </button>
       </div>
+
+      <div className="pp-section-title">Aperçu de la base mécanique</div>
+      <BaseMecaniquePreview />
     </div>
   );
 }
@@ -565,19 +569,15 @@ function HardwarePanel({ projectId, initialHardware }: {
 
 function ContentPanel() {
   const activeProject = useProjectStore((s) => s.activeProject);
-  const profiles = useProfilesStore((s) => s.profiles);
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const programs = useProgramsStore((s) => s.programs);
-  const listProfiles = useProfilesStore((s) => s.list);
   const listSequences = useSavedSequencesStore((s) => s.list);
   const listPrograms = useProgramsStore((s) => s.list);
-  const removeProfile = useProfilesStore((s) => s.remove);
   const removeSequence = useSavedSequencesStore((s) => s.remove);
   const removeProgram = useProgramsStore((s) => s.remove);
 
   useEffect(() => {
     if (!activeProject) return;
-    listProfiles();
     listSequences();
     listPrograms();
   }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -587,33 +587,6 @@ function ContentPanel() {
   return (
     <div className="pp-section">
       <div className="pp-content-grid">
-        <div className="pp-content-col">
-          <div className="pp-content-title">
-            Base mécanique
-            <span className="pp-content-count">{profiles.length}</span>
-          </div>
-          {profiles.length === 0 ? (
-            <div className="pp-empty-mini">aucune</div>
-          ) : profiles.map((p) => (
-            <div key={p.id} className="pp-item-row">
-              <div className="pp-item-main">
-                <span className="pp-item-name">{p.name}</span>
-                <span className="pp-item-date">maj {fmt(p.updatedAt)}</span>
-              </div>
-              <button type="button" className="btn btn-sm btn-danger"
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: 'Supprimer la base mécanique',
-                    message: `Voulez-vous vraiment supprimer la base mécanique « ${p.name} » ? Une base par défaut sera recréée à la prochaine ouverture du projet.`,
-                    confirmLabel: 'Supprimer',
-                    variant: 'danger',
-                  });
-                  if (ok) removeProfile(p.id);
-                }}>✕</button>
-            </div>
-          ))}
-        </div>
-
         <div className="pp-content-col">
           <div className="pp-content-title">
             Séquences
