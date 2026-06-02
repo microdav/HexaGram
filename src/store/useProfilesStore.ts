@@ -23,6 +23,12 @@ interface ProfilesState {
   /** Enregistrement automatique du profil (défaut faux, non persisté). */
   autoSave: boolean;
   list: () => Promise<void>;
+  /**
+   * Garantit qu'une « base mécanique » unique est chargée pour le projet actif :
+   * crée une base par défaut si aucune n'existe, sinon charge la plus récente
+   * (les autres profils éventuels restent en base mais ne sont jamais exposés).
+   */
+  ensureBase: () => Promise<void>;
   save: (name: string) => Promise<void>;
   update: (id: string) => Promise<void>;
   load: (id: string) => Promise<void>;
@@ -57,6 +63,21 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
       set({ profiles, loading: false });
     } catch {
       set({ loading: false });
+    }
+  },
+
+  ensureBase: async () => {
+    const projectId = activeProjectId();
+    if (!projectId) return;
+    await useProfilesStore.getState().list();
+    const { profiles } = useProfilesStore.getState();
+    if (profiles.length === 0) {
+      // Projet sans base : on en crée une par défaut à partir de l'état courant
+      // du robot (DEFAULT_GEOMETRY sur un projet neuf).
+      await useProfilesStore.getState().save("Base mécanique");
+    } else {
+      // profiles[0] = le plus récemment modifié (tri serveur ORDER BY updated_at DESC).
+      await useProfilesStore.getState().load(profiles[0].id);
     }
   },
 

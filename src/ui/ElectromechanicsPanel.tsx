@@ -171,7 +171,7 @@ export function ElectromechanicsContent() {
   const torqueDisabledReason = !spec
     ? 'Définissez un servo global dans les paramètres du projet'
     : !totalWeightG
-    ? 'Définissez le poids total dans le profil (onglet Matériel) ou dans le projet'
+    ? 'Définissez le poids total dans la base mécanique (onglet Matériel) ou dans le projet'
     : null;
 
   const poses = useMemo(() => steps.map(s => s.pose), [steps]);

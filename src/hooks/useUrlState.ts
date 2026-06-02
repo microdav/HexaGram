@@ -22,7 +22,7 @@ export interface UrlInputs {
   adminSubTab?: AdminSubTab | null;
 }
 
-const VALID_TABS: AppTab[] = ["projet", "conception", "programmation", "electronique", "admin"];
+const VALID_TABS: AppTab[] = ["projet", "robot2d", "conception", "programmation", "electronique", "admin"];
 const VALID_ELECTRO_SUBS: ElectroSubTab[] = ["architecture", "calibration"];
 const VALID_ADMIN_SUBS: AdminSubTab[] = ["users", "referentiels"];
 // Segment réservé : l'Administration n'est pas liée à un projet — route globale

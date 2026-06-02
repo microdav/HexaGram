@@ -1,5 +1,30 @@
 import { create } from "zustand";
-import { DEFAULT_GEOMETRY, SERVOS, type HexapodGeometry } from "../model/hexapod";
+import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type Shape2D } from "../model/hexapod";
+import { bakeRealShapes } from "../model/chassisBake";
+
+/**
+ * (Re)construit un Body2D complet à partir de l'existant + un patch. Centralise
+ * la fusion pour qu'AUCUN champ (shapes, pieces, anchors, mesures…) ne soit
+ * perdu lors d'une mise à jour partielle.
+ */
+function mergeBody2D(g: HexapodGeometry, patch: Partial<Omit<Body2D, "version">>): Body2D {
+  const p = g.body2D;
+  return {
+    version: 1,
+    outline: p?.outline ?? { length: g.chassis.length, width: g.chassis.width },
+    shapes: p?.shapes,
+    pieces: p?.pieces,
+    points: p?.points ?? null,
+    holes: p?.holes,
+    anchors: p?.anchors,
+    servoMarkers: p?.servoMarkers,
+    measurements: p?.measurements,
+    ...patch,
+  };
+}
+
+let _measSeq = 0;
+function newMeasurementId(): string { return `m${++_measSeq}`; }
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
@@ -95,6 +120,24 @@ interface HexapodState {
   setServoAngle: (id: number, deg: number) => void;
   resetPose: () => void;
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
+  /** Remplace la géométrie entière (utilisé par l'annulation/rétablissement). */
+  replaceGeometry: (geometry: HexapodGeometry) => void;
+  /** Déplace/oriente un ancrage de patte (maquette 2D). Crée body2D au besoin. */
+  setLegAnchor: (index: number, patch: Partial<Pick<LegAnchor, "x" | "z" | "yawDeg">>) => void;
+  /** Modifie le contour du châssis (maquette 2D) ET la boîte chassis 3D (length/width). */
+  setChassisOutline: (patch: Partial<Body2D["outline"]>) => void;
+  /** Pose/déplace (pos) ou retire (null) le marqueur de servo dans la maquette 2D. */
+  setServoMarker: (servoId: number, pos: { x: number; z: number } | null) => void;
+  /** Fusionne un patch dans body2D (contour polygonal, trous…). Recalcule la
+   *  boîte chassis 3D quand le contour change. */
+  setBody2D: (patch: Partial<Omit<Body2D, "version">>) => void;
+  /** Remplace la composition de formes : rebake les morceaux + la bbox chassis. */
+  setShapes: (shapes: Shape2D[]) => void;
+  /** Cotes de mesure (persistées dans body2D). */
+  addMeasurement: (a: { x: number; z: number }, b: { x: number; z: number }) => void;
+  updateMeasurement: (id: string, patch: Partial<Pick<Measurement2D, "offset">>) => void;
+  removeMeasurement: (id: string) => void;
+  clearMeasurements: () => void;
   captureKeyframe: (name?: string) => void;
   applyKeyframe: (id: string) => void;
   deleteKeyframe: (id: string) => void;
@@ -178,8 +221,104 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         segments: { ...state.geometry.segments, ...(partial.segments ?? {}) },
         cog: { ...state.geometry.cog, ...(partial.cog ?? {}) },
         legLayout: partial.legLayout ?? state.geometry.legLayout,
+        // body2D doit survivre aux maj partielles, sinon une édition 2D serait
+        // silencieusement perdue par tout setGeometry ultérieur (chassis, etc.).
+        body2D: partial.body2D !== undefined ? partial.body2D : state.geometry.body2D,
       },
     })),
+
+  replaceGeometry: (geometry) => set({ geometry }),
+
+  setLegAnchor: (index, patch) =>
+    set((state) => {
+      const g = state.geometry;
+      // Démarre depuis les ancrages existants ou, à défaut, la sortie paramétrique
+      // courante (garantit une maquette cohérente avec la 3D dès la 1re édition).
+      const base: LegAnchor[] = g.body2D?.anchors && g.body2D.anchors.length === 6
+        ? g.body2D.anchors
+        : defaultAnchorsFromGeometry(g);
+      const anchors = base.map((a) =>
+        a.index === index ? { ...a, ...patch } : a
+      );
+      return { geometry: { ...g, body2D: mergeBody2D(g, { anchors }) } };
+    }),
+
+  setChassisOutline: (patch) =>
+    set((state) => {
+      const g = state.geometry;
+      const outline = {
+        length: g.chassis.length,
+        width: g.chassis.width,
+        ...(g.body2D?.outline ?? {}),
+        ...patch,
+      };
+      // La boîte chassis 3D lit chassis.length/width → on les garde synchronisés.
+      return {
+        geometry: {
+          ...g,
+          chassis: { ...g.chassis, length: outline.length, width: outline.width },
+          body2D: mergeBody2D(g, { outline }),
+        },
+      };
+    }),
+
+  setShapes: (shapes) =>
+    set((state) => {
+      const g = state.geometry;
+      const { pieces, bbox } = bakeRealShapes(shapes);
+      // bbox des morceaux ⇒ boîte chassis 3D (cohérence legmounts/CoG/appuis).
+      const chassis = bbox.length > 0.001 && bbox.width > 0.001
+        ? { ...g.chassis, length: bbox.length, width: bbox.width }
+        : g.chassis;
+      return { geometry: { ...g, chassis, body2D: mergeBody2D(g, { shapes, pieces }) } };
+    }),
+
+  setServoMarker: (servoId, pos) =>
+    set((state) => {
+      const g = state.geometry;
+      const prev = g.body2D?.servoMarkers ?? [];
+      const others = prev.filter((m) => m.servoId !== servoId);
+      const servoMarkers = pos === null ? others : [...others, { servoId, x: pos.x, z: pos.z }];
+      return { geometry: { ...g, body2D: mergeBody2D(g, { servoMarkers }) } };
+    }),
+
+  setBody2D: (patch) =>
+    set((state) => {
+      const g = state.geometry;
+      const body2D = mergeBody2D(g, patch);
+      // Le contour polygonal fait foi pour la boîte englobante 3D (CoG, appuis sol).
+      const chassis = body2D.points && body2D.points.length >= 3
+        ? { ...g.chassis, ...polygonBounds(body2D.points) }
+        : g.chassis;
+      return { geometry: { ...g, chassis, body2D } };
+    }),
+
+  addMeasurement: (a, b) =>
+    set((state) => {
+      const g = state.geometry;
+      const measurements = [...(g.body2D?.measurements ?? []), { id: newMeasurementId(), a, b, offset: 0 }];
+      return { geometry: { ...g, body2D: mergeBody2D(g, { measurements }) } };
+    }),
+
+  updateMeasurement: (id, patch) =>
+    set((state) => {
+      const g = state.geometry;
+      const measurements = (g.body2D?.measurements ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m));
+      return { geometry: { ...g, body2D: mergeBody2D(g, { measurements }) } };
+    }),
+
+  removeMeasurement: (id) =>
+    set((state) => {
+      const g = state.geometry;
+      const measurements = (g.body2D?.measurements ?? []).filter((m) => m.id !== id);
+      return { geometry: { ...g, body2D: mergeBody2D(g, { measurements }) } };
+    }),
+
+  clearMeasurements: () =>
+    set((state) => {
+      const g = state.geometry;
+      return { geometry: { ...g, body2D: mergeBody2D(g, { measurements: [] }) } };
+    }),
 
   captureKeyframe: (name) =>
     set((state) => {
@@ -276,6 +415,26 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   applyProfile: (data: unknown) => {
     const d = data as RobotProfileData;
     if (!d || (d.version !== 1 && d.version !== 2)) return;
+    // Migration : ancien body2D (contour unique points/holes) → composition de
+    // formes + morceaux bakés, sans perdre le tracé existant.
+    const b2 = d.geometry?.body2D;
+    if (b2 && !b2.shapes && b2.points && b2.points.length >= 3) {
+      b2.shapes = [{ id: "legacy", layer: "real", op: "add", poly: b2.points }];
+      b2.pieces = [{ outer: b2.points, holes: b2.holes ?? [] }];
+    }
+    // Dé-duplication des ids de formes : d'anciennes sessions (compteur remis à 0
+    // au reload) ont pu enregistrer des ids identiques → sélectionner l'une
+    // surlignait les deux. On réattribue un id unique aux doublons.
+    if (b2?.shapes) {
+      const seen = new Set<string>();
+      b2.shapes = b2.shapes.map((s, i) => {
+        if (!seen.has(s.id)) { seen.add(s.id); return s; }
+        let id = `${s.id}_${i}`;
+        while (seen.has(id)) id += "_";
+        seen.add(id);
+        return { ...s, id };
+      });
+    }
     const calib: Record<number, ServoCalibration> = {};
     if (d.servoCalibration) {
       for (const [k, v] of Object.entries(d.servoCalibration)) {
@@ -295,6 +454,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         ...DEFAULT_GEOMETRY,
         ...d.geometry,
         cog: d.geometry.cog ?? DEFAULT_GEOMETRY.cog,
+        // Maquette 2D : présente => source de vérité ; absente (anciens profils)
+        // => undefined => computeLegMounts retombe sur le calcul paramétrique.
+        body2D: d.geometry.body2D,
       },
       keyframes: d.keyframes,
       mirrorEnabled: d.prefs.mirrorEnabled,

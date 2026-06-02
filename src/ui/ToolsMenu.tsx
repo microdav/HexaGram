@@ -4,7 +4,7 @@ import { ToolsModal } from './ToolsModal';
 /**
  * Bouton « Outils » de la topbar : ouvre un menu déroulant regroupant les
  * outils transverses. Pour l'instant un seul item (« Import/export » → éditeur
- * JSON) ; d'autres viendront s'ajouter ici.
+ * JSON, qui inclut « Mon robot ») ; d'autres viendront s'ajouter ici.
  */
 export function ToolsMenu() {
   const [menuOpen, setMenuOpen] = useState(false);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LEG_NAMES, computeLegMounts, type LegLayout } from "../model/hexapod";
+import { LEG_NAMES, computeLegMounts, defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 import { findServoType } from "../model/servoTypes";
 import {
   DEFAULT_SERVO_CALIB,
@@ -23,6 +23,7 @@ import {
   type GaitType,
 } from "../model/gaitGenerator";
 import { Modal } from "./Modal";
+import { LegLayoutPicker } from "./LegLayoutPicker";
 
 type Tab = "general" | "servos" | "collisions" | "sequences";
 
@@ -118,7 +119,7 @@ interface WeightBlockProps {
   servoCount: number;
 }
 
-function WeightBlock({ weightConfig, onChange, servoCount }: WeightBlockProps) {
+export function WeightBlock({ weightConfig, onChange, servoCount }: WeightBlockProps) {
   const activeProject = useProjectStore((s) => s.activeProject);
   const hardware = activeProject?.hardware;
 
@@ -389,7 +390,22 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
         await rename(activeProfileId, localName.trim());
       }
       setDescription(localDesc);
+      // Le picker star/linear est un préréglage : changer la disposition
+      // régénère les ancrages 2D (sinon, avec des ancrages présents,
+      // computeLegMounts les ignorerait et le picker n'aurait aucun effet).
+      const layoutChanged = localLegLayout !== (storeGeometry.legLayout ?? "star");
       setGeometry({ legLayout: localLegLayout });
+      if (layoutChanged) {
+        const g = useHexapodStore.getState().geometry;
+        const body2D: Body2D = {
+          version: 1,
+          outline: g.body2D?.outline ?? { length: g.chassis.length, width: g.chassis.width },
+          points: g.body2D?.points ?? null,
+          servoMarkers: g.body2D?.servoMarkers,
+          anchors: defaultAnchorsFromGeometry(g),
+        };
+        setGeometry({ body2D });
+      }
       setServoCalibrationAll(calibration);
       setCollisionPrefs(localCollisionPrefs);
       setWeightConfigStore(localWeightConfig);
@@ -405,7 +421,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
 
   return (
     <Modal open={open} onClose={onClose} className="modal-wide">
-      <h3 className="modal-title">Paramètres du profil</h3>
+      <h3 className="modal-title">Paramètres de la base mécanique</h3>
 
       <div className="settings-layout">
         <nav className="settings-tabs">
@@ -444,7 +460,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
           {tab === "general" && (
             <div className="modal-form">
               <label className="modal-field">
-                <span>Nom du profil</span>
+                <span>Nom de la base mécanique</span>
                 <input
                   type="text"
                   value={localName}
@@ -459,46 +475,17 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                   rows={3}
                   value={localDesc}
                   onChange={(e) => setLocalDesc(e.target.value)}
-                  placeholder="Notes sur ce profil (configuration, notes de calibration…)"
+                  placeholder="Notes sur cette base mécanique (configuration, notes de calibration…)"
                 />
               </label>
 
               <div className="modal-field">
                 <span>Position des pattes</span>
-                <div className="leg-layout-picker">
-                  {(["star", "linear"] as LegLayout[]).map((layout) => (
-                    <button
-                      key={layout}
-                      type="button"
-                      className={`leg-layout-btn${localLegLayout === layout ? " active" : ""}`}
-                      onClick={() => setLocalLegLayout(layout)}
-                    >
-                      <svg viewBox="0 0 60 40" className="leg-layout-svg" aria-hidden="true">
-                        <rect x="20" y="12" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                        {layout === "star" ? (
-                          <>
-                            <line x1="20" y1="16" x2="9"  y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="20" y1="20" x2="6"  y2="20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="20" y1="24" x2="9"  y2="35" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="16" x2="51" y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="20" x2="54" y2="20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="24" x2="51" y2="35" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                          </>
-                        ) : (
-                          <>
-                            <line x1="20" y1="15" x2="6"  y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="20" y1="20" x2="6"  y2="20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="20" y1="25" x2="6"  y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="15" x2="54" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="20" x2="54" y2="20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                            <line x1="40" y1="25" x2="54" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                          </>
-                        )}
-                      </svg>
-                      <span>{layout === "star" ? "Étoile" : "Rectiligne"}</span>
-                    </button>
-                  ))}
-                </div>
+                <span className="hint">
+                  Préréglage rapide — appliqué à l&apos;enregistrement, il réinitialise
+                  les ancrages dessinés dans l&apos;onglet Robot 2D.
+                </span>
+                <LegLayoutPicker value={localLegLayout} onChange={setLocalLegLayout} />
               </div>
 
               <WeightBlock

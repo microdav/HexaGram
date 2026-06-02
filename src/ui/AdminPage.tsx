@@ -81,7 +81,7 @@ function UsersPanel() {
   const handleDelete = async (u: AdminUser) => {
     const ok = await confirmDialog({
       title: "Supprimer l'utilisateur",
-      message: `Supprimer définitivement « ${u.login} » et tous ses projets, profils et séquences ?`,
+      message: `Supprimer définitivement « ${u.login} » et tous ses projets, bases mécaniques et séquences ?`,
       confirmLabel: "Supprimer",
       variant: "danger",
     });

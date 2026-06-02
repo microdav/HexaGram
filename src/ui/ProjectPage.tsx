@@ -11,6 +11,11 @@ import { type ServoControllerSpec } from "../model/servoControllers";
 import { type CommandElectronicsSpec } from "../model/commandElectronics";
 import { useCatalogStore } from "../store/useCatalogStore";
 import { BoardSvg } from "./BoardSvg";
+import { BaseMecaniquePreview } from "./RobotPreviews";
+import { LegLayoutPicker } from "./LegLayoutPicker";
+import { WeightBlock } from "./ProfileSettingsModal";
+import { useHexapodStore } from "../store/useHexapodStore";
+import { defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
 type DetailTab = "general" | "hardware" | "content" | "import";
 
@@ -367,7 +372,7 @@ function SidebarProjectList({ onCreateClick }: { onCreateClick: () => void }) {
               </div>
               {p.description && <div className="pp-card-desc">{p.description}</div>}
               <div className="pp-card-stats">
-                <span>{p.counts.profiles} profil{p.counts.profiles > 1 ? 's' : ''}</span>
+                <span>{p.counts.profiles} base{p.counts.profiles > 1 ? 's' : ''} méca.</span>
                 <span>·</span>
                 <span>{p.counts.sequences} séq.</span>
                 <span>·</span>
@@ -397,37 +402,72 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
   initialDescription: string;
 }) {
   const update = useProjectStore((s) => s.update);
-  const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const [saving, setSaving] = useState(false);
+
+  // ── Réglages de la base mécanique (persistés séparément du projet) ──
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const profiles = useProfilesStore((s) => s.profiles);
+  const renameProfile = useProfilesStore((s) => s.rename);
+  const updateProfile = useProfilesStore((s) => s.update);
+  const legLayout = useHexapodStore((s) => s.geometry.legLayout ?? "star");
+  const weightConfig = useHexapodStore((s) => s.weightConfig);
+  const setWeightConfigStore = useHexapodStore((s) => s.setWeightConfig);
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
+  const [baseName, setBaseName] = useState(activeProfile?.name ?? "");
+  const persistTimer = useRef<ReturnType<typeof setTimeout>>();
+  const projTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => { setName(initialName); }, [initialName]);
   useEffect(() => { setDescription(initialDescription); }, [initialDescription]);
+  useEffect(() => { setBaseName(activeProfile?.name ?? ""); }, [activeProfile?.name]);
 
-  const dirty = name !== initialName || description !== initialDescription;
-
-  const handleSave = async () => {
-    if (!dirty) return;
-    setSaving(true);
-    try {
-      await update(projectId, { name: name.trim() || initialName, description });
-      showToast("Projet mis à jour");
-    } finally {
-      setSaving(false);
-    }
+  // Enregistrement automatique débouncé du projet (nom + description).
+  const scheduleProjectSave = (n: string, d: string) => {
+    clearTimeout(projTimer.current);
+    projTimer.current = setTimeout(() => {
+      update(projectId, { name: n.trim() || initialName, description: d }).catch(() => {});
+    }, 700);
   };
 
+  // Persistance débouncée de la base mécanique (layout/poids).
+  const persistBase = () => {
+    if (!activeProfileId) return;
+    clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => updateProfile(activeProfileId).catch(() => {}), 700);
+  };
+  const commitBaseName = () => {
+    const n = baseName.trim();
+    if (activeProfileId && n && n !== activeProfile?.name) renameProfile(activeProfileId, n);
+  };
+  const handleLegLayout = (layout: LegLayout) => {
+    useHexapodStore.getState().setGeometry({ legLayout: layout });
+    // La disposition régénère les ancrages paramétriques.
+    const g = useHexapodStore.getState().geometry;
+    const body2D: Body2D = {
+      version: 1,
+      outline: g.body2D?.outline ?? { length: g.chassis.length, width: g.chassis.width },
+      shapes: g.body2D?.shapes, pieces: g.body2D?.pieces,
+      points: g.body2D?.points ?? null, holes: g.body2D?.holes,
+      servoMarkers: g.body2D?.servoMarkers, measurements: g.body2D?.measurements,
+      anchors: defaultAnchorsFromGeometry(g),
+    };
+    useHexapodStore.getState().setGeometry({ body2D });
+    persistBase();
+  };
+  const handleWeight = (cfg: typeof weightConfig) => { setWeightConfigStore(cfg); persistBase(); };
+
   return (
-    <div className="pp-section">
-      <div className="modal-form">
+    <div className="pp-section pp-section-wide">
+      {/* Projet — pleine largeur */}
+      <div className="modal-form pp-form-full">
         <label className="modal-field">
           <span>Nom du projet</span>
           <input
             type="text"
             value={name}
             maxLength={80}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); scheduleProjectSave(e.target.value, description); }}
           />
         </label>
         <label className="modal-field">
@@ -438,19 +478,39 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
             maxLength={500}
             value={description}
             placeholder="Notes générales sur ce projet…"
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); scheduleProjectSave(name, e.target.value); }}
           />
         </label>
       </div>
-      <div className="pp-panel-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!dirty || saving}
-          onClick={handleSave}
-        >
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
+
+      {/* Base mécanique — nom pleine largeur, puis 2 colonnes (réglages | aperçus) */}
+      <div className="pp-section-title">Base mécanique</div>
+      <div className="modal-form pp-form-full">
+        <label className="modal-field">
+          <span>Nom de la base mécanique</span>
+          <input
+            type="text"
+            value={baseName}
+            maxLength={80}
+            disabled={!activeProfileId}
+            placeholder="ex : Hexapode v1"
+            onChange={(e) => setBaseName(e.target.value)}
+            onBlur={commitBaseName}
+            onKeyDown={(e) => e.key === "Enter" && commitBaseName()}
+          />
+        </label>
+      </div>
+      <div className="pp-general-cols">
+        <div className="pp-general-left">
+          <div className="modal-field">
+            <span>Disposition des pattes</span>
+            <LegLayoutPicker value={legLayout} onChange={handleLegLayout} />
+          </div>
+          <WeightBlock weightConfig={weightConfig} onChange={handleWeight} servoCount={18} />
+        </div>
+        <div className="pp-general-right">
+          <BaseMecaniquePreview />
+        </div>
       </div>
     </div>
   );
@@ -565,19 +625,15 @@ function HardwarePanel({ projectId, initialHardware }: {
 
 function ContentPanel() {
   const activeProject = useProjectStore((s) => s.activeProject);
-  const profiles = useProfilesStore((s) => s.profiles);
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const programs = useProgramsStore((s) => s.programs);
-  const listProfiles = useProfilesStore((s) => s.list);
   const listSequences = useSavedSequencesStore((s) => s.list);
   const listPrograms = useProgramsStore((s) => s.list);
-  const removeProfile = useProfilesStore((s) => s.remove);
   const removeSequence = useSavedSequencesStore((s) => s.remove);
   const removeProgram = useProgramsStore((s) => s.remove);
 
   useEffect(() => {
     if (!activeProject) return;
-    listProfiles();
     listSequences();
     listPrograms();
   }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -587,33 +643,6 @@ function ContentPanel() {
   return (
     <div className="pp-section">
       <div className="pp-content-grid">
-        <div className="pp-content-col">
-          <div className="pp-content-title">
-            Profils robot
-            <span className="pp-content-count">{profiles.length}</span>
-          </div>
-          {profiles.length === 0 ? (
-            <div className="pp-empty-mini">aucun</div>
-          ) : profiles.map((p) => (
-            <div key={p.id} className="pp-item-row">
-              <div className="pp-item-main">
-                <span className="pp-item-name">{p.name}</span>
-                <span className="pp-item-date">maj {fmt(p.updatedAt)}</span>
-              </div>
-              <button type="button" className="btn btn-sm btn-danger"
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: 'Supprimer le profil',
-                    message: `Voulez-vous vraiment supprimer le profil « ${p.name} » ?`,
-                    confirmLabel: 'Supprimer',
-                    variant: 'danger',
-                  });
-                  if (ok) removeProfile(p.id);
-                }}>✕</button>
-            </div>
-          ))}
-        </div>
-
         <div className="pp-content-col">
           <div className="pp-content-title">
             Séquences
@@ -734,7 +763,7 @@ function ImportPanel() {
         sequenceIds: [...selectedSequences],
         programIds: [...selectedPrograms],
       });
-      showToast(`Importé : ${result.profilesImported} profil(s), ${result.sequencesImported} séq., ${result.programsImported} prog.`);
+      showToast(`Importé : ${result.profilesImported} base(s) méca., ${result.sequencesImported} séq., ${result.programsImported} prog.`);
       setSourceId("");
       setSelectedProfiles(new Set()); setSelectedSequences(new Set()); setSelectedPrograms(new Set());
     } finally {
@@ -779,7 +808,7 @@ function ImportPanel() {
   return (
     <div className="pp-section">
       <p className="pp-hint">
-        Copiez des profils, séquences ou programmes depuis un autre projet vers le projet actif.
+        Copiez la base mécanique, des séquences ou programmes depuis un autre projet vers le projet actif.
         Les éléments importés sont des copies indépendantes (nouveaux identifiants).
       </p>
       <div className="modal-form">
@@ -798,7 +827,7 @@ function ImportPanel() {
             <div className="import-list-empty">Chargement…</div>
           ) : (
             <>
-              {renderList(profiles, selectedProfiles, setSelectedProfiles, "Profils robot")}
+              {renderList(profiles, selectedProfiles, setSelectedProfiles, "Base mécanique")}
               {renderList(sequences, selectedSequences, setSelectedSequences, "Séquences")}
               {renderList(programs, selectedPrograms, setSelectedPrograms, "Programmes")}
             </>

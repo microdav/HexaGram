@@ -50,6 +50,23 @@ export function computeThumbnailContext(
     cy: r(geometry.cog.y),
     cz: r(geometry.cog.z),
     ll: geometry.legLayout ?? 'star',
+    // Ancrages 2D : font autorité sur les positions de pattes → doivent
+    // invalider les vignettes quand la maquette change.
+    b2: geometry.body2D?.anchors
+      ? geometry.body2D.anchors
+          .slice()
+          .sort((a, b) => a.index - b.index)
+          .map((a) => [r(a.x), r(a.z), Math.round(a.yawDeg)])
+      : 0,
+    // Morceaux bakés du châssis : changent la forme extrudée 3D → invalident aussi.
+    bpc: geometry.body2D?.pieces
+      ? geometry.body2D.pieces.map((pc) => [
+          pc.outer.map((p) => [r(p.x), r(p.z)]),
+          pc.holes.map((h) => h.map((p) => [r(p.x), r(p.z)])),
+        ])
+      : geometry.body2D?.points
+        ? geometry.body2D.points.map((p) => [r(p.x), r(p.z)])
+        : 0,
     g: gravityEnabled ? 1 : 0,
     t: bodyTransparent ? 1 : 0,
     v: [r(viewDirection[0]), r(viewDirection[1]), r(viewDirection[2])],
