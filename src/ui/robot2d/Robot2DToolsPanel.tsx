@@ -1,25 +1,41 @@
+import { useState } from "react";
 import { useHexapodStore } from "../../store/useHexapodStore";
+import { useProjectStore } from "../../store/useProjectStore";
 import { useRobot2DStore, newShapeId } from "../../store/useRobot2DStore";
 import { useToastStore } from "../../store/useToastStore";
-import { defaultAnchorsFromGeometry, type Body2D, type Shape2D, LEG_NAMES } from "../../model/hexapod";
+import { defaultAnchorsFromGeometry, segmentWidthsOf, segmentHeightsOf, type Body2D, type Shape2D, LEG_NAMES } from "../../model/hexapod";
+import { findServoType } from "../../model/servoTypes";
 import { commitHistory } from "../../store/useRobot2DHistory";
 import { ringIssues, untangleRing } from "../../model/polygon";
 import { realShapesOverlap, fuseRealShapes } from "../../model/chassisBake";
 
-/** Champ numérique compact (libellé + input + unité). `onCommit` (blur) = point d'historique. */
+/**
+ * Champ numérique compact (libellé + input + unité). `onCommit` (blur) = point
+ * d'historique. Saisie en **texte** tolérante : accepte la **virgule** (pavé
+ * numérique) comme le point ; état local pendant la frappe pour ne pas brider
+ * l'utilisateur (ex. taper « 1, » avant « 1,5 »).
+ */
 function Field({
-  label, value, unit, step = 1, min, onChange, onCommit, disabled,
+  label, value, unit, onChange, onCommit, disabled,
 }: {
   label: string; value: number; unit: string; step?: number; min?: number;
   onChange: (v: number) => void; onCommit?: () => void; disabled?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState("");
+  const fmt = (v: number) => (Number.isFinite(v) ? String(Math.round(v * 100) / 100) : "0");
+  const apply = (raw: string) => { const v = parseFloat(raw.replace(",", ".")); if (Number.isFinite(v)) onChange(v); };
   return (
     <label className="r2d-field">
       <span className="r2d-field-label">{label}</span>
       <span className="r2d-field-input">
-        <input type="number" step={step} min={min} disabled={disabled}
-          value={Number.isFinite(value) ? Math.round(value * 100) / 100 : 0}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)} onBlur={() => onCommit?.()} />
+        <input
+          type="text" inputMode="decimal" disabled={disabled}
+          value={focused ? text : fmt(value)}
+          onFocus={() => { setFocused(true); setText(fmt(value)); }}
+          onChange={(e) => { setText(e.target.value); apply(e.target.value); }}
+          onBlur={() => { setFocused(false); apply(text); onCommit?.(); }}
+        />
         <span className="r2d-field-unit">{unit}</span>
       </span>
     </label>
@@ -31,6 +47,12 @@ export function Robot2DToolsPanel() {
   const setShapes = useHexapodStore((s) => s.setShapes);
   const setLegAnchor = useHexapodStore((s) => s.setLegAnchor);
   const setGeometry = useHexapodStore((s) => s.setGeometry);
+  const setSegmentWidth = useHexapodStore((s) => s.setSegmentWidth);
+  const applySegmentWidthsToAll = useHexapodStore((s) => s.applySegmentWidthsToAll);
+  const setSegmentHeight = useHexapodStore((s) => s.setSegmentHeight);
+  const applySegmentHeightsToAll = useHexapodStore((s) => s.applySegmentHeightsToAll);
+  const servoTypeId = useProjectStore((s) => s.activeProject?.hardware.servoTypeId);
+  const customServoTypes = useProjectStore((s) => s.activeProject?.hardware.customServoTypes);
   const showToast = useToastStore((s) => s.show);
 
   const selected = useRobot2DStore((s) => s.selected);
@@ -64,6 +86,18 @@ export function Robot2DToolsPanel() {
   const anchors = geometry.body2D?.anchors && geometry.body2D.anchors.length === 6
     ? geometry.body2D.anchors : defaultAnchorsFromGeometry(geometry);
   const selectedLeg = selected?.type === "leg" ? anchors.find((a) => a.index === selected.index) ?? null : null;
+  const legIdx = selectedLeg?.index ?? null;
+  const segW = segmentWidthsOf(geometry, legIdx ?? 0);
+  const segH = segmentHeightsOf(geometry, legIdx ?? 0);
+  const servoSpec = findServoType(servoTypeId, customServoTypes ?? []);
+  // Bornes coxa (vue de face) : [hauteur servo, hauteur châssis] en cm.
+  const servoHcm = (servoSpec?.dimensionsMm.h ?? 38) / 10;
+  const servoWcm = (servoSpec?.dimensionsMm.w ?? 20) / 10; // défaut tibia au genou
+  const chassisHcm = geometry.chassis.height * 100;
+  const coxaHcm = Math.min(chassisHcm, Math.max(servoHcm, segH.coxa * 100));
+  // Tibia au genou : valeur réglée si présente, sinon largeur du servo.
+  const rawTibiaKnee = legIdx !== null ? geometry.segmentHeights?.[legIdx]?.tibia : undefined;
+  const tibiaKneeCm = rawTibiaKnee != null ? rawTibiaKnee * 100 : servoWcm;
 
   const handleResetAnchors = () => {
     const g = useHexapodStore.getState().geometry;
@@ -143,6 +177,38 @@ export function Robot2DToolsPanel() {
         onChange={(v) => selectedLeg && setLegAnchor(selectedLeg.index, { z: v / 100 })} onCommit={() => commitHistory("Ancrage déplacé")} />
       <Field label="Orientation" unit="°" value={selectedLeg?.yawDeg ?? 0} disabled={!selectedLeg}
         onChange={(v) => selectedLeg && setLegAnchor(selectedLeg.index, { yawDeg: v })} onCommit={() => commitHistory("Orientation patte")} />
+
+      {/* Épaisseur des parties de patte (vue de dessus) — par patte sélectionnée */}
+      <div className="r2d-section-title">
+        {selectedLeg ? `Épaisseur — Patte ${selectedLeg.index}` : "Épaisseur de patte (sélectionnez une patte)"}
+      </div>
+      <Field label="Coxa" unit="cm" value={segW.coxa * 100} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentWidth(legIdx, "coxa", v / 100)} onCommit={() => commitHistory("Épaisseur coxa")} />
+      <Field label="Fémur" unit="cm" value={segW.femur * 100} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentWidth(legIdx, "femur", v / 100)} onCommit={() => commitHistory("Épaisseur fémur")} />
+      <Field label="Tibia" unit="cm" value={segW.tibia * 100} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentWidth(legIdx, "tibia", v / 100)} onCommit={() => commitHistory("Épaisseur tibia")} />
+      <button type="button" className="btn btn-sm" disabled={legIdx === null}
+        onClick={() => { if (legIdx !== null) { applySegmentWidthsToAll(legIdx); commitHistory("Épaisseur appliquée à toutes les pattes"); } }}>
+        Appliquer aux autres pattes
+      </button>
+
+      {/* Hauteur de profil (vue de face) — par patte sélectionnée */}
+      <div className="r2d-section-title">
+        {selectedLeg ? `Hauteur de face — Patte ${selectedLeg.index}` : "Hauteur de face (sélectionnez une patte)"}
+      </div>
+      <Field label={`Coxa (${servoHcm.toFixed(1)}–${chassisHcm.toFixed(1)})`} unit="cm" value={coxaHcm} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentHeight(legIdx, "coxa", Math.min(chassisHcm, Math.max(servoHcm, v)) / 100)} onCommit={() => commitHistory("Hauteur coxa")} />
+      <Field label="Fémur" unit="cm" value={segH.femur * 100} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentHeight(legIdx, "femur", v / 100)} onCommit={() => commitHistory("Hauteur fémur")} />
+      <Field label="Tibia (genou)" unit="cm" value={tibiaKneeCm} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentHeight(legIdx, "tibia", v / 100)} onCommit={() => commitHistory("Hauteur tibia genou")} />
+      <Field label="Tibia (pied)" unit="cm" value={segH.tibiaFoot * 100} disabled={legIdx === null}
+        onChange={(v) => legIdx !== null && setSegmentHeight(legIdx, "tibiaFoot", v / 100)} onCommit={() => commitHistory("Hauteur tibia pied")} />
+      <button type="button" className="btn btn-sm" disabled={legIdx === null}
+        onClick={() => { if (legIdx !== null) { applySegmentHeightsToAll(legIdx); commitHistory("Hauteur appliquée à toutes les pattes"); } }}>
+        Appliquer aux autres pattes
+      </button>
 
       {/* Grille / affichage */}
       <div className="r2d-section-title">Grille & affichage</div>

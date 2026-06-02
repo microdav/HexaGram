@@ -1,4 +1,5 @@
 import type { HexapodGeometry, LegAnchor } from "../../model/hexapod";
+import type { ServoDimsM } from "../../model/servoTypes";
 
 /**
  * Transform vue de dessus ↔ écran.
@@ -120,6 +121,36 @@ export function offsetFromPointer(a: Pt, b: Pt, p: Pt): number {
   const nx = -dz / len, nz = dx / len;
   const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
   return (p.x - mx) * nx + (p.z - mz) * nz;
+}
+
+/**
+ * Empreinte vue de dessus d'un servo coxa, dans le repère monde XZ (mètres).
+ * Le pignon (axe de sortie) coïncide avec l'ancrage de la patte ; le corps est
+ * orienté le long de la patte (yaw) + un décalage, et reculé du `shaftOffset`
+ * pour que la sortie tombe sur le pignon.
+ */
+export function coxaServoGeom(
+  anchor: LegAnchor,
+  dims: ServoDimsM,
+  angleOffsetDeg: number
+): { corners: Pt[]; pinion: { x: number; z: number; r: number }; bodyAngleDeg: number } {
+  const bodyAngleDeg = anchor.yawDeg + angleOffsetDeg;
+  const u = yawToDir(bodyAngleDeg); // axe « longueur », vers la sortie (patte)
+  const w = { dx: -u.dz, dz: u.dx }; // axe « largeur » (perpendiculaire)
+  // Centre du corps : on recule du décalage d'axe depuis le pignon (= ancrage).
+  const cx = anchor.x - u.dx * dims.shaftOffsetM;
+  const cz = anchor.z - u.dz * dims.shaftOffsetM;
+  const hl = dims.lengthM / 2;
+  const hw = dims.widthM / 2;
+  const corner = (sl: number, sw: number): Pt => ({
+    x: cx + u.dx * sl * hl + w.dx * sw * hw,
+    z: cz + u.dz * sl * hl + w.dz * sw * hw,
+  });
+  return {
+    corners: [corner(+1, -1), corner(+1, +1), corner(-1, +1), corner(-1, -1)],
+    pinion: { x: anchor.x, z: anchor.z, r: dims.pinionRadiusM },
+    bodyAngleDeg,
+  };
 }
 
 export interface JointPoint {

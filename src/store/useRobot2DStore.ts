@@ -10,6 +10,9 @@ export type Robot2DTarget =
 /** Outil actif (barre d'outils flottante). */
 export type Robot2DTool = "select" | "pen" | "rect" | "circle" | "placeServo" | "measure";
 
+/** Face visualisée dans l'éditeur 2D : dessus (XZ, éditeur complet) ou profils. */
+export type Robot2DFace = "top" | "front" | "side";
+
 /**
  * État transient de l'éditeur « Robot 2D ». NON persisté dans la base mécanique :
  * la géométrie elle-même vit dans useHexapodStore (source de vérité unique).
@@ -18,6 +21,8 @@ export type Robot2DTool = "select" | "pen" | "rect" | "circle" | "placeServo" | 
 interface Robot2DState {
   selected: Robot2DTarget;
   tool: Robot2DTool;
+  /** Face affichée : « top » = éditeur de dessus complet ; « front »/« side » = profils. */
+  face: Robot2DFace;
   snapEnabled: boolean;
   /** Pas de la grille de magnétisme, en centimètres. */
   snapStepCm: number;
@@ -43,6 +48,7 @@ interface Robot2DState {
 
   select: (t: Robot2DTarget) => void;
   setTool: (t: Robot2DTool) => void;
+  setFace: (f: Robot2DFace) => void;
   setSnapEnabled: (v: boolean) => void;
   setSnapStepCm: (v: number) => void;
   setKeyboardStepCm: (v: number) => void;
@@ -70,6 +76,7 @@ export function newShapeId(): string {
 export const useRobot2DStore = create<Robot2DState>((set) => ({
   selected: { type: "chassis" },
   tool: "select",
+  face: "top",
   snapEnabled: true,
   snapStepCm: 0.1,
   keyboardStepCm: 0.01,
@@ -82,11 +89,15 @@ export const useRobot2DStore = create<Robot2DState>((set) => ({
   selectedShapeId: null,
   penPoints: [],
 
-  select: (selected) => set({ selected }),
+  // Sélection mutuellement exclusive : choisir une patte / le châssis désélectionne
+  // toute forme, et inversement — un seul élément actif à la fois dans le dessin.
+  select: (selected) => set({ selected, selectedShapeId: null }),
   // Changer d'outil annule un tracé crayon en cours et un point de mesure pendant.
   setTool: (tool) => set({ tool, pendingMeasure: null, penPoints: [] }),
+  setFace: (face) => set({ face }),
   setActiveLayer: (activeLayer) => set({ activeLayer }),
-  selectShape: (selectedShapeId) => set({ selectedShapeId }),
+  selectShape: (selectedShapeId) =>
+    set(selectedShapeId ? { selectedShapeId, selected: null } : { selectedShapeId }),
   setPenPoints: (penPoints) => set({ penPoints }),
   setSnapEnabled: (snapEnabled) => set({ snapEnabled }),
   setSnapStepCm: (snapStepCm) => set({ snapStepCm: Math.max(0.1, snapStepCm) }),

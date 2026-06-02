@@ -46,6 +46,14 @@ export function computeThumbnailContext(
     sc: r(geometry.segments.coxa),
     sf: r(geometry.segments.femur),
     st: r(geometry.segments.tibia),
+    // Épaisseurs de patte (vue de dessus → profondeur des segments 3D) : changent
+    // le visuel des pattes dans les vignettes → doivent les invalider.
+    sw: Array.isArray(geometry.segmentWidths)
+      ? geometry.segmentWidths.map((w) => [r(w.coxa), r(w.femur), r(w.tibia)])
+      : 0,
+    sh: Array.isArray(geometry.segmentHeights)
+      ? geometry.segmentHeights.map((h) => [r(h.coxa), r(h.femur), r(h.tibia), r(h.tibiaFoot ?? 0)])
+      : 0,
     cx: r(geometry.cog.x),
     cy: r(geometry.cog.y),
     cz: r(geometry.cog.z),

@@ -35,6 +35,7 @@ const Shape2DSchema = z.object({
 const ChassisPieceSchema = z.object({ outer: z.array(Pt2Schema), holes: z.array(z.array(Pt2Schema)) });
 const LegAnchorSchema = z.object({ index: z.number(), x: z.number(), z: z.number(), yawDeg: z.number() });
 const ServoMarkerSchema = z.object({ servoId: z.number(), x: z.number(), z: z.number() });
+const CoxaServoSchema = z.object({ legIndex: z.number(), angleOffsetDeg: z.number() });
 const MeasurementSchema = z.object({ id: z.string(), a: Pt2Schema, b: Pt2Schema, offset: z.number() });
 // Maquette « Robot 2D » — sans ce champ, zod le supprimait à l'enregistrement.
 const Body2DSchema = z.object({
@@ -45,6 +46,7 @@ const Body2DSchema = z.object({
   holes: z.array(z.array(Pt2Schema)).optional(),
   anchors: z.array(LegAnchorSchema).optional(),
   servoMarkers: z.array(ServoMarkerSchema).optional(),
+  coxaServos: z.array(CoxaServoSchema).optional(),
   measurements: z.array(MeasurementSchema).optional(),
   version: z.number().optional(),
 }).passthrough();
@@ -52,6 +54,8 @@ const Body2DSchema = z.object({
 const HexapodGeometrySchema = z.object({
   chassis: z.object({ length: z.number(), width: z.number(), height: z.number() }),
   segments: z.object({ coxa: z.number(), femur: z.number(), tibia: z.number() }),
+  segmentWidths: z.array(z.object({ coxa: z.number(), femur: z.number(), tibia: z.number() })).optional(),
+  segmentHeights: z.array(z.object({ coxa: z.number(), femur: z.number(), tibia: z.number(), tibiaFoot: z.number().optional() })).optional(),
   cog: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   legLayout: z.enum(["star", "linear"]).optional(),
   body2D: Body2DSchema.optional(),
@@ -255,6 +259,8 @@ const ServoSpecSchema = z.object({
   currentMa: z.object({ idle: z.number(), stall: z.number() }),
   weightG: z.number(),
   dimensionsMm: z.object({ l: z.number(), w: z.number(), h: z.number() }),
+  shaftOffsetMm: z.number().optional(),
+  pinionDiamMm: z.number().optional(),
   pulseUs: z.object({ min: z.number(), center: z.number(), max: z.number() }),
   deadbandUs: z.number(),
   gearType: z.enum(["plastic", "metal", "titanium"]),

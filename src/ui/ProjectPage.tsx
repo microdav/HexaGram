@@ -487,7 +487,6 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
       </div>
 
       {/* Base mécanique — nom pleine largeur, puis 2 colonnes (réglages | aperçus) */}
-      <div className="pp-section-title">Base mécanique</div>
       <div className="modal-form pp-form-full">
         <label className="modal-field">
           <span>Nom de la base mécanique</span>

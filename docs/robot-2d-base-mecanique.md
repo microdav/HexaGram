@@ -49,6 +49,7 @@ interface Shape2D    { id; layer; op; poly: Pt2[] }          // rect/cercle pré
 interface ChassisPiece { outer: Pt2[]; holes: Pt2[][] }      // morceau baké, prêt à extruder
 interface LegAnchor  { index; x; z; yawDeg }                 // ancrage d'une patte
 interface ServoMarker { servoId; x; z }                      // marqueur servo (2D only, sans effet IK)
+interface CoxaServo  { legIndex; angleOffsetDeg }            // servo coxa réel : pignon = ancrage, corps orientable
 
 interface Body2D {
   outline: { length; width; cornerRadius? };  // boîte de repli + bbox 3D
@@ -58,6 +59,7 @@ interface Body2D {
   holes?: Pt2[][];         // LEGACY
   anchors?: LegAnchor[];   // override des 6 ancrages (sinon paramétrique star/linear)
   servoMarkers?: ServoMarker[];
+  coxaServos?: CoxaServo[]; // orientation des 6 servos coxa (empreinte vue de dessus à l'échelle)
   measurements?: Measurement2D[]; // cotes de mesure (persistées)
   version: 1;
 }
@@ -140,7 +142,8 @@ Rendu **un mesh par morceau** :
 | `Robot2DToolbar.tsx` | Barre flottante : outils + **sélecteur de calque (Réel/Virtuel)** + undo/redo/recentrer/effacer mesures. |
 | `Robot2DLeftPanel.tsx` | Éléments (châssis/pattes) + **trame d'historique** cliquable. |
 | `Robot2DToolsPanel.tsx` | Liste des formes par calque (sélection, **Matière/Découpe**, suppression, **Promouvoir en réel**), **Fusionner**, validité, ancrage patte sélectionnée, grille, actions. |
-| `Robot2DCanvas.tsx` | Le canevas SVG : rendu + toutes les interactions. |
+| `Robot2DCanvas.tsx` | Le canevas SVG (face **Dessus**, plan XZ) : rendu + toutes les interactions. |
+| `Robot2DProfile.tsx` | Vue **profil** (Avant/Côté) — lecture seule : châssis à hauteur réelle + pattes projetées à plat. |
 | `canvas2d.ts` | Helpers purs : transforms monde↔écran, yaw↔dir, snapping, point-dans-polygone, cotes. |
 
 ### Outils (état dans [src/store/useRobot2DStore.ts](../src/store/useRobot2DStore.ts), **non persisté**)
@@ -155,10 +158,48 @@ Rendu **un mesh par morceau** :
   glisser l'intérieur = déplacer ; les **poignées de sommets s'affichent dès la sélection** (glisser =
   éditer, « + » sur arête = ajouter, double-clic sur un sommet = supprimer), **Suppr** = retirer la forme.
   Le panneau permet de **changer une forme de calque** (réel ↔ virtuel) et, pour le réel, Matière/Découpe.
-- **Servos** : déplace les marqueurs (double-clic = réinitialiser).
+- **Servos** : les 6 **servos coxa** sont dessinés en **vue de dessus à l'échelle** (empreinte
+  `l × w` du type de servo du projet, `coxaServoDimsM` ← `findServoType` / `hardware.servoTypeId`),
+  avec leur **pignon de sortie** (cercle ambre) confondu avec l'**ancrage de la patte** (axe coxa).
+  Le corps est orienté **le long de la patte** par défaut puis **ajustable**. En mode « Servos » :
+  **glisser le corps = déplacer** le servo — comme le pignon = l'ancrage, l'axe coxa (et la patte) suit
+  (drag `kind:"coxaMove"`). **Aimantation d'objet** (`snapCoxa`, témoin cyan) : sommets, **milieux de bords**
+  et **centres** des formes/morceaux ; à défaut, si le pointeur est dans une barre, aimante le **centre
+  vertical (X)** de cette barre ; sinon grille. **Poignée de rotation** (point accent à l'extrémité de sortie) =
+  pivoter autour du pignon (`coxaServos[].angleOffsetDeg`, aimanté au degré si la grille est active) ;
+  **double-clic** sur le corps = réoriente le long de la patte. Fémur/tibia restent des marqueurs
+  schématiques déplaçables (double-clic = réinitialiser).
 - **Mesurer** : cote CAO (départ→arrivée) avec longueur, **étiquette déplaçable** (décalage), double-clic
   supprime. **Aimantation** sur sommets/ancrages/servos/cotes (témoin cyan ; priorité point > grille >
   arrondi mm). **Verrouillage d'axe** horizontal/vertical (≤ ~5°) : ligne verte + drapeau ↔/↕.
+
+### Faces & profil (sélecteur bas-gauche)
+
+Un **sélecteur de face** (coin bas-gauche, `Robot2DPage`) bascule l'affichage via `useRobot2DStore.face`
+(`top` | `front` | `side`, non persisté) :
+
+- **Dessus** (`top`) : éditeur complet `Robot2DCanvas` (plan XZ), inchangé.
+- **Avant** (`front`, depuis +X) / **Côté** (`side`, depuis +Z) : `Robot2DProfile` — projection
+  orthographique sur le plan du profil (horizontal = Z ou X, vertical = Y), réutilise `worldToScreen`
+  en mappant (x = vertical, z = horizontal). Châssis tracé à sa **hauteur réelle** (`chassis.height`).
+  Chaque partie est un bloc distinct à sa **hauteur de profil** `segmentHeights` (par patte, m) :
+  - **coxa** = bloc de **matière** reliant le servo coxa (à l'ancrage) au servo fémur (au joint) — les
+    deux servos sont dessinés par-dessus ; hauteur **bornée [hauteur servo, hauteur châssis]**.
+  - **fémur** = bloc à sa hauteur de profil.
+  - **tibia** = **trapèze conique** : hauteur au **genou** (`tibia`, défaut = **largeur du servo**
+    `dimensionsMm.w`) → hauteur au **pied** (`tibiaFoot`). Le défaut genou (largeur servo) est résolu
+    dynamiquement (`projectServoWidthM` dans le store, et au point de lecture).
+  - **Édition** : panneau droit, section « Hauteur de face — Patte N » — Coxa (bornée), Fémur,
+    Tibia (genou), Tibia (pied) (`setSegmentHeight` / `applySegmentHeightsToAll`).
+    Cliquer une patte la **sélectionne**.
+  `segmentHeights` est déclaré dans `HexapodGeometrySchema` + préservé par `setGeometry`.
+
+**Report en 3D & aperçus** : `segmentWidths` → **profondeur Z** et `segmentHeights` → **hauteur Y**
+des segments dans [Leg.tsx](../src/three/Leg.tsx) et [MiniHexapod.tsx](../src/three/MiniHexapod.tsx)
+(coxa bornée servo↔châssis, fémur, **tibia conique** genou→pied via `makeTaperedBox`
+[legGeometry.ts](../src/three/legGeometry.ts)). Les **aperçus de pattes** de Projet › Général
+([RobotPreviews.tsx](../src/ui/RobotPreviews.tsx) `LegTiles`) tracent les bandes à la largeur réelle
+ainsi que l'empreinte servo coxa. Vignettes invalidées via `computeThumbnailContext` (clés `sw`, `sh`).
 
 ### Navigation
 - **Molette** = zoom. **Clic droit** ou **Ctrl+clic gauche** glissé = panoramique (dans tous les outils,
@@ -204,7 +245,10 @@ monde (alignée sur l'origine robot).
   réapplique via `useHexapodStore.replaceGeometry`. Commit en **fin de geste** (pointerup) et sur actions
   discrètes. `reset()` au montage de l'onglet. Trame affichée dans le panneau gauche.
 - **Autosave** : effet dans `Robot2DPage` — sur changement de `geometry`, si `isProfileDirty()` et base
-  active, **`useProfilesStore.update` débouncé 1 s**. Persiste tout `body2D` (formes réelles **et**
+  active, **`useProfilesStore.update({ guardEmptyBody2D: true })` débouncé 1 s**. **Garde-fou anti-perte** :
+  l'autosave refuse de remplacer un tracé non vide déjà enregistré par un `body2D` vide
+  (`savedBody2DStrength` comparé à la richesse courante) — toast d'avertissement, rien n'est écrasé ;
+  les enregistrements explicites (modale) ne sont pas bloqués. Persiste tout `body2D` (formes réelles **et**
   virtuelles, morceaux, ancrages, marqueurs servo, **mesures**) ; survit au refresh via
   `ensureBase`→`applyProfile`. Seul `pendingMeasure` (cote en cours de tracé) reste transient
   (`useRobot2DStore`).
@@ -226,6 +270,20 @@ Le schéma zod du serveur **supprime les champs inconnus**. `body2D` doit être 
 [server/src/schemas.ts](../server/src/schemas.ts) (`Body2DSchema` + `.passthrough()` dans
 `HexapodGeometrySchema`) — sinon **toutes les données 2D sont effacées à l'enregistrement**. Toute
 nouvelle sous-structure de `body2D` doit y être ajoutée (ou rester couverte par `.passthrough()`).
+Déjà déclarés : `coxaServos` (`CoxaServoSchema`) côté body2D, et `shaftOffsetMm` / `pinionDiamMm`
+(optionnels) dans `ServoSpecSchema` + seed `server/src/catalogs/seedData.ts`.
+
+⚠️ `HexapodGeometrySchema` (niveau `geometry`) n'est **pas** `.passthrough()` : tout nouveau champ
+de géométrie y est supprimé s'il n'est pas déclaré. Déjà ajouté : **`segmentWidths`** — tableau **par
+patte** (index 0..5) de `{coxa,femur,tibia}` (épaisseur vue de dessus, m). `setGeometry` le **préserve**
+explicitement sur les maj partielles ; lecture par patte via `segmentWidthsOf(geom, legIndex)` (repli
+`DEFAULT_SEGMENT_WIDTHS`). Édition dans le panneau droit (section « Épaisseur — Patte N », champs `Field`
+en **saisie texte** tolérant la virgule) ; setters `setSegmentWidth(legIndex, part, v)` /
+`applySegmentWidthsToAll(legIndex)` (bouton « Appliquer aux autres pattes »). Rendu **2D** : une
+**bande rectangulaire** par partie le long du tracé (`bandPoly`). Rendu **3D** : la largeur pilote la
+**profondeur Z** des segments (boîtes plates type MDF) dans [Leg.tsx](../src/three/Leg.tsx) et
+[MiniHexapod.tsx](../src/three/MiniHexapod.tsx) ; intégrée au contexte d'invalidation des vignettes
+(`computeThumbnailContext`, clé `sw`). Persistance vérifiée (round-trip zod).
 Le serveur tourne en `ts-node-dev --respawn` (rechargement auto en dev).
 
 ---

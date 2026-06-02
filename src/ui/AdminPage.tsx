@@ -259,6 +259,8 @@ const KIND_TEMPLATES: Record<CatalogKind, Record<string, unknown>> = {
     currentMa: { idle: 0, stall: 0 },
     weightG: 0,
     dimensionsMm: { l: 0, w: 0, h: 0 },
+    shaftOffsetMm: 10.0,
+    pinionDiamMm: 6.0,
     pulseUs: { min: 500, center: 1500, max: 2500 },
     deadbandUs: 4,
     gearType: "metal",

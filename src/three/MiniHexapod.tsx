@@ -1,6 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { DoubleSide, Shape, Vector3 } from "three";
-import { computeLegMounts, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { computeLegMounts, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { findServoType } from "../model/servoTypes";
+import { useProjectStore } from "../store/useProjectStore";
+import { makeTaperedBox } from "./legGeometry";
 import { buildChassisGeometry } from "../model/chassisShape";
 import { computeBodyTransform } from "../model/kinematics";
 import { degToRad } from "../model/servo";
@@ -38,6 +41,21 @@ interface MiniLegProps {
 
 function MiniLeg({ mount, pose, geometry }: MiniLegProps) {
   const segs = geometry.segments;
+  const segW = segmentWidthsOf(geometry, mount.index);
+  // Hauteurs Y (vue de face) — reflète les dimensions des pattes dans les vignettes.
+  const hw = useProjectStore.getState().activeProject?.hardware;
+  const spec = findServoType(hw?.servoTypeId, hw?.customServoTypes ?? []);
+  const servoHm = (spec?.dimensionsMm.h ?? 38) / 1000;
+  const servoWm = (spec?.dimensionsMm.w ?? 20) / 1000;
+  const sh = segmentHeightsOf(geometry, mount.index);
+  const coxaY = Math.min(geometry.chassis.height, Math.max(servoHm, sh.coxa));
+  const femurY = sh.femur;
+  const tibiaKnee = geometry.segmentHeights?.[mount.index]?.tibia ?? servoWm;
+  const tibiaGeo = useMemo(
+    () => makeTaperedBox(segs.tibia, segW.tibia, tibiaKnee, sh.tibiaFoot),
+    [segs.tibia, segW.tibia, tibiaKnee, sh.tibiaFoot]
+  );
+  useEffect(() => () => tibiaGeo.dispose(), [tibiaGeo]);
   const coxaDeg = pose[servoIndex(mount.index, "coxa")];
   const femurDeg = pose[servoIndex(mount.index, "femur")];
   const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
@@ -51,7 +69,7 @@ function MiniLeg({ mount, pose, geometry }: MiniLegProps) {
       </mesh>
       <group rotation={[0, degToRad(coxaDeg), 0]}>
         <mesh position={[segs.coxa / 2, 0, 0]}>
-          <boxGeometry args={[segs.coxa, 0.018, 0.018]} />
+          <boxGeometry args={[segs.coxa, coxaY, segW.coxa]} />
           <meshStandardMaterial color={SEGMENT_COLOR} />
         </mesh>
         <group position={[segs.coxa, 0, 0]}>
@@ -61,7 +79,7 @@ function MiniLeg({ mount, pose, geometry }: MiniLegProps) {
           </mesh>
           <group rotation={[0, 0, degToRad(femurDeg)]}>
             <mesh position={[segs.femur / 2, 0, 0]}>
-              <boxGeometry args={[segs.femur, 0.016, 0.016]} />
+              <boxGeometry args={[segs.femur, femurY, segW.femur]} />
               <meshStandardMaterial color={SEGMENT_COLOR} />
             </mesh>
             <group position={[segs.femur, 0, 0]}>
@@ -70,8 +88,7 @@ function MiniLeg({ mount, pose, geometry }: MiniLegProps) {
                 <meshStandardMaterial color={JOINT_COLOR} />
               </mesh>
               <group rotation={[0, 0, degToRad(tibiaDeg)]}>
-                <mesh position={[segs.tibia / 2, 0, 0]}>
-                  <boxGeometry args={[segs.tibia, 0.012, 0.012]} />
+                <mesh position={[0, 0, 0]} geometry={tibiaGeo}>
                   <meshStandardMaterial color={SEGMENT_COLOR} />
                 </mesh>
                 <mesh position={[segs.tibia, 0, 0]}>

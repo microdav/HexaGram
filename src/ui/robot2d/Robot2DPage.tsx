@@ -4,12 +4,36 @@ import { useHexapodStore } from "../../store/useHexapodStore";
 import { useProfilesStore } from "../../store/useProfilesStore";
 import { isProfileDirty } from "../../store/profileEditGuard";
 import { useRobot2DHistory } from "../../store/useRobot2DHistory";
+import { useRobot2DStore, type Robot2DFace } from "../../store/useRobot2DStore";
 import { Robot2DLeftPanel } from "./Robot2DLeftPanel";
 import { Robot2DToolsPanel } from "./Robot2DToolsPanel";
 import { Robot2DToolbar } from "./Robot2DToolbar";
 import { Robot2DCanvas } from "./Robot2DCanvas";
+import { Robot2DProfile } from "./Robot2DProfile";
+
+const FACES: { id: Robot2DFace; label: string }[] = [
+  { id: "top", label: "Dessus" },
+  { id: "front", label: "Avant" },
+  { id: "side", label: "Côté" },
+];
+
+/** Sélecteur de face (coin bas-gauche du canevas) : dessus / profils. */
+function FaceSelector() {
+  const face = useRobot2DStore((s) => s.face);
+  const setFace = useRobot2DStore((s) => s.setFace);
+  return (
+    <div className="r2d-face-selector" role="group" aria-label="Face">
+      {FACES.map((f) => (
+        <button key={f.id} type="button"
+          className={`r2d-face-btn${face === f.id ? " active" : ""}`}
+          onClick={() => setFace(f.id)}>{f.label}</button>
+      ))}
+    </div>
+  );
+}
 
 export function Robot2DPage() {
+  const face = useRobot2DStore((s) => s.face);
   const leftOpen = useToolboxStore((s) => s.uiPrefs.leftOpen);
   const rightOpen = useToolboxStore((s) => s.uiPrefs.rightOpen);
   const setLeftOpen = useToolboxStore((s) => s.setLeftOpen);
@@ -30,7 +54,7 @@ export function Robot2DPage() {
       if (!activeProfileId || !isProfileDirty()) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        useProfilesStore.getState().update(activeProfileId).catch(() => {});
+        useProfilesStore.getState().update(activeProfileId, { guardEmptyBody2D: true }).catch(() => {});
       }, 1000);
     });
     return () => { unsub(); clearTimeout(timer); };
@@ -66,8 +90,15 @@ export function Robot2DPage() {
       </button>
 
       <section className="viewer">
-        <Robot2DToolbar />
-        <Robot2DCanvas />
+        {face === "top" ? (
+          <>
+            <Robot2DToolbar />
+            <Robot2DCanvas />
+          </>
+        ) : (
+          <Robot2DProfile face={face} />
+        )}
+        <FaceSelector />
       </section>
 
       <button

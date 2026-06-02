@@ -4,11 +4,13 @@
 //  - Navigations (HTML) et API : TOUJOURS le réseau, sans passer par le cache
 //    HTTP (cache: "no-store"), pour qu'un déploiement prenne effet immédiatement.
 //    Repli sur le cache uniquement hors-ligne.
-//  - Assets statiques (hashés, immuables) : cache-first avec rafraîchissement en
-//    arrière-plan (offline OK, mise à jour transparente).
+//  - Assets hashés immuables (/assets/*) UNIQUEMENT : cache-first avec
+//    rafraîchissement en arrière-plan (offline OK, mise à jour transparente).
+//  - Tout le reste (modules /src/* du dev, /@vite, etc.) : réseau d'abord, pour
+//    ne JAMAIS servir un module périmé (sinon HMR et hard refresh inopérants).
 //
 // Le numéro de version du cache force la purge de l'ancien shell à l'activation.
-const CACHE = "hexagram-v2";
+const CACHE = "hexagram-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -28,16 +30,18 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   const isNavigation = req.mode === "navigate";
   const isApi = url.pathname.startsWith("/api/");
+  // Seuls les assets de build hashés sont immuables et sûrs à mettre en cache.
+  const isHashedAsset = url.origin === self.location.origin && url.pathname.startsWith("/assets/");
 
-  // HTML / navigations / API : réseau frais obligatoire (pas de shell périmé).
-  if (isNavigation || isApi) {
+  // HTML / navigations / API / tout non-hashé : réseau frais (pas de bundle périmé).
+  if (isNavigation || isApi || !isHashedAsset) {
     e.respondWith(
-      fetch(req, { cache: "no-store" }).catch(() => caches.match(req))
+      fetch(req, { cache: isNavigation || isApi ? "no-store" : "default" }).catch(() => caches.match(req))
     );
     return;
   }
 
-  // Assets statiques : cache-first + mise à jour en arrière-plan.
+  // Assets hashés immuables (/assets/*) : cache-first + mise à jour en arrière-plan.
   e.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)

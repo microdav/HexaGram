@@ -13,11 +13,24 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>HexaGram</title>
     <script>
-      if ('serviceWorker' in navigator) {
+      // Le service worker ne sert QU'EN PRODUCTION. En développement (localhost),
+      // il provoquait un cache-first des modules /src/* → bundle périmé malgré le
+      // HMR et le hard refresh. Sur localhost on désenregistre tout SW existant et
+      // on purge ses caches pour réparer les clients déjà « empoisonnés ».
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (dev) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) {
+            rs.forEach(function (r) { r.unregister(); });
+          });
+          if (window.caches) caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+          return;
+        }
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('/sw.js').catch(function () {});
         });
-      }
+      })();
     </script>
   </head>
   <body>

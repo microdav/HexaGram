@@ -21,6 +21,18 @@ export interface ServoMarker {
   z: number;
 }
 
+/**
+ * Placement vue de dessus d'un servo coxa. Le pignon (axe de sortie rotatif)
+ * coïncide avec l'ancrage de la patte (= axe coxa de {@link computeLegMounts}) ;
+ * on ne stocke donc que l'orientation du corps autour de ce pivot, exprimée en
+ * décalage par rapport à l'orientation par défaut (le long de la patte).
+ */
+export interface CoxaServo {
+  legIndex: number; // 0..5
+  /** Rotation du corps (deg) ajoutée à l'orientation auto (yaw de la patte). */
+  angleOffsetDeg: number;
+}
+
 /** Cote de mesure (annotation) : segment a→b + décalage perpendiculaire (m). */
 export interface Measurement2D {
   id: string;
@@ -75,6 +87,8 @@ export interface Body2D {
   anchors?: LegAnchor[];
   /** Marqueurs de servo (affichage 2D uniquement, sans effet sur l'IK). */
   servoMarkers?: ServoMarker[];
+  /** Servos coxa placés en vue de dessus (pignon = ancrage de patte). */
+  coxaServos?: CoxaServo[];
   /** Cotes de mesure (annotations) — persistées avec la base mécanique. */
   measurements?: Measurement2D[];
   /** Marqueur de schéma (forward-compat). */
@@ -88,6 +102,13 @@ export interface HexapodGeometry {
   cog: { x: number; y: number; z: number };
   /** Disposition angulaire des coxa : étoile (angles variés) ou rectiligne (tous à ±90°). */
   legLayout?: LegLayout;
+  /** Épaisseur (vue de dessus) de chaque partie de patte, en mètres, par patte
+   *  (index 0..5). Absent ou entrée manquante ⇒ repli sur DEFAULT_SEGMENT_WIDTHS. */
+  segmentWidths?: { coxa: number; femur: number; tibia: number }[];
+  /** Hauteur (vue de face / profil, axe Y) de chaque partie, en mètres, par patte.
+   *  La coxa est bornée [hauteur servo, hauteur châssis] à l'usage. Le tibia est
+   *  conique : `tibia` = hauteur au **genou**, `tibiaFoot` = hauteur au **pied**. */
+  segmentHeights?: { coxa: number; femur: number; tibia: number; tibiaFoot?: number }[];
   /** Maquette 2D — source de vérité des ancrages/châssis quand présente. */
   body2D?: Body2D;
 }
@@ -104,6 +125,30 @@ export const DEFAULT_GEOMETRY: HexapodGeometry = {
   segments: { coxa: 0.05, femur: 0.08, tibia: 0.115 },
   cog: { x: 0, y: 0, z: 0 },
 };
+
+/** Épaisseurs de patte par défaut (m), vue de dessus, quand non renseignées. */
+export const DEFAULT_SEGMENT_WIDTHS = { coxa: 0.02, femur: 0.018, tibia: 0.015 } as const;
+
+/** Épaisseurs effectives (m) d'une patte donnée, avec repli sur les valeurs par défaut. */
+export function segmentWidthsOf(
+  geom: HexapodGeometry,
+  legIndex: number
+): { coxa: number; femur: number; tibia: number } {
+  const w = Array.isArray(geom.segmentWidths) ? geom.segmentWidths[legIndex] : undefined;
+  return { ...DEFAULT_SEGMENT_WIDTHS, ...(w ?? {}) };
+}
+
+/** Hauteurs de profil par défaut (m, vue de face) quand non renseignées. */
+export const DEFAULT_SEGMENT_HEIGHTS = { coxa: 0.04, femur: 0.02, tibia: 0.015, tibiaFoot: 0.008 } as const;
+
+/** Hauteurs de profil effectives (m) d'une patte donnée, avec repli par défaut. */
+export function segmentHeightsOf(
+  geom: HexapodGeometry,
+  legIndex: number
+): { coxa: number; femur: number; tibia: number; tibiaFoot: number } {
+  const h = Array.isArray(geom.segmentHeights) ? geom.segmentHeights[legIndex] : undefined;
+  return { ...DEFAULT_SEGMENT_HEIGHTS, ...(h ?? {}) };
+}
 
 export const LEG_NAMES = [
   "Avant gauche",

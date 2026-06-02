@@ -6554,6 +6554,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-canvas.passthrough .r2d-shape,
 .r2d-canvas.passthrough .r2d-anchor,
 .r2d-canvas.passthrough .r2d-servo,
+.r2d-canvas.passthrough .r2d-coxa-body,
 .r2d-canvas.passthrough .r2d-leg-line,
 .r2d-canvas.passthrough .r2d-foot { pointer-events: none; }
 .r2d-canvas.drawing { cursor: crosshair; }
@@ -6620,6 +6621,52 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-validity.ok { color: #6cc070; background: rgba(108, 192, 112, 0.1); border: 1px solid rgba(108, 192, 112, 0.4); }
 .r2d-validity.bad { color: #ffb4b1; background: rgba(217, 83, 79, 0.12); border: 1px solid rgba(217, 83, 79, 0.5); }
 
+/* Sélecteur de face (coin bas-gauche du canevas Robot 2D). */
+.r2d-face-selector {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 5;
+  background: rgba(20, 23, 28, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px;
+}
+.r2d-face-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.r2d-face-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.r2d-face-btn.active { color: #1a1d24; background: var(--accent); border-color: var(--accent-hover); }
+
+/* Vue profil (Avant / Côté) */
+.r2dp-wrap { cursor: grab; }
+.r2dp-chassis { fill: rgba(245, 197, 24, 0.18); stroke: #f5c518; stroke-width: 1.5; }
+.r2dp-seg { fill: rgba(120, 132, 150, 0.5); stroke: #5b6473; stroke-width: 1; }
+.r2dp-coxa-mat { fill: rgba(245, 197, 24, 0.16); stroke: #b8941a; stroke-width: 1.2; }
+.r2dp-servo { fill: rgba(45, 90, 140, 0.62); stroke: #4d7bb5; stroke-width: 1.5; }
+.r2dp-leg { cursor: pointer; }
+.r2dp-leg.selected .r2dp-seg,
+.r2dp-leg.selected .r2dp-coxa-mat { stroke: var(--accent-hover); }
+.r2dp-leg.selected .r2dp-coxa-mat { fill: rgba(245, 197, 24, 0.3); }
+
+/* Bandes d'épaisseur des parties de patte (vue de dessus). */
+.r2d-leg-band { fill: rgba(91, 100, 115, 0.28); stroke: #5b6473; stroke-width: 1; pointer-events: none; }
+.r2d-leg-band.coxa { fill: rgba(120, 132, 150, 0.34); }
+.r2d-leg-band.femur { fill: rgba(105, 116, 133, 0.30); }
+.r2d-leg-band.tibia { fill: rgba(91, 100, 115, 0.26); }
+.r2d-leg.selected .r2d-leg-band { stroke: var(--accent-hover); }
+
 .r2d-leg-line { stroke: #5b6473; stroke-width: 2; }
 .r2d-leg.selected .r2d-leg-line { stroke: var(--accent-hover); }
 .r2d-foot { fill: #3a4150; stroke: #5b6473; stroke-width: 1; }
@@ -6645,6 +6692,25 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 }
 .r2d-servo.draggable { cursor: move; fill: #34507a; }
 .r2d-servo-label { fill: #9cc0ef; font-size: 8px; pointer-events: none; }
+
+/* Servo coxa : empreinte vue de dessus à l'échelle + pignon de sortie (= ancrage). */
+.r2d-coxa-body {
+  fill: rgba(45, 90, 140, 0.35);
+  stroke: #4d7bb5;
+  stroke-width: 1.5;
+}
+.r2d-coxa-body.movable { cursor: move; fill: rgba(52, 80, 122, 0.5); }
+.r2d-coxa-body.movable:active { cursor: grabbing; }
+.r2d-coxa-pinion {
+  fill: #e0a23a;
+  stroke: #1a1d24;
+  stroke-width: 1;
+  pointer-events: none;
+}
+/* Poignée de rotation du servo coxa (extrémité de sortie du corps). */
+.r2d-coxa-rot-line { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
+.r2d-coxa-rot { fill: var(--accent); stroke: #1a1d24; stroke-width: 1.5; cursor: grab; }
+.r2d-coxa-rot:active { cursor: grabbing; }
 
 /* Panneaux gauche / droite */
 .r2d-left-panel, .r2d-tools-panel { display: flex; flex-direction: column; gap: 6px; }
@@ -6712,9 +6778,11 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 /* Layout onglet Projet › Général */
 .pp-form-full { width: 100%; }
 .pp-form-full .modal-field { width: 100%; }
+.pp-form-full .modal-field input { margin-bottom: 5px; }
+.pp-form-full .modal-field textarea { margin-bottom: 14px; }
 .pp-general-cols { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-.pp-general-left { flex: 1 1 300px; display: flex; flex-direction: column; gap: 14px; min-width: 280px; }
-.pp-general-right { flex: 1 1 280px; min-width: 260px; }
+.pp-general-left { flex: 2 1 0; display: flex; flex-direction: column; gap: 14px; min-width: 280px; }
+.pp-general-right { flex: 3 1 0; min-width: 260px; }
 /* Le sélecteur de disposition ne doit pas s'étirer sur toute la largeur. */
 .pp-general-left .leg-layout-picker { max-width: 320px; }
 .pp-general-left .modal-field input { width: 100%; }
@@ -6734,6 +6802,9 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .robot-preview-tile-name { font-size: 10px; color: var(--text-dim); margin-top: 4px; text-align: center; }
 .robot-preview-legline { stroke: #5b6473; stroke-width: 2; }
 .robot-preview-servo { fill: #2a3a52; stroke: #4d7bb5; stroke-width: 1; }
+.robot-preview-band { fill: rgba(120, 132, 150, 0.32); stroke: #5b6473; stroke-width: 1; }
+.robot-preview-coxaservo { fill: rgba(45, 90, 140, 0.4); stroke: #4d7bb5; stroke-width: 1.2; }
+.robot-preview-foot { fill: #3a4150; stroke: #5b6473; stroke-width: 1; }
 .robot-preview-anchor { fill: var(--accent); stroke: var(--accent-hover); stroke-width: 1.5; }
 
 /* Barre d'outils flottante (haut de la zone de dessin) */
@@ -6787,6 +6858,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-canvas.measuring .r2d-chassis,
 .r2d-canvas.measuring .r2d-anchor,
 .r2d-canvas.measuring .r2d-servo,
+.r2d-canvas.measuring .r2d-coxa-body,
 .r2d-canvas.measuring .r2d-leg-line,
 .r2d-canvas.measuring .r2d-foot { pointer-events: none; }
 .r2d-dim-line { stroke: var(--accent); stroke-width: 1.5; }

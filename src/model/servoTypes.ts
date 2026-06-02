@@ -10,6 +10,11 @@ export interface ServoSpec {
   currentMa: { idle: number; stall: number };
   weightG: number;
   dimensionsMm: { l: number; w: number; h: number };
+  /** Décalage de l'axe de sortie (pignon) depuis le centre du corps, le long de
+   *  la longueur, vers l'extrémité de sortie (mm). Absent ⇒ convention par défaut. */
+  shaftOffsetMm?: number;
+  /** Diamètre du pignon de sortie (cannelures, mm). Absent ⇒ valeur type. */
+  pinionDiamMm?: number;
   pulseUs: { min: number; center: number; max: number };
   deadbandUs: number;
   gearType: "plastic" | "metal" | "titanium";
@@ -30,6 +35,8 @@ export const SERVO_CATALOG: ServoSpec[] = [
     currentMa: { idle: 5, stall: 2200 },
     weightG: 57,
     dimensionsMm: { l: 40.7, w: 20.1, h: 37.8 },
+    shaftOffsetMm: 10.0,
+    pinionDiamMm: 6.0,
     pulseUs: { min: 500, center: 1500, max: 2500 },
     deadbandUs: 4,
     gearType: "metal",
@@ -47,6 +54,8 @@ export const SERVO_CATALOG: ServoSpec[] = [
     currentMa: { idle: 10, stall: 2500 },
     weightG: 55,
     dimensionsMm: { l: 40.7, w: 19.7, h: 42.9 },
+    shaftOffsetMm: 10.0,
+    pinionDiamMm: 6.0,
     pulseUs: { min: 500, center: 1500, max: 2500 },
     deadbandUs: 5,
     gearType: "metal",
@@ -64,6 +73,8 @@ export const SERVO_CATALOG: ServoSpec[] = [
     currentMa: { idle: 8, stall: 2800 },
     weightG: 65,
     dimensionsMm: { l: 40.6, w: 20.2, h: 38.0 },
+    shaftOffsetMm: 10.0,
+    pinionDiamMm: 6.0,
     pulseUs: { min: 500, center: 1500, max: 2500 },
     deadbandUs: 4,
     gearType: "metal",
@@ -81,6 +92,8 @@ export const SERVO_CATALOG: ServoSpec[] = [
     currentMa: { idle: 8, stall: 800 },
     weightG: 43.9,
     dimensionsMm: { l: 40.4, w: 19.8, h: 36.5 },
+    shaftOffsetMm: 10.0,
+    pinionDiamMm: 6.0,
     pulseUs: { min: 900, center: 1500, max: 2100 },
     deadbandUs: 8,
     gearType: "plastic",
@@ -98,6 +111,8 @@ export const SERVO_CATALOG: ServoSpec[] = [
     currentMa: { idle: 5, stall: 500 },
     weightG: 11.5,
     dimensionsMm: { l: 22.8, w: 12.0, h: 24.0 },
+    shaftOffsetMm: 5.5,
+    pinionDiamMm: 4.8,
     pulseUs: { min: 900, center: 1500, max: 2100 },
     deadbandUs: 3,
     gearType: "metal",
@@ -143,4 +158,37 @@ export function findServoType(
 ): ServoSpec | null {
   if (!id) return null;
   return getAllServoTypes(extraCustom).find((s) => s.id === id) ?? null;
+}
+
+/** Dimensions vue de dessus d'un servo, en MÈTRES (corps + pignon). */
+export interface ServoDimsM {
+  lengthM: number;
+  widthM: number;
+  /** Décalage du pignon depuis le centre du corps, vers la sortie (m). */
+  shaftOffsetM: number;
+  /** Rayon du pignon de sortie (m). */
+  pinionRadiusM: number;
+}
+
+/** Repli générique quand aucun servo n'est sélectionné (gabarit ~ servo standard). */
+export const DEFAULT_SERVO_DIMS_M: ServoDimsM = {
+  lengthM: 0.0407,
+  widthM: 0.0201,
+  shaftOffsetM: 0.010,
+  pinionRadiusM: 0.003,
+};
+
+/**
+ * Dérive les dimensions vue de dessus (m) d'un servo depuis sa fiche catalogue.
+ * Champs absents ⇒ conventions : axe de sortie proche d'une extrémité
+ * (≈ longueur/2 − 10 mm), pignon Ø ~6 mm.
+ */
+export function coxaServoDimsM(spec: ServoSpec | null | undefined): ServoDimsM {
+  if (!spec) return DEFAULT_SERVO_DIMS_M;
+  const l = spec.dimensionsMm.l / 1000;
+  const w = spec.dimensionsMm.w / 1000;
+  const shaftOffsetM =
+    spec.shaftOffsetMm != null ? spec.shaftOffsetMm / 1000 : Math.max(0, l / 2 - 0.010);
+  const pinionRadiusM = (spec.pinionDiamMm != null ? spec.pinionDiamMm : 6) / 2000;
+  return { lengthM: l, widthM: w, shaftOffsetM, pinionRadiusM };
 }

@@ -1,6 +1,22 @@
 import { create } from "zustand";
-import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type Shape2D } from "../model/hexapod";
+import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type Shape2D } from "../model/hexapod";
 import { bakeRealShapes } from "../model/chassisBake";
+import { findServoType } from "../model/servoTypes";
+import { useProjectStore } from "./useProjectStore";
+
+/** Largeur (m) du servo du projet — défaut de la hauteur de tibia au genou. */
+function projectServoWidthM(): number {
+  const hw = useProjectStore.getState().activeProject?.hardware;
+  const spec = findServoType(hw?.servoTypeId, hw?.customServoTypes ?? []);
+  return (spec?.dimensionsMm.w ?? 20) / 1000;
+}
+
+/** Hauteurs de profil effectives d'une patte, genou par défaut = largeur servo. */
+function resolvedHeights(g: HexapodGeometry, i: number, kneeDefault: number) {
+  const base = segmentHeightsOf(g, i);
+  const rawTibia = Array.isArray(g.segmentHeights) ? g.segmentHeights[i]?.tibia : undefined;
+  return { ...base, tibia: rawTibia ?? kneeDefault };
+}
 
 /**
  * (Re)construit un Body2D complet à partir de l'existant + un patch. Centralise
@@ -18,6 +34,7 @@ function mergeBody2D(g: HexapodGeometry, patch: Partial<Omit<Body2D, "version">>
     holes: p?.holes,
     anchors: p?.anchors,
     servoMarkers: p?.servoMarkers,
+    coxaServos: p?.coxaServos,
     measurements: p?.measurements,
     ...patch,
   };
@@ -122,12 +139,22 @@ interface HexapodState {
   setGeometry: (partial: Partial<HexapodGeometry>) => void;
   /** Remplace la géométrie entière (utilisé par l'annulation/rétablissement). */
   replaceGeometry: (geometry: HexapodGeometry) => void;
+  /** Règle l'épaisseur (vue de dessus, m) d'une partie d'une patte donnée. */
+  setSegmentWidth: (legIndex: number, part: "coxa" | "femur" | "tibia", value: number) => void;
+  /** Recopie les épaisseurs de la patte `legIndex` sur les 6 pattes. */
+  applySegmentWidthsToAll: (legIndex: number) => void;
+  /** Règle la hauteur de profil (m) d'une partie d'une patte donnée. */
+  setSegmentHeight: (legIndex: number, part: "coxa" | "femur" | "tibia" | "tibiaFoot", value: number) => void;
+  /** Recopie les hauteurs de profil de la patte `legIndex` sur les 6 pattes. */
+  applySegmentHeightsToAll: (legIndex: number) => void;
   /** Déplace/oriente un ancrage de patte (maquette 2D). Crée body2D au besoin. */
   setLegAnchor: (index: number, patch: Partial<Pick<LegAnchor, "x" | "z" | "yawDeg">>) => void;
   /** Modifie le contour du châssis (maquette 2D) ET la boîte chassis 3D (length/width). */
   setChassisOutline: (patch: Partial<Body2D["outline"]>) => void;
   /** Pose/déplace (pos) ou retire (null) le marqueur de servo dans la maquette 2D. */
   setServoMarker: (servoId: number, pos: { x: number; z: number } | null) => void;
+  /** Oriente le corps du servo coxa autour de son pignon (offset deg), ou réinitialise (null). */
+  setCoxaServoAngle: (legIndex: number, deg: number | null) => void;
   /** Fusionne un patch dans body2D (contour polygonal, trous…). Recalcule la
    *  boîte chassis 3D quand le contour change. */
   setBody2D: (patch: Partial<Omit<Body2D, "version">>) => void;
@@ -221,6 +248,9 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         segments: { ...state.geometry.segments, ...(partial.segments ?? {}) },
         cog: { ...state.geometry.cog, ...(partial.cog ?? {}) },
         legLayout: partial.legLayout ?? state.geometry.legLayout,
+        // Préservé sur toute maj partielle (sinon supprimé silencieusement).
+        segmentWidths: partial.segmentWidths ?? state.geometry.segmentWidths,
+        segmentHeights: partial.segmentHeights ?? state.geometry.segmentHeights,
         // body2D doit survivre aux maj partielles, sinon une édition 2D serait
         // silencieusement perdue par tout setGeometry ultérieur (chassis, etc.).
         body2D: partial.body2D !== undefined ? partial.body2D : state.geometry.body2D,
@@ -228,6 +258,40 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
     })),
 
   replaceGeometry: (geometry) => set({ geometry }),
+
+  setSegmentWidth: (legIndex, part, value) =>
+    set((state) => {
+      const g = state.geometry;
+      // Matérialise les 6 entrées (en repartant des valeurs effectives) puis modifie celle visée.
+      const arr = Array.from({ length: 6 }, (_, i) => ({ ...segmentWidthsOf(g, i) }));
+      arr[legIndex] = { ...arr[legIndex], [part]: Math.max(0.001, value) };
+      return { geometry: { ...g, segmentWidths: arr } };
+    }),
+
+  applySegmentWidthsToAll: (legIndex) =>
+    set((state) => {
+      const g = state.geometry;
+      const src = segmentWidthsOf(g, legIndex);
+      const arr = Array.from({ length: 6 }, () => ({ ...src }));
+      return { geometry: { ...g, segmentWidths: arr } };
+    }),
+
+  setSegmentHeight: (legIndex, part, value) =>
+    set((state) => {
+      const g = state.geometry;
+      const knee = projectServoWidthM();
+      const arr = Array.from({ length: 6 }, (_, i) => resolvedHeights(g, i, knee));
+      arr[legIndex] = { ...arr[legIndex], [part]: Math.max(0.001, value) };
+      return { geometry: { ...g, segmentHeights: arr } };
+    }),
+
+  applySegmentHeightsToAll: (legIndex) =>
+    set((state) => {
+      const g = state.geometry;
+      const src = resolvedHeights(g, legIndex, projectServoWidthM());
+      const arr = Array.from({ length: 6 }, () => ({ ...src }));
+      return { geometry: { ...g, segmentHeights: arr } };
+    }),
 
   setLegAnchor: (index, patch) =>
     set((state) => {
@@ -280,6 +344,15 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       const others = prev.filter((m) => m.servoId !== servoId);
       const servoMarkers = pos === null ? others : [...others, { servoId, x: pos.x, z: pos.z }];
       return { geometry: { ...g, body2D: mergeBody2D(g, { servoMarkers }) } };
+    }),
+
+  setCoxaServoAngle: (legIndex, deg) =>
+    set((state) => {
+      const g = state.geometry;
+      const prev = g.body2D?.coxaServos ?? [];
+      const others = prev.filter((c) => c.legIndex !== legIndex);
+      const coxaServos = deg === null ? others : [...others, { legIndex, angleOffsetDeg: deg }];
+      return { geometry: { ...g, body2D: mergeBody2D(g, { coxaServos }) } };
     }),
 
   setBody2D: (patch) =>

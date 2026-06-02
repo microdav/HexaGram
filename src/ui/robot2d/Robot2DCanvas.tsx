@@ -1,16 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useHexapodStore } from "../../store/useHexapodStore";
+import { useProjectStore } from "../../store/useProjectStore";
 import { useRobot2DStore, newShapeId } from "../../store/useRobot2DStore";
-import { defaultAnchorsFromGeometry, type LegAnchor, type Pt2, type Shape2D } from "../../model/hexapod";
+import { defaultAnchorsFromGeometry, segmentWidthsOf, type LegAnchor, type Pt2, type Shape2D } from "../../model/hexapod";
+import { coxaServoDimsM, findServoType } from "../../model/servoTypes";
 import { tessellateCircle } from "../../model/chassisBake";
 import { commitHistory } from "../../store/useRobot2DHistory";
 import { ringIssues } from "../../model/polygon";
 import {
   circleInfo,
+  coxaServoGeom,
   dirToYaw,
   legJointPoints,
   measureGeom,
   offsetFromPointer,
+  pointInPoly,
   screenToWorld,
   snapMeters,
   snapToVertices,
@@ -23,6 +27,8 @@ type Drag =
   | { kind: "anchor"; index: number }
   | { kind: "yaw"; index: number }
   | { kind: "servo"; servoId: number }
+  | { kind: "coxaRot"; index: number }
+  | { kind: "coxaMove"; index: number }
   | { kind: "measureOffset"; id: string }
   | { kind: "shapeMove"; id: string; ox: number; oz: number }
   | { kind: "shapeVertex"; id: string; i: number }
@@ -55,6 +61,7 @@ export function Robot2DCanvas() {
   const setShapes = useHexapodStore((s) => s.setShapes);
   const setLegAnchor = useHexapodStore((s) => s.setLegAnchor);
   const setServoMarker = useHexapodStore((s) => s.setServoMarker);
+  const setCoxaServoAngle = useHexapodStore((s) => s.setCoxaServoAngle);
   const addMeasurement = useHexapodStore((s) => s.addMeasurement);
   const updateMeasurement = useHexapodStore((s) => s.updateMeasurement);
   const removeMeasurement = useHexapodStore((s) => s.removeMeasurement);
@@ -104,10 +111,56 @@ export function Robot2DCanvas() {
   const measurements = geometry.body2D?.measurements ?? [];
   const segments = geometry.segments;
   const markers = geometry.body2D?.servoMarkers;
+  const coxaServos = geometry.body2D?.coxaServos;
   const anchors: LegAnchor[] = useMemo(() => {
     const a = geometry.body2D?.anchors;
     return a && a.length === 6 ? [...a].sort((p, q) => p.index - q.index) : defaultAnchorsFromGeometry(geometry);
   }, [geometry]);
+
+  // Dimensions vue de dessus du servo coxa : déduites du type de servo du projet
+  // (sinon gabarit générique). Le pignon = l'ancrage de la patte (axe coxa).
+  const servoTypeId = useProjectStore((s) => s.activeProject?.hardware.servoTypeId);
+  const customServoTypes = useProjectStore((s) => s.activeProject?.hardware.customServoTypes);
+  const coxaDims = useMemo(
+    () => coxaServoDimsM(findServoType(servoTypeId, customServoTypes ?? [])),
+    [servoTypeId, customServoTypes]
+  );
+  const coxaAngle = (index: number) =>
+    coxaServos?.find((c) => c.legIndex === index)?.angleOffsetDeg ?? 0;
+
+  // Cibles d'accroche pour le déplacement d'un servo coxa : sommets, milieux
+  // d'arêtes (= centres des bords) et centre de chaque forme/morceau de châssis.
+  const coxaSnapPoints = useMemo(() => {
+    const out: Pt2[] = [];
+    const addRing = (ring: Pt2[]) => {
+      const n = ring.length;
+      if (!n) return;
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < n; i++) {
+        const p = ring[i], q = ring[(i + 1) % n];
+        out.push(p);
+        out.push({ x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 });
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+        if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+      }
+      out.push({ x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 });
+    };
+    for (const s of shapes) addRing(s.poly);
+    for (const pc of pieces) { addRing(pc.outer); for (const h of pc.holes) addRing(h); }
+    return out;
+  }, [shapes, pieces]);
+
+  // Zones (formes réelles) pour l'aimantation au centre vertical de la barre survolée.
+  const coxaRegions = useMemo(
+    () =>
+      shapes
+        .filter((s) => s.layer === "real" && s.poly.length >= 3)
+        .map((s) => {
+          const xs = s.poly.map((p) => p.x);
+          return { poly: s.poly, cx: (Math.min(...xs) + Math.max(...xs)) / 2 };
+        }),
+    [shapes]
+  );
 
   // Étendue du contenu (m) pour l'ajustement automatique.
   const contentHalf = useMemo(() => {
@@ -168,9 +221,43 @@ export function Robot2DCanvas() {
   };
   const toWorld = (cx: number, cy: number, excludeId?: string) => snapWorld(rawWorld(cx, cy), excludeId);
 
+  // Accroche dédiée au déplacement d'un servo coxa : 1) point cible le plus proche
+  // (sommet / milieu de bord / centre) ≤ 12 px ; 2) sinon, si le pointeur est dans
+  // une barre du châssis, on aimante le centre vertical (X) de cette barre ; 3) grille.
+  const snapCoxa = (cx: number, cy: number): { p: Pt2; hit: boolean } => {
+    const raw = rawWorld(cx, cy);
+    const ps = worldToScreen(raw.x, raw.z, view);
+    let best: Pt2 | null = null, bestD = 12;
+    for (const t of coxaSnapPoints) {
+      const s = worldToScreen(t.x, t.z, view);
+      const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) return { p: best, hit: true };
+    for (const r of coxaRegions) {
+      if (pointInPoly(raw, r.poly)) {
+        const z = snapEnabled ? snapMeters(raw.z, snapStepCm) : raw.z;
+        return { p: { x: r.cx, z }, hit: true };
+      }
+    }
+    if (snapEnabled) return { p: { x: snapMeters(raw.x, snapStepCm), z: snapMeters(raw.z, snapStepCm) }, hit: false };
+    return { p: raw, hit: false };
+  };
+
   const bboxCenter = (poly: Pt2[]): Pt2 => {
     const xs = poly.map((p) => p.x), zs = poly.map((p) => p.z);
     return { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 };
+  };
+
+  // Rectangle (4 sommets) d'un segment de patte p→q, épaisseur w centrée sur l'axe.
+  const bandPoly = (p: Pt2, q: Pt2, w: number): Pt2[] => {
+    const dx = q.x - p.x, dz = q.z - p.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = (-dz / len) * (w / 2), nz = (dx / len) * (w / 2);
+    return [
+      { x: p.x + nx, z: p.z + nz }, { x: q.x + nx, z: q.z + nz },
+      { x: q.x - nx, z: q.z - nz }, { x: p.x - nx, z: p.z - nz },
+    ];
   };
 
   // Cibles d'accroche pour le CENTRE d'une forme déplacée : sommets, milieux
@@ -355,6 +442,17 @@ export function Robot2DCanvas() {
           const yaw = dirToYaw(w.x - a.x, w.z - a.z);
           setLegAnchor(d.index, { yawDeg: snapEnabled ? Math.round(yaw) : yaw });
         } else if (d.kind === "servo") setServoMarker(d.servoId, { x: w.x, z: w.z });
+        else if (d.kind === "coxaMove") {
+          const { p, hit } = snapCoxa(e.clientX, e.clientY);
+          setLegAnchor(d.index, { x: p.x, z: p.z });
+          setSnapHit(hit ? p : null);
+        } else if (d.kind === "coxaRot") {
+          const a = anchors[d.index];
+          // Offset = angle (pointeur−pignon) ramené à l'orientation par défaut (yaw patte).
+          let off = dirToYaw(w.x - a.x, w.z - a.z) - a.yawDeg;
+          off = ((off + 180) % 360 + 360) % 360 - 180; // → [-180,180]
+          setCoxaServoAngle(d.index, snapEnabled ? Math.round(off) : off);
+        }
         else if (d.kind === "measureOffset") {
           const m = (useHexapodStore.getState().geometry.body2D?.measurements ?? []).find((x) => x.id === d.id);
           if (m) updateMeasurement(d.id, { offset: offsetFromPointer(m.a, m.b, w) });
@@ -389,6 +487,8 @@ export function Robot2DCanvas() {
       } else if (d.kind === "anchor") commitHistory("Ancrage déplacé");
       else if (d.kind === "yaw") commitHistory("Orientation patte");
       else if (d.kind === "servo") commitHistory("Servo déplacé");
+      else if (d.kind === "coxaMove") { commitHistory("Servo coxa déplacé"); setSnapHit(null); }
+      else if (d.kind === "coxaRot") commitHistory("Servo coxa orienté");
       else if (d.kind === "shapeVertex") commitHistory("Sommet déplacé");
       else if (d.kind === "shapeMove") { commitHistory("Forme déplacée"); setSnapHit(null); }
       else if (d.kind === "measureOffset") commitHistory("Cote décalée");
@@ -421,6 +521,18 @@ export function Robot2DCanvas() {
         const dz = e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0;
         setShapes(shapes.map((s) => (s.id === selectedShapeId ? { ...s, poly: s.poly.map((p) => ({ x: p.x + dx, z: p.z + dz })) } : s)));
         commitHistory("Forme déplacée (clavier)");
+      }
+      // Patte sélectionnée (sans forme) : les flèches déplacent son servo coxa
+      // (= l'ancrage, le pignon suit). Même mapping écran que pour les formes.
+      else if (selected?.type === "leg" && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        const a = anchors.find((an) => an.index === selected.index);
+        if (!a) return;
+        e.preventDefault();
+        const d = keyboardStepCm / 100;
+        const dx = e.key === "ArrowUp" ? d : e.key === "ArrowDown" ? -d : 0;
+        const dz = e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0;
+        setLegAnchor(selected.index, { x: a.x + dx, z: a.z + dz });
+        commitHistory("Servo coxa déplacé (clavier)");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -672,7 +784,7 @@ export function Robot2DCanvas() {
         })}
 
         {/* Témoin d'accroche (mesure ou centre de forme aimanté) */}
-        {(tool === "measure" || tool === "select") && snapHit && (() => {
+        {(tool === "measure" || tool === "select" || tool === "placeServo") && snapHit && (() => {
           const s = worldToScreen(snapHit.x, snapHit.z, view);
           return <circle cx={s.sx} cy={s.sy} r={7} className="r2d-snap-indicator" />;
         })()}
@@ -767,9 +879,56 @@ export function Robot2DCanvas() {
           const footS = worldToScreen(foot.x, foot.z, view);
           return (
             <g key={a.index} className={`r2d-leg${isSel ? " selected" : ""}`}>
+              {/* Bandes d'épaisseur (vue de dessus) : un rectangle par partie, le
+                  long du tracé réel (coxa → fémur → tibia → pied). */}
+              {(() => {
+                const segW = segmentWidthsOf(geometry, a.index);
+                const segs = [
+                  { part: "coxa", a: joints[0], b: joints[1], w: segW.coxa },
+                  { part: "femur", a: joints[1], b: joints[2], w: segW.femur },
+                  { part: "tibia", a: joints[2], b: foot, w: segW.tibia },
+                ];
+                return segs.map((s) => (
+                  <polygon key={s.part} className={`r2d-leg-band ${s.part}`} points={polyStr(bandPoly(s.a, s.b, s.w))} />
+                ));
+              })()}
               <line x1={aS.sx} y1={aS.sy} x2={footS.sx} y2={footS.sy} className="r2d-leg-line" />
               <circle cx={footS.sx} cy={footS.sy} r={3} className="r2d-foot" />
-              {showServos && joints.map((j) => {
+              {/* Servo coxa : empreinte vue de dessus à l'échelle + pignon (= ancrage).
+                  En mode « placer servo », glisser le corps l'oriente autour du pignon ;
+                  double-clic = réinitialise l'orientation (le long de la patte). */}
+              {showServos && (() => {
+                const cg = coxaServoGeom(a, coxaDims, coxaAngle(a.index));
+                const pts = cg.corners.map((p) => { const s = worldToScreen(p.x, p.z, view); return `${s.sx.toFixed(1)},${s.sy.toFixed(1)}`; }).join(" ");
+                const pin = worldToScreen(cg.pinion.x, cg.pinion.z, view);
+                const pinR = Math.max(2, cg.pinion.r * view.scale);
+                // Poignée de rotation : au centre de l'extrémité de sortie du corps.
+                const endC = { x: (cg.corners[0].x + cg.corners[1].x) / 2, z: (cg.corners[0].z + cg.corners[1].z) / 2 };
+                const endS = worldToScreen(endC.x, endC.z, view);
+                const place = tool === "placeServo";
+                return (
+                  <g className="r2d-coxa-servo">
+                    {/* Glisser le corps = déplacer le servo (le pignon = l'ancrage de la
+                        patte, donc l'axe coxa suit). Double-clic = réoriente le long de la patte. */}
+                    <polygon points={pts}
+                      className={`r2d-coxa-body${place ? " movable" : ""}`}
+                      onPointerDown={(e) => { if (!place) return; e.stopPropagation(); select({ type: "leg", index: a.index }); dragRef.current = { kind: "coxaMove", index: a.index }; }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setCoxaServoAngle(a.index, null); }}>
+                      <title>{`Servo coxa — patte ${a.index} (glisser = déplacer, poignée = pivoter)`}</title>
+                    </polygon>
+                    <circle cx={pin.sx} cy={pin.sy} r={pinR} className="r2d-coxa-pinion" />
+                    {place && (
+                      <>
+                        <line x1={pin.sx} y1={pin.sy} x2={endS.sx} y2={endS.sy} className="r2d-coxa-rot-line" />
+                        <circle cx={endS.sx} cy={endS.sy} r={5} className="r2d-coxa-rot"
+                          onPointerDown={(e) => { e.stopPropagation(); select({ type: "leg", index: a.index }); dragRef.current = { kind: "coxaRot", index: a.index }; }} />
+                      </>
+                    )}
+                  </g>
+                );
+              })()}
+              {/* Fémur / tibia : marqueurs schématiques (le coxa a son empreinte réelle ci-dessus). */}
+              {showServos && joints.filter((j) => j.joint !== "coxa").map((j) => {
                 const jS = worldToScreen(j.x, j.z, view);
                 return (
                   <g key={j.servoId}>

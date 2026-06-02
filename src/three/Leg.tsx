@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PerspectiveCamera, Quaternion, Vector3 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import { degToRad } from "../model/servo";
 import { servoIndex, type Pose } from "../model/pose";
 import { mirrorLegOf, useHexapodStore } from "../store/useHexapodStore";
+import { useProjectStore } from "../store/useProjectStore";
 import { useToolboxStore } from "../store/useToolboxStore";
-import { SERVOS, computeLegMounts, type LegMount } from "../model/hexapod";
+import { SERVOS, computeLegMounts, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { findServoType } from "../model/servoTypes";
 import { computeFootTip, computeBodyTransform } from "../model/kinematics";
 import { solveIK } from "../model/ik";
 import { ServoArc } from "./ServoArc";
+import { makeTaperedBox } from "./legGeometry";
 
 interface LegProps {
   mount: LegMount;
@@ -49,6 +52,36 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const globalPose = useHexapodStore((s) => s.pose);
   const pose = poseOverride ?? globalPose;
   const segs = useHexapodStore((s) => s.geometry.segments);
+  // Épaisseur (vue de dessus) de cette patte → profondeur Z des segments 3D
+  // (pièces plates type MDF). Abonné au tableau brut pour rester stable.
+  const segmentWidths = useHexapodStore((s) => s.geometry.segmentWidths);
+  const segW = useMemo(
+    () => segmentWidthsOf({ segmentWidths } as HexapodGeometry, mount.index),
+    [segmentWidths, mount.index]
+  );
+  // Hauteur de profil (vue de face) → hauteur Y des segments 3D.
+  const segmentHeights = useHexapodStore((s) => s.geometry.segmentHeights);
+  const chassisH = useHexapodStore((s) => s.geometry.chassis.height);
+  const servoTypeId = useProjectStore((s) => s.activeProject?.hardware.servoTypeId);
+  const customServoTypes = useProjectStore((s) => s.activeProject?.hardware.customServoTypes);
+  const segH = useMemo(() => {
+    const sh = segmentHeightsOf({ segmentHeights } as HexapodGeometry, mount.index);
+    const spec = findServoType(servoTypeId, customServoTypes ?? []);
+    const servoHm = (spec?.dimensionsMm.h ?? 38) / 1000;
+    const servoWm = (spec?.dimensionsMm.w ?? 20) / 1000;
+    const rawKnee = Array.isArray(segmentHeights) ? segmentHeights[mount.index]?.tibia : undefined;
+    return {
+      coxa: Math.min(chassisH, Math.max(servoHm, sh.coxa)), // bornée [servo, châssis]
+      femur: sh.femur,
+      tibiaKnee: rawKnee ?? servoWm, // défaut genou = largeur servo
+      tibiaFoot: sh.tibiaFoot,
+    };
+  }, [segmentHeights, mount.index, chassisH, servoTypeId, customServoTypes]);
+  const tibiaGeo = useMemo(
+    () => makeTaperedBox(segs.tibia, segW.tibia, segH.tibiaKnee, segH.tibiaFoot),
+    [segs.tibia, segW.tibia, segH.tibiaKnee, segH.tibiaFoot]
+  );
+  useEffect(() => () => tibiaGeo.dispose(), [tibiaGeo]);
   const setServoAngle = useHexapodStore((s) => s.setServoAngle);
   const arcShownMask = useHexapodStore((s) => s.arcShownMask);
   const mirrorEnabled = useHexapodStore((s) => s.mirrorEnabled);
@@ -344,7 +377,7 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
 
       <group rotation={[0, degToRad(coxaDeg), 0]}>
         <mesh position={[segs.coxa / 2, 0, 0]}>
-          <boxGeometry args={[segs.coxa, 0.018, 0.018]} />
+          <boxGeometry args={[segs.coxa, segH.coxa, segW.coxa]} />
           <meshStandardMaterial color={coxaColor} emissive={collidingSegs?.has(0) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(0) ? 0.4 : 0} />
         </mesh>
         <group position={[segs.coxa, 0, 0]}>
@@ -369,7 +402,7 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
 
           <group rotation={[0, 0, degToRad(femurDeg)]}>
             <mesh position={[segs.femur / 2, 0, 0]}>
-              <boxGeometry args={[segs.femur, 0.016, 0.016]} />
+              <boxGeometry args={[segs.femur, segH.femur, segW.femur]} />
               <meshStandardMaterial color={femurColor} emissive={collidingSegs?.has(1) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(1) ? 0.4 : 0} />
             </mesh>
             <group position={[segs.femur, 0, 0]}>
@@ -393,8 +426,8 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
               )}
 
               <group rotation={[0, 0, degToRad(tibiaDeg)]}>
-                <mesh position={[segs.tibia / 2, 0, 0]}>
-                  <boxGeometry args={[segs.tibia, 0.012, 0.012]} />
+                {/* Tibia conique : genou → pied (geometry x ∈ [0, tibia]). */}
+                <mesh position={[0, 0, 0]} geometry={tibiaGeo}>
                   <meshStandardMaterial color={tibiaColor} emissive={collidingSegs?.has(2) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(2) ? 0.4 : 0} />
                 </mesh>
                 {/* Foot tip — draggable */}

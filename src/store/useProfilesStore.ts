@@ -2,6 +2,15 @@ import { create } from "zustand";
 import { api } from "../api/client";
 import { useHexapodStore } from "./useHexapodStore";
 import { useProjectStore } from "./useProjectStore";
+import { useToastStore } from "./useToastStore";
+
+/** Mesure de « richesse » du tracé 2D : sert au garde-fou anti-perte (ne pas
+ *  écraser un châssis non vide par un body2D vide lors d'un autosave). */
+function body2DStrength(): number {
+  const b = useHexapodStore.getState().geometry.body2D;
+  if (!b) return 0;
+  return (b.shapes?.length ?? 0) + (b.pieces?.length ?? 0) + (b.anchors?.length ?? 0) + (b.points?.length ?? 0);
+}
 
 export interface ProfileSummary {
   id: string;
@@ -20,6 +29,8 @@ interface ProfilesState {
    * profil. `null` tant qu'aucun profil n'est actif.
    */
   savedSignature: string | null;
+  /** Richesse du tracé 2D au dernier chargement/enregistrement (garde-fou anti-perte). */
+  savedBody2DStrength: number;
   /** Enregistrement automatique du profil (défaut faux, non persisté). */
   autoSave: boolean;
   list: () => Promise<void>;
@@ -30,7 +41,9 @@ interface ProfilesState {
    */
   ensureBase: () => Promise<void>;
   save: (name: string) => Promise<void>;
-  update: (id: string) => Promise<void>;
+  /** Enregistre le profil. `opts.guardEmptyBody2D` (autosave) refuse d'écraser un
+   *  tracé non vide par un body2D vide — protège contre une perte silencieuse. */
+  update: (id: string, opts?: { guardEmptyBody2D?: boolean }) => Promise<void>;
   load: (id: string) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -42,11 +55,12 @@ function activeProjectId(): string | null {
   return useProjectStore.getState().activeProjectId;
 }
 
-export const useProfilesStore = create<ProfilesState>((set) => ({
+export const useProfilesStore = create<ProfilesState>((set, get) => ({
   profiles: [],
   activeProfileId: null,
   loading: false,
   savedSignature: null,
+  savedBody2DStrength: 0,
   autoSave: false,
 
   list: async () => {
@@ -90,23 +104,39 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
       profiles: [profile, ...s.profiles],
       activeProfileId: profile.id,
       savedSignature: useHexapodStore.getState().profileCoreSignature(),
+      savedBody2DStrength: body2DStrength(),
     }));
   },
 
-  update: async (id: string) => {
+  update: async (id: string, opts) => {
+    const strength = body2DStrength();
+    // Garde-fou anti-perte : un autosave ne doit jamais remplacer un châssis non
+    // vide déjà enregistré par un tracé vide (cause d'une perte silencieuse).
+    if (opts?.guardEmptyBody2D && strength === 0 && get().savedBody2DStrength > 0) {
+      console.warn("[autosave] body2D vide ignoré pour préserver le châssis enregistré.");
+      useToastStore.getState().show(
+        "Enregistrement auto ignoré : tracé du châssis vide (protection anti-perte). Rechargez la page si l'affichage est anormal."
+      );
+      return;
+    }
     const data = useHexapodStore.getState().serializeProfile();
     await api.put(`/profiles/${id}`, { data });
     const now = Date.now();
     set((s) => ({
       profiles: s.profiles.map((p) => (p.id === id ? { ...p, updatedAt: now } : p)),
       savedSignature: useHexapodStore.getState().profileCoreSignature(),
+      savedBody2DStrength: strength,
     }));
   },
 
   load: async (id: string) => {
     const full = await api.get<{ id: string; name: string; data: unknown }>(`/profiles/${id}`);
     useHexapodStore.getState().applyProfile(full.data);
-    set({ activeProfileId: id, savedSignature: useHexapodStore.getState().profileCoreSignature() });
+    set({
+      activeProfileId: id,
+      savedSignature: useHexapodStore.getState().profileCoreSignature(),
+      savedBody2DStrength: body2DStrength(),
+    });
   },
 
   rename: async (id: string, name: string) => {
@@ -127,5 +157,5 @@ export const useProfilesStore = create<ProfilesState>((set) => ({
 
   setAutoSave: (v: boolean) => set({ autoSave: v }),
 
-  clear: () => set({ profiles: [], activeProfileId: null, savedSignature: null }),
+  clear: () => set({ profiles: [], activeProfileId: null, savedSignature: null, savedBody2DStrength: 0 }),
 }));
