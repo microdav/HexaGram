@@ -1,7 +1,7 @@
 import type { HexapodGeometry, LegMount } from "./hexapod";
 import type { ServoCalibration } from "../store/useHexapodStore";
 import type { SequencerStep } from "../store/useSequencerStore";
-import { clampAngle } from "./servo";
+import { clampAngle, degToRad } from "./servo";
 import { computeBodyTransform } from "./kinematics";
 
 export type GaitType = "tripod" | "ripple" | "wave";
@@ -11,7 +11,8 @@ export interface GaitGeneratorConfig {
   legMounts: LegMount[];
   calibration: Record<number, ServoCalibration>;
   gaitType: GaitType;
-  /** Fraction of the available coxa range used as stride length (0.1–1.0). */
+  /** Fraction (0.1–1.0) du débattement coxa *stable* (auto-borné à la géométrie)
+   *  utilisée comme longueur de pas. 1.0 = pas maximal sans basculement. */
   stepFraction: number;
   /** Fraction of the maximum achievable lift height (0.1–1.0). */
   liftFraction: number;
@@ -77,19 +78,28 @@ interface GaitParams {
   liftTibia: number;
 }
 
-function computeGaitParams(
+/** Paramètres indépendants du débattement coxa — calculés une seule fois par démarche. */
+interface GaitBase {
+  /** Débattement coxa maximal autorisé par les butées servo (plafonné à 45°). */
+  coxaCap: number;
+  stanceFemur: number;
+  stanceTibia: number;
+  liftFemur: number;
+  liftTibia: number;
+}
+
+function computeGaitBase(
   calibration: Record<number, ServoCalibration>,
   useSoft: boolean,
-  stepFraction: number,
   liftFraction: number
-): GaitParams {
-  // Coxa: most conservative range across all 6 legs
+): GaitBase {
+  // Coxa: most conservative range across all 6 legs, plafonné à 45°.
   let minCoxaRange = Infinity;
   for (let leg = 0; leg < 6; leg++) {
     const lim = getLimits(leg * 3, calibration, useSoft);
     minCoxaRange = Math.min(minCoxaRange, Math.abs(lim.min), lim.max);
   }
-  const swingAngle = Math.min(stepFraction * minCoxaRange, 45);
+  const coxaCap = Math.min(minCoxaRange, 45);
 
   // Femur / tibia: most restrictive combined range across all 6 legs
   let femurMin = FALLBACK_MIN, femurMax = FALLBACK_MAX;
@@ -111,7 +121,17 @@ function computeGaitParams(
   const liftFemur = clampAngle(stanceFemur + 40 * liftFraction, femurMin, femurMax);
   const liftTibia = clampAngle(stanceTibia + 30 * liftFraction, tibiaMin, tibiaMax);
 
-  return { swingAngle, stanceFemur, stanceTibia, liftFemur, liftTibia };
+  return { coxaCap, stanceFemur, stanceTibia, liftFemur, liftTibia };
+}
+
+function paramsWithSwing(base: GaitBase, swingAngle: number): GaitParams {
+  return {
+    swingAngle,
+    stanceFemur: base.stanceFemur,
+    stanceTibia: base.stanceTibia,
+    liftFemur: base.liftFemur,
+    liftTibia: base.liftTibia,
+  };
 }
 
 /** Returns [coxa, femur, tibia] for a leg in a given gait slot. */
@@ -185,7 +205,54 @@ function waveSteps(p: GaitParams): SequencerStep[] {
   ];
 }
 
+function buildSteps(gaitType: GaitType, p: GaitParams): SequencerStep[] {
+  return gaitType === "tripod" ? tripodSteps(p)
+       : gaitType === "ripple" ? rippleSteps(p)
+       : waveSteps(p);
+}
+
 // ── Stability score computation ───────────────────────────────────────────────
+
+/** Inclinaison du corps (rad) au-delà de laquelle la pose n'est pas tenue à plat. */
+const TILT_STABLE = 0.02; // ≈ 1.1°
+
+/** Angle d'inclinaison du corps (rad) à partir du quaternion d'équilibre. */
+function bodyTiltRad(q: { w: number }): number {
+  return 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+}
+
+/**
+ * Plus grand débattement coxa (∈ [0, coxaCap]) pour lequel TOUTES les étapes de
+ * la démarche restent stables : corps reposant à plat (sans inclinaison) et CoG
+ * strictement dans le polygone d'appui.
+ *
+ * Sur des pattes montées latéralement (yaw ±90°), un grand débattement fait
+ * pivoter le pied en arc et le ramène vers l'intérieur ; la base d'appui se
+ * referme et le robot bascule sur une patte censée être en phase de transfert.
+ * On borne donc l'amplitude à ce qui est réellement tenable pour la géométrie.
+ * Recherche dichotomique — la stabilité décroît de façon monotone avec le
+ * débattement (pieds de plus en plus rentrés).
+ */
+function maxStableSwing(
+  gaitType: GaitType,
+  base: GaitBase,
+  geometry: HexapodGeometry,
+  mounts: LegMount[]
+): number {
+  const isStable = (swing: number): boolean =>
+    buildSteps(gaitType, paramsWithSwing(base, swing)).every((s) => {
+      const bt = computeBodyTransform(s.pose, geometry, mounts, true);
+      return bt.cogInside && bodyTiltRad(bt.quaternion) <= TILT_STABLE;
+    });
+
+  if (isStable(base.coxaCap)) return base.coxaCap;
+  let lo = 0, hi = base.coxaCap;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (isStable(mid)) lo = mid; else hi = mid;
+  }
+  return lo;
+}
 
 /** Minimum unsigned distance from point P to any segment of the polygon. */
 function minDistToPolygon(
@@ -217,6 +284,16 @@ function computeStabilityScore(
   mounts: LegMount[]
 ): number {
   const result = computeBodyTransform(pose, geometry, mounts, true);
+
+  // Si le solveur a dû incliner le corps pour trouver son équilibre, la pose
+  // commandée n'est pas tenue à plat : une patte censée être levée porte en
+  // réalité le robot. C'est un échec d'appui — on le classe en Danger,
+  // proportionnellement à l'inclinaison (−0.5 au seuil, −1 au-delà de ~12°).
+  const tilt = bodyTiltRad(result.quaternion);
+  if (tilt > TILT_STABLE) {
+    return Math.max(-1, -0.5 - 0.5 * Math.min(1, (tilt - TILT_STABLE) / degToRad(12)));
+  }
+
   const poly = result.supportPolygon;
   if (poly.length < 3) return -1;
 
@@ -247,13 +324,15 @@ function computeStabilityScores(
 export function generateGait(config: GaitGeneratorConfig): GaitResult {
   const { geometry, legMounts, calibration, gaitType, stepFraction, liftFraction, useSoftLimits } = config;
 
-  const params = computeGaitParams(calibration, useSoftLimits, stepFraction, liftFraction);
+  const base = computeGaitBase(calibration, useSoftLimits, liftFraction);
+  // Débattement réellement tenable pour cette géométrie + démarche ; `stepFraction`
+  // (0.1–1.0) en sélectionne une fraction. Garantit des séquences qui ne basculent
+  // pas et rend le curseur « amplitude de pas » utile sur toute sa course.
+  const safeSwing = maxStableSwing(gaitType, base, geometry, legMounts);
+  const swingAngle = Math.max(0, Math.min(1, stepFraction)) * safeSwing;
+  const params = paramsWithSwing(base, swingAngle);
 
-  const steps =
-    gaitType === "tripod" ? tripodSteps(params) :
-    gaitType === "ripple" ? rippleSteps(params) :
-    waveSteps(params);
-
+  const steps = buildSteps(gaitType, params);
   const stabilityScores = computeStabilityScores(steps, geometry, legMounts);
 
   return { steps, stabilityScores };
