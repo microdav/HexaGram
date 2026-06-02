@@ -12,6 +12,10 @@ import { type CommandElectronicsSpec } from "../model/commandElectronics";
 import { useCatalogStore } from "../store/useCatalogStore";
 import { BoardSvg } from "./BoardSvg";
 import { BaseMecaniquePreview } from "./RobotPreviews";
+import { LegLayoutPicker } from "./LegLayoutPicker";
+import { WeightBlock } from "./ProfileSettingsModal";
+import { useHexapodStore } from "../store/useHexapodStore";
+import { defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
 type DetailTab = "general" | "hardware" | "content" | "import";
 
@@ -398,37 +402,72 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
   initialDescription: string;
 }) {
   const update = useProjectStore((s) => s.update);
-  const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const [saving, setSaving] = useState(false);
+
+  // ── Réglages de la base mécanique (persistés séparément du projet) ──
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const profiles = useProfilesStore((s) => s.profiles);
+  const renameProfile = useProfilesStore((s) => s.rename);
+  const updateProfile = useProfilesStore((s) => s.update);
+  const legLayout = useHexapodStore((s) => s.geometry.legLayout ?? "star");
+  const weightConfig = useHexapodStore((s) => s.weightConfig);
+  const setWeightConfigStore = useHexapodStore((s) => s.setWeightConfig);
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
+  const [baseName, setBaseName] = useState(activeProfile?.name ?? "");
+  const persistTimer = useRef<ReturnType<typeof setTimeout>>();
+  const projTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => { setName(initialName); }, [initialName]);
   useEffect(() => { setDescription(initialDescription); }, [initialDescription]);
+  useEffect(() => { setBaseName(activeProfile?.name ?? ""); }, [activeProfile?.name]);
 
-  const dirty = name !== initialName || description !== initialDescription;
-
-  const handleSave = async () => {
-    if (!dirty) return;
-    setSaving(true);
-    try {
-      await update(projectId, { name: name.trim() || initialName, description });
-      showToast("Projet mis à jour");
-    } finally {
-      setSaving(false);
-    }
+  // Enregistrement automatique débouncé du projet (nom + description).
+  const scheduleProjectSave = (n: string, d: string) => {
+    clearTimeout(projTimer.current);
+    projTimer.current = setTimeout(() => {
+      update(projectId, { name: n.trim() || initialName, description: d }).catch(() => {});
+    }, 700);
   };
 
+  // Persistance débouncée de la base mécanique (layout/poids).
+  const persistBase = () => {
+    if (!activeProfileId) return;
+    clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => updateProfile(activeProfileId).catch(() => {}), 700);
+  };
+  const commitBaseName = () => {
+    const n = baseName.trim();
+    if (activeProfileId && n && n !== activeProfile?.name) renameProfile(activeProfileId, n);
+  };
+  const handleLegLayout = (layout: LegLayout) => {
+    useHexapodStore.getState().setGeometry({ legLayout: layout });
+    // La disposition régénère les ancrages paramétriques.
+    const g = useHexapodStore.getState().geometry;
+    const body2D: Body2D = {
+      version: 1,
+      outline: g.body2D?.outline ?? { length: g.chassis.length, width: g.chassis.width },
+      shapes: g.body2D?.shapes, pieces: g.body2D?.pieces,
+      points: g.body2D?.points ?? null, holes: g.body2D?.holes,
+      servoMarkers: g.body2D?.servoMarkers, measurements: g.body2D?.measurements,
+      anchors: defaultAnchorsFromGeometry(g),
+    };
+    useHexapodStore.getState().setGeometry({ body2D });
+    persistBase();
+  };
+  const handleWeight = (cfg: typeof weightConfig) => { setWeightConfigStore(cfg); persistBase(); };
+
   return (
-    <div className="pp-section">
-      <div className="modal-form">
+    <div className="pp-section pp-section-wide">
+      {/* Projet — pleine largeur */}
+      <div className="modal-form pp-form-full">
         <label className="modal-field">
           <span>Nom du projet</span>
           <input
             type="text"
             value={name}
             maxLength={80}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); scheduleProjectSave(e.target.value, description); }}
           />
         </label>
         <label className="modal-field">
@@ -439,23 +478,40 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
             maxLength={500}
             value={description}
             placeholder="Notes générales sur ce projet…"
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); scheduleProjectSave(name, e.target.value); }}
           />
         </label>
       </div>
-      <div className="pp-panel-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!dirty || saving}
-          onClick={handleSave}
-        >
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
-      </div>
 
-      <div className="pp-section-title">Aperçu de la base mécanique</div>
-      <BaseMecaniquePreview />
+      {/* Base mécanique — nom pleine largeur, puis 2 colonnes (réglages | aperçus) */}
+      <div className="pp-section-title">Base mécanique</div>
+      <div className="modal-form pp-form-full">
+        <label className="modal-field">
+          <span>Nom de la base mécanique</span>
+          <input
+            type="text"
+            value={baseName}
+            maxLength={80}
+            disabled={!activeProfileId}
+            placeholder="ex : Hexapode v1"
+            onChange={(e) => setBaseName(e.target.value)}
+            onBlur={commitBaseName}
+            onKeyDown={(e) => e.key === "Enter" && commitBaseName()}
+          />
+        </label>
+      </div>
+      <div className="pp-general-cols">
+        <div className="pp-general-left">
+          <div className="modal-field">
+            <span>Disposition des pattes</span>
+            <LegLayoutPicker value={legLayout} onChange={handleLegLayout} />
+          </div>
+          <WeightBlock weightConfig={weightConfig} onChange={handleWeight} servoCount={18} />
+        </div>
+        <div className="pp-general-right">
+          <BaseMecaniquePreview />
+        </div>
+      </div>
     </div>
   );
 }

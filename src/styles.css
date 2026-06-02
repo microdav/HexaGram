@@ -4311,6 +4311,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .pp-section {
   max-width: 800px;
 }
+/* Onglet Général : pleine largeur (formulaire projet + 2 colonnes base mécanique). */
+.pp-section-wide { max-width: none; }
 
 .pp-hint {
   color: var(--text-dim);
@@ -6707,18 +6709,29 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 
 /* Aperçus de la base mécanique (onglet Projet › Général) */
 .pp-section-title { font-size: 13px; font-weight: 600; color: var(--text); margin: 18px 0 8px; }
+/* Layout onglet Projet › Général */
+.pp-form-full { width: 100%; }
+.pp-form-full .modal-field { width: 100%; }
+.pp-general-cols { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.pp-general-left { flex: 1 1 300px; display: flex; flex-direction: column; gap: 14px; min-width: 280px; }
+.pp-general-right { flex: 1 1 280px; min-width: 260px; }
+/* Le sélecteur de disposition ne doit pas s'étirer sur toute la largeur. */
+.pp-general-left .leg-layout-picker { max-width: 320px; }
+.pp-general-left .modal-field input { width: 100%; }
+
 .robot-previews { display: flex; flex-direction: column; gap: 12px; }
-.robot-preview-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.robot-preview-card { background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.robot-preview-card { width: 100%; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
 .robot-preview-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 6px; }
 .robot-preview-svg { background: var(--bg); border-radius: 6px; display: block; }
 .robot-preview-shape { fill: rgba(245, 197, 24, 0.18); stroke: var(--accent); stroke-width: 2; }
 .robot-preview-empty { color: var(--text-dim); font-style: italic; padding: 20px; text-align: center; }
-.robot-preview-3d { width: 240px; height: 150px; border-radius: 6px; overflow: hidden; }
-.robot-preview-legs { display: grid; grid-template-columns: repeat(3, auto); gap: 8px; }
-.robot-preview-leg { display: flex; flex-direction: column; align-items: center; }
-.robot-preview-leg svg { background: var(--bg); border-radius: 6px; }
-.robot-preview-leg-name { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.robot-preview-empty-box { width: 150px; height: 96px; padding: 0; display: flex; align-items: center; justify-content: center; }
+/* Vue 3D : pleine largeur de la colonne. */
+.robot-preview-3d { width: 100%; height: 240px; border-radius: 6px; overflow: hidden; }
+/* Bande horizontale châssis + pattes, défilable. */
+.robot-preview-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.robot-preview-tile { flex: none; display: flex; flex-direction: column; align-items: center; }
+.robot-preview-tile-name { font-size: 10px; color: var(--text-dim); margin-top: 4px; text-align: center; }
 .robot-preview-legline { stroke: #5b6473; stroke-width: 2; }
 .robot-preview-servo { fill: #2a3a52; stroke: #4d7bb5; stroke-width: 1; }
 .robot-preview-anchor { fill: var(--accent); stroke: var(--accent-hover); stroke-width: 1.5; }
