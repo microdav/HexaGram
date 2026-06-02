@@ -5,19 +5,18 @@ import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useProgramsStore } from "../store/useProgramsStore";
 import { useToastStore } from "../store/useToastStore";
 import { confirmDialog } from "../store/useConfirmStore";
-import { api } from "../api/client";
 import { type ServoSpec } from "../model/servoTypes";
 import { type ServoControllerSpec } from "../model/servoControllers";
 import { type CommandElectronicsSpec } from "../model/commandElectronics";
 import { useCatalogStore } from "../store/useCatalogStore";
-import { BoardSvg } from "./BoardSvg";
+import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
 import { BaseMecaniquePreview } from "./RobotPreviews";
 import { LegLayoutPicker } from "./LegLayoutPicker";
 import { WeightBlock } from "./ProfileSettingsModal";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
-type DetailTab = "general" | "hardware" | "content" | "import";
+type DetailTab = "general" | "hardware";
 
 const GEAR_LABELS: Record<string, string> = { plastic: "Plastique", metal: "Métal", titanium: "Titane" };
 const BEARING_LABELS: Record<string, string> = { plain: "Lisse", ball: "Billes", "dual-ball": "Billes doubles" };
@@ -274,14 +273,18 @@ function ControllerSpecCard({ spec }: { spec: ServoControllerSpec }) {
   return (
     <div className="hw-spec-card">
       <div className="hw-spec-illus">
-        <BoardSvg
-          brand={spec.brand}
-          model={spec.model}
-          dimensionsMm={spec.dimensionsMm}
-          interfaces={spec.interfaces}
-          channels={spec.channels}
-          width={200}
-        />
+        {spec.id === "lynxmotion-ssc-32u" ? (
+          <Ssc32uBoard width={200} />
+        ) : (
+          <BoardSvg
+            brand={spec.brand}
+            model={spec.model}
+            dimensionsMm={spec.dimensionsMm}
+            interfaces={spec.interfaces}
+            channels={spec.channels}
+            width={200}
+          />
+        )}
       </div>
       <div className="hw-spec-row"><span>Canaux</span><span>{spec.channels}</span></div>
       <div className="hw-spec-row"><span>Interfaces</span><span>{spec.interfaces.join(", ")}</span></div>
@@ -621,231 +624,6 @@ function HardwarePanel({ projectId, initialHardware }: {
   );
 }
 
-// ── Onglet Contenu ──────────────────────────────────────────────────────
-
-function ContentPanel() {
-  const activeProject = useProjectStore((s) => s.activeProject);
-  const sequences = useSavedSequencesStore((s) => s.sequences);
-  const programs = useProgramsStore((s) => s.programs);
-  const listSequences = useSavedSequencesStore((s) => s.list);
-  const listPrograms = useProgramsStore((s) => s.list);
-  const removeSequence = useSavedSequencesStore((s) => s.remove);
-  const removeProgram = useProgramsStore((s) => s.remove);
-
-  useEffect(() => {
-    if (!activeProject) return;
-    listSequences();
-    listPrograms();
-  }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fmt = (ts: number) => new Date(ts).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-
-  return (
-    <div className="pp-section">
-      <div className="pp-content-grid">
-        <div className="pp-content-col">
-          <div className="pp-content-title">
-            Séquences
-            <span className="pp-content-count">{sequences.length}</span>
-          </div>
-          {sequences.length === 0 ? (
-            <div className="pp-empty-mini">aucune</div>
-          ) : sequences.map((s) => (
-            <div key={s.id} className="pp-item-row">
-              <div className="pp-item-main">
-                <span className="pp-item-name">{s.name}</span>
-                <span className="pp-item-date">maj {fmt(s.updatedAt)}</span>
-              </div>
-              <button type="button" className="btn btn-sm btn-danger"
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: 'Supprimer la séquence',
-                    message: `Voulez-vous vraiment supprimer la séquence « ${s.name} » ?`,
-                    confirmLabel: 'Supprimer',
-                    variant: 'danger',
-                  });
-                  if (ok) removeSequence(s.id);
-                }}>✕</button>
-            </div>
-          ))}
-        </div>
-
-        <div className="pp-content-col">
-          <div className="pp-content-title">
-            Programmes
-            <span className="pp-content-count">{programs.length}</span>
-          </div>
-          {programs.length === 0 ? (
-            <div className="pp-empty-mini">aucun</div>
-          ) : programs.map((p) => (
-            <div key={p.id} className="pp-item-row">
-              <div className="pp-item-main">
-                <span className="pp-item-name">{p.name}</span>
-                <span className="pp-item-date">maj {fmt(p.updatedAt)}</span>
-              </div>
-              <button type="button" className="btn btn-sm btn-danger"
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: 'Supprimer le programme',
-                    message: `Voulez-vous vraiment supprimer le programme « ${p.name} » ?`,
-                    confirmLabel: 'Supprimer',
-                    variant: 'danger',
-                  });
-                  if (ok) removeProgram(p.id);
-                }}>✕</button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Onglet Import ───────────────────────────────────────────────────────
-
-interface ListItem { id: string; name: string; }
-
-function ImportPanel() {
-  const projects = useProjectStore((s) => s.projects);
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const importFrom = useProjectStore((s) => s.importFrom);
-  const showToast = useToastStore((s) => s.show);
-
-  const [sourceId, setSourceId] = useState("");
-  const [profiles, setProfiles] = useState<ListItem[]>([]);
-  const [sequences, setSequences] = useState<ListItem[]>([]);
-  const [programs, setPrograms] = useState<ListItem[]>([]);
-  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
-  const [selectedSequences, setSelectedSequences] = useState<Set<string>>(new Set());
-  const [selectedPrograms, setSelectedPrograms] = useState<Set<string>>(new Set());
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [importing, setImporting] = useState(false);
-
-  const otherProjects = projects.filter((p) => p.id !== activeProjectId);
-
-  useEffect(() => {
-    setProfiles([]); setSequences([]); setPrograms([]);
-    setSelectedProfiles(new Set()); setSelectedSequences(new Set()); setSelectedPrograms(new Set());
-  }, [activeProjectId]);
-
-  useEffect(() => {
-    if (!sourceId) return;
-    let cancelled = false;
-    setLoadingItems(true);
-    Promise.all([
-      api.get<ListItem[]>(`/profiles?projectId=${encodeURIComponent(sourceId)}`),
-      api.get<ListItem[]>(`/sequences?projectId=${encodeURIComponent(sourceId)}`),
-      api.get<ListItem[]>(`/programs?projectId=${encodeURIComponent(sourceId)}`),
-    ])
-      .then(([profs, seqs, progs]) => {
-        if (cancelled) return;
-        setProfiles(profs); setSequences(seqs); setPrograms(progs);
-      })
-      .finally(() => { if (!cancelled) setLoadingItems(false); });
-    return () => { cancelled = true; };
-  }, [sourceId]);
-
-  const toggle = (set: Set<string>, setter: (v: Set<string>) => void, id: string) => {
-    const next = new Set(set);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setter(next);
-  };
-
-  const totalSelected = selectedProfiles.size + selectedSequences.size + selectedPrograms.size;
-
-  const handleImport = async () => {
-    if (!sourceId || totalSelected === 0) return;
-    setImporting(true);
-    try {
-      const result = await importFrom(sourceId, {
-        profileIds: [...selectedProfiles],
-        sequenceIds: [...selectedSequences],
-        programIds: [...selectedPrograms],
-      });
-      showToast(`Importé : ${result.profilesImported} base(s) méca., ${result.sequencesImported} séq., ${result.programsImported} prog.`);
-      setSourceId("");
-      setSelectedProfiles(new Set()); setSelectedSequences(new Set()); setSelectedPrograms(new Set());
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const renderList = (
-    items: ListItem[],
-    selected: Set<string>,
-    setter: (v: Set<string>) => void,
-    label: string
-  ) => (
-    <div className="import-section">
-      <div className="import-section-header">
-        <span>{label} ({items.length})</span>
-        {items.length > 0 && (
-          <button type="button" className="import-section-all"
-            onClick={() => {
-              if (selected.size === items.length) setter(new Set());
-              else setter(new Set(items.map((i) => i.id)));
-            }}>
-            {selected.size === items.length ? "Tout désélectionner" : "Tout sélectionner"}
-          </button>
-        )}
-      </div>
-      {items.length === 0 ? (
-        <div className="import-list-empty">aucun</div>
-      ) : (
-        <div className="import-list">
-          {items.map((i) => (
-            <label key={i.id} className="import-row">
-              <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(selected, setter, i.id)} />
-              <span>{i.name}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="pp-section">
-      <p className="pp-hint">
-        Copiez la base mécanique, des séquences ou programmes depuis un autre projet vers le projet actif.
-        Les éléments importés sont des copies indépendantes (nouveaux identifiants).
-      </p>
-      <div className="modal-form">
-        <label className="modal-field">
-          <span>Projet source</span>
-          <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-            <option value="">— choisir un projet —</option>
-            {otherProjects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-
-        {sourceId && (
-          loadingItems ? (
-            <div className="import-list-empty">Chargement…</div>
-          ) : (
-            <>
-              {renderList(profiles, selectedProfiles, setSelectedProfiles, "Base mécanique")}
-              {renderList(sequences, selectedSequences, setSelectedSequences, "Séquences")}
-              {renderList(programs, selectedPrograms, setSelectedPrograms, "Programmes")}
-            </>
-          )
-        )}
-      </div>
-
-      <div className="pp-panel-actions">
-        <button type="button" className="btn btn-primary"
-          disabled={importing || !sourceId || totalSelected === 0}
-          onClick={handleImport}>
-          {importing ? "Import…" : totalSelected === 0 ? "Importer" : `Importer (${totalSelected})`}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── Création d'un nouveau projet (formulaire inline) ────────────────────
 
 function NewProjectForm({ onClose }: { onClose: () => void }) {
@@ -982,8 +760,6 @@ export function ProjectPage() {
             <nav className="pp-tabs">
               <button type="button" className={`pp-tab${tab === 'general' ? ' active' : ''}`} onClick={() => setTab("general")}>Général</button>
               <button type="button" className={`pp-tab${tab === 'hardware' ? ' active' : ''}`} onClick={() => setTab("hardware")}>Matériel</button>
-              <button type="button" className={`pp-tab${tab === 'content' ? ' active' : ''}`} onClick={() => setTab("content")}>Contenu</button>
-              <button type="button" className={`pp-tab${tab === 'import' ? ' active' : ''}`} onClick={() => setTab("import")}>Importer</button>
             </nav>
 
             {tab === "general" && (
@@ -999,8 +775,6 @@ export function ProjectPage() {
                 initialHardware={activeProject.hardware}
               />
             )}
-            {tab === "content" && <ContentPanel />}
-            {tab === "import" && <ImportPanel />}
           </>
         )}
       </div>
