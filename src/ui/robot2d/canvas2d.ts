@@ -94,6 +94,24 @@ export function snapToVertices(p: Pt, verts: Pt[], pxThresh: number, v: View): P
   return best ?? p;
 }
 
+/**
+ * Projette un point monde sur le segment a→b et renvoie le pied de perpendiculaire
+ * (monde, borné au segment) ainsi que la distance écran (px) au point. Sert à
+ * accrocher un point de mesure sur la ligne d'un bord (châssis ou partie de patte).
+ */
+export function projectToSegment(p: Pt, a: Pt, b: Pt, v: View): { pt: Pt; dPx: number } {
+  const P = worldToScreen(p.x, p.z, v);
+  const A = worldToScreen(a.x, a.z, v);
+  const B = worldToScreen(b.x, b.z, v);
+  const dx = B.sx - A.sx, dy = B.sy - A.sy;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 1e-9 ? ((P.sx - A.sx) * dx + (P.sy - A.sy) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const fx = A.sx + t * dx, fy = A.sy + t * dy;
+  const w = screenToWorld(fx, fy, v);
+  return { pt: { x: w.x, z: w.z }, dPx: Math.hypot(P.sx - fx, P.sy - fy) };
+}
+
 /** Géométrie écran d'une cote a→b décalée de `offset` (m), + longueur mesurée. */
 export function measureGeom(a: Pt, b: Pt, offset: number, v: View) {
   const dx = b.x - a.x, dz = b.z - a.z;

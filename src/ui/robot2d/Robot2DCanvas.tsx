@@ -15,6 +15,7 @@ import {
   measureGeom,
   offsetFromPointer,
   pointInPoly,
+  projectToSegment,
   screenToWorld,
   snapMeters,
   snapToVertices,
@@ -280,6 +281,29 @@ export function Robot2DCanvas() {
     ];
   };
 
+  // Bords (segments) aimantables pour l'outil mesure : arêtes du châssis (formes +
+  // morceaux bakés) et de chaque partie de patte (bandes coxa/fémur/tibia + corps
+  // du servo coxa). Un point de mesure peut s'accrocher sur la ligne d'un bord.
+  const snapEdges = useMemo(() => {
+    const edges: { a: Pt2; b: Pt2 }[] = [];
+    const addRing = (ring: Pt2[]) => {
+      const n = ring.length;
+      for (let i = 0; i < n; i++) edges.push({ a: ring[i], b: ring[(i + 1) % n] });
+    };
+    for (const s of shapes) addRing(s.poly);
+    for (const pc of pieces) { addRing(pc.outer); for (const h of pc.holes) addRing(h); }
+    for (const a of anchors) {
+      const { joints, foot } = legJointPoints(a, segments, markers);
+      const segW = segmentWidthsOf(geometry, a.index);
+      addRing(bandPoly(joints[0], joints[1], segW.coxa));
+      addRing(bandPoly(joints[1], joints[2], segW.femur));
+      addRing(bandPoly(joints[2], foot, segW.tibia));
+      if (showServos) addRing(coxaServoGeom(a, coxaDims, coxaAngle(a.index)).corners);
+    }
+    return edges;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapes, pieces, anchors, segments, markers, geometry, coxaDims, coxaServos, showServos]);
+
   // Cibles d'accroche pour le CENTRE d'une forme déplacée : sommets, milieux
   // d'arêtes (= centres des côtés d'un rectangle) et centre de chaque autre forme.
   const centerSnapTargets = (excludeId: string): Pt2[] => {
@@ -312,7 +336,9 @@ export function Robot2DCanvas() {
     return { p, hit: false };
   };
 
-  // Accroche mesure : un point cible proche (≤ 12 px) prime sur la grille.
+  // Accroche mesure, par ordre de priorité : 1) point cible précis (sommet, pignon
+  // coxa, articulation, extrémité de cote) ≤ 12 px ; 2) bord de châssis ou de patte
+  // (accroche sur la ligne) ≤ 8 px ; 3) grille.
   const snapMeasure = (cx: number, cy: number): { p: Pt2; hit: boolean } => {
     const raw = rawWorld(cx, cy);
     const ps = worldToScreen(raw.x, raw.z, view);
@@ -324,6 +350,13 @@ export function Robot2DCanvas() {
       if (d < bestD) { bestD = d; best = t; }
     }
     if (best) return { p: best, hit: true };
+    let bestEdge: Pt2 | null = null;
+    let bestED = 8;
+    for (const e of snapEdges) {
+      const f = projectToSegment(raw, e.a, e.b, view);
+      if (f.dPx < bestED) { bestED = f.dPx; bestEdge = f.pt; }
+    }
+    if (bestEdge) return { p: bestEdge, hit: true };
     const step = snapEnabled ? snapStepCm : 0.1; // au moins 1 mm
     return { p: { x: snapMeters(raw.x, step), z: snapMeters(raw.z, step) }, hit: false };
   };
@@ -726,7 +759,7 @@ export function Robot2DCanvas() {
         onContextMenu={(e) => e.preventDefault()}
       >
         <defs>
-          <marker id="r2d-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="r2d-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto-start-reverse">
             <path d="M0,0 L6,3 L0,6 Z" className="r2d-dim-arrow-head" />
           </marker>
         </defs>

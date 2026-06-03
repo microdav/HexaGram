@@ -6558,11 +6558,12 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-canvas.passthrough .r2d-leg-line,
 .r2d-canvas.passthrough .r2d-foot { pointer-events: none; }
 .r2d-canvas.drawing { cursor: crosshair; }
-/* Patte sélectionnée : le châssis (morceaux bakés + formes) s'estompe pour faire
-   ressortir la patte et son servo coxa. */
+/* Patte sélectionnée : le châssis (morceaux bakés + formes) ET les autres pattes
+   s'estompent pour faire ressortir la patte sélectionnée et son servo coxa. */
 .r2d-canvas.leg-selected .r2d-piece,
 .r2d-canvas.leg-selected .r2d-shape.real,
-.r2d-canvas.leg-selected .r2d-shape.virtual { opacity: 0.25; }
+.r2d-canvas.leg-selected .r2d-shape.virtual,
+.r2d-canvas.leg-selected .r2d-leg:not(.selected) { opacity: 0.25; }
 
 /* Aperçu crayon / rect / cercle */
 .r2d-draft { fill: rgba(245, 197, 24, 0.12); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
@@ -6665,16 +6666,18 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2dp-leg.selected .r2dp-coxa-mat { stroke: var(--accent-hover); }
 .r2dp-leg.selected .r2dp-coxa-mat { fill: rgba(245, 197, 24, 0.3); }
 
-/* Bandes d'épaisseur des parties de patte (vue de dessus). */
-.r2d-leg-band { fill: rgba(91, 100, 115, 0.28); stroke: #5b6473; stroke-width: 1; pointer-events: none; }
-.r2d-leg-band.coxa { fill: rgba(120, 132, 150, 0.34); }
-.r2d-leg-band.femur { fill: rgba(105, 116, 133, 0.30); }
-.r2d-leg-band.tibia { fill: rgba(91, 100, 115, 0.26); }
-.r2d-leg.selected .r2d-leg-band { stroke: var(--accent-hover); }
+/* Bandes d'épaisseur des parties de patte (vue de dessus). Comme le châssis,
+   les pattes sont en MDF jaune : bandes jaunes par défaut (légère variation
+   d'opacité par partie pour distinguer coxa/fémur/tibia). */
+.r2d-leg-band { fill: rgba(245, 197, 24, 0.10); stroke: var(--accent); stroke-width: 1; pointer-events: none; }
+.r2d-leg-band.coxa { fill: rgba(245, 197, 24, 0.16); }
+.r2d-leg-band.femur { fill: rgba(245, 197, 24, 0.12); }
+.r2d-leg-band.tibia { fill: rgba(245, 197, 24, 0.09); }
+.r2d-leg.selected .r2d-leg-band { stroke: var(--accent-hover); fill: rgba(245, 197, 24, 0.26); }
 
-.r2d-leg-line { stroke: #5b6473; stroke-width: 2; }
+.r2d-leg-line { stroke: #b8941a; stroke-width: 2; }
 .r2d-leg.selected .r2d-leg-line { stroke: var(--accent-hover); }
-.r2d-foot { fill: #3a4150; stroke: #5b6473; stroke-width: 1; }
+.r2d-foot { fill: #3a4150; stroke: var(--accent); stroke-width: 1; }
 
 .r2d-anchor {
   fill: #2b3140;
@@ -6872,16 +6875,22 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-canvas.measuring .r2d-coxa-body,
 .r2d-canvas.measuring .r2d-leg-line,
 .r2d-canvas.measuring .r2d-foot { pointer-events: none; }
-.r2d-dim-line { stroke: var(--accent); stroke-width: 1.5; }
-.r2d-dim-ext { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.7; }
-.r2d-dim-arrow-head { fill: var(--accent); }
-.r2d-dim-pt { fill: var(--accent); }
+/* Cotes de mesure : rose (distinct de l'accent jaune du thème). Variable posée sur
+   le canvas pour que la flèche du <marker> (dans <defs>) en hérite aussi. */
+.r2d-canvas { --r2d-dim: #ff5fa8; --r2d-dim-hover: #ff8fc2; }
+.r2d-dim-line { stroke: var(--r2d-dim); stroke-width: 1.5; }
+.r2d-dim-ext { stroke: var(--r2d-dim); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.7; }
+.r2d-dim-arrow-head { fill: var(--r2d-dim); }
+.r2d-dim-pt { fill: var(--r2d-dim); }
 .r2d-dim-label { cursor: move; }
-.r2d-dim-label rect { fill: rgba(15, 17, 21, 0.9); stroke: var(--accent); stroke-width: 1; }
-.r2d-dim-label text { fill: var(--accent-hover); font-size: 11px; font-weight: 600; }
+.r2d-dim-label rect { fill: rgba(15, 17, 21, 0.9); stroke: var(--r2d-dim); stroke-width: 1; }
+.r2d-dim-label text { fill: var(--r2d-dim-hover); font-size: 11px; font-weight: 600; }
+/* Étiquette live (longueur en cours) de la mesure : même rose que la cote. */
+.r2d-dim .r2d-dim-badge rect { stroke: var(--r2d-dim); }
+.r2d-dim .r2d-dim-badge text { fill: var(--r2d-dim-hover); }
 .r2d-dim.pending { pointer-events: none; opacity: 0.8; }
 /* Cote sélectionnée (suppression au clavier) : étiquette mise en évidence. */
-.r2d-dim.selected .r2d-dim-label rect { stroke-width: 2; fill: rgba(95, 208, 255, 0.18); }
+.r2d-dim.selected .r2d-dim-label rect { stroke-width: 2; fill: rgba(255, 95, 168, 0.18); }
 .r2d-dim.selected .r2d-dim-line, .r2d-dim.selected .r2d-dim-ext { stroke-width: 2; opacity: 1; }
 .r2d-snap-indicator { fill: rgba(95, 208, 255, 0.25); stroke: #5fd0ff; stroke-width: 2; pointer-events: none; }
 .r2d-dim.pending.ortho .r2d-dim-line { stroke: #5ad17a; stroke-width: 2; }
