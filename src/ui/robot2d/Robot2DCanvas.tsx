@@ -33,7 +33,7 @@ type Drag =
   | { kind: "shapeMove"; id: string; ox: number; oz: number }
   | { kind: "shapeVertex"; id: string; i: number }
   | { kind: "draft" }
-  | { kind: "pan"; startX: number; startY: number; panX: number; panY: number };
+  | { kind: "pan"; startX: number; startY: number; panX: number; panY: number; button: number };
 
 const JOINT_LABEL: Record<string, string> = { coxa: "C", femur: "F", tibia: "T" };
 const DRAW_TOOLS = new Set(["pen", "rect", "circle", "measure"]);
@@ -72,6 +72,9 @@ export function Robot2DCanvas() {
   const activeLayer = useRobot2DStore((s) => s.activeLayer);
   const selectedShapeId = useRobot2DStore((s) => s.selectedShapeId);
   const selectShape = useRobot2DStore((s) => s.selectShape);
+  const selectedMeasureId = useRobot2DStore((s) => s.selectedMeasureId);
+  const selectMeasure = useRobot2DStore((s) => s.selectMeasure);
+  const setTool = useRobot2DStore((s) => s.setTool);
   const penPoints = useRobot2DStore((s) => s.penPoints);
   const setPenPoints = useRobot2DStore((s) => s.setPenPoints);
   const snapEnabled = useRobot2DStore((s) => s.snapEnabled);
@@ -477,10 +480,16 @@ export function Robot2DCanvas() {
         setHover(snapWorld(rawWorld(e.clientX, e.clientY)));
       }
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       dragRef.current = null;
       if (!d) return;
+      // Clic droit bref (sans déplacement) en mode mesure ⇒ retour au mode sélection.
+      if (d.kind === "pan" && d.button === 2 && tool === "measure"
+          && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 5) {
+        setTool("select");
+        return;
+      }
       if (d.kind === "draft" && draft) {
         finalizeDraft(draft);
         setDraft(null);
@@ -504,11 +513,16 @@ export function Robot2DCanvas() {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       if (e.key === "Enter" && tool === "pen" && penPoints.length >= 3) { addShape(penPoints); setPenPoints([]); }
-      else if (e.key === "Escape") { setPenPoints([]); setDraft(null); selectShape(null); setMenu(null); }
+      else if (e.key === "Escape") { setPenPoints([]); setDraft(null); selectShape(null); selectMeasure(null); setMenu(null); }
       else if (e.key === "Delete" && selectedShapeId) {
         setShapes(shapes.filter((s) => s.id !== selectedShapeId));
         selectShape(null);
         commitHistory("Forme supprimée");
+      }
+      else if (e.key === "Delete" && selectedMeasureId) {
+        removeMeasurement(selectedMeasureId);
+        selectMeasure(null);
+        commitHistory("Mesure supprimée");
       }
       // Déplacement fin de la forme sélectionnée aux flèches (pas clavier).
       else if (selectedShapeId && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -568,7 +582,7 @@ export function Robot2DCanvas() {
     // Clic droit ou Ctrl+clic gauche = panoramique, quel que soit l'outil
     // (permet de déplacer la vue pendant le tracé au crayon).
     if (e.button === 2 || (e.button === 0 && e.ctrlKey)) {
-      dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, button: e.button };
       return;
     }
     if (e.button !== 0) return;
@@ -596,7 +610,7 @@ export function Robot2DCanvas() {
     }
     // select / servo : clic dans le vide = désélection + panoramique
     if (tool === "select") { selectShape(null); select(null); }
-    dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+    dragRef.current = { kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, button: e.button };
   };
 
   const onSvgMove = (e: React.PointerEvent) => {
@@ -769,13 +783,19 @@ export function Robot2DCanvas() {
         {measurements.map((m) => {
           const g = measureGeom(m.a, m.b, m.offset, view);
           return (
-            <g key={m.id} className="r2d-dim">
+            <g key={m.id} className={`r2d-dim${selectedMeasureId === m.id ? " selected" : ""}`}>
               <line x1={g.a.sx} y1={g.a.sy} x2={g.ao.sx} y2={g.ao.sy} className="r2d-dim-ext" />
               <line x1={g.b.sx} y1={g.b.sy} x2={g.bo.sx} y2={g.bo.sy} className="r2d-dim-ext" />
               <line x1={g.ao.sx} y1={g.ao.sy} x2={g.bo.sx} y2={g.bo.sy} className="r2d-dim-line" markerStart="url(#r2d-arrow)" markerEnd="url(#r2d-arrow)" />
               <g transform={`translate(${g.mid.sx} ${g.mid.sy})`} className="r2d-dim-label"
-                onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { kind: "measureOffset", id: m.id }; }}
-                onDoubleClick={(e) => { e.stopPropagation(); removeMeasurement(m.id); commitHistory("Mesure supprimée"); }}>
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  // Sélectionne la cote (suppression au clavier) et amorce le décalage.
+                  selectMeasure(m.id);
+                  dragRef.current = { kind: "measureOffset", id: m.id };
+                }}
+                onDoubleClick={(e) => { e.stopPropagation(); removeMeasurement(m.id); selectMeasure(null); commitHistory("Mesure supprimée"); }}>
                 <rect x={-22} y={-10} width={44} height={18} rx={4} />
                 <text textAnchor="middle" y={4}>{(g.len * 100).toFixed(2)} cm</text>
               </g>

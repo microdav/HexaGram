@@ -6869,6 +6869,9 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-dim-label rect { fill: rgba(15, 17, 21, 0.9); stroke: var(--accent); stroke-width: 1; }
 .r2d-dim-label text { fill: var(--accent-hover); font-size: 11px; font-weight: 600; }
 .r2d-dim.pending { pointer-events: none; opacity: 0.8; }
+/* Cote sélectionnée (suppression au clavier) : étiquette mise en évidence. */
+.r2d-dim.selected .r2d-dim-label rect { stroke-width: 2; fill: rgba(95, 208, 255, 0.18); }
+.r2d-dim.selected .r2d-dim-line, .r2d-dim.selected .r2d-dim-ext { stroke-width: 2; opacity: 1; }
 .r2d-snap-indicator { fill: rgba(95, 208, 255, 0.25); stroke: #5fd0ff; stroke-width: 2; pointer-events: none; }
 .r2d-dim.pending.ortho .r2d-dim-line { stroke: #5ad17a; stroke-width: 2; }
 .r2d-axis-flag { fill: #5ad17a; font-size: 16px; font-weight: 700; pointer-events: none; }

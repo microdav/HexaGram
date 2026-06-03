@@ -41,7 +41,10 @@ function mergeBody2D(g: HexapodGeometry, patch: Partial<Omit<Body2D, "version">>
 }
 
 let _measSeq = 0;
-function newMeasurementId(): string { return `m${++_measSeq}`; }
+// Date.now() + compteur : reste unique même après un rechargement (un simple
+// compteur repart de 0 et collisionne avec les mesures déjà chargées → plusieurs
+// cotes glissent ensemble car elles partagent le même id). Cf. newShapeId.
+function newMeasurementId(): string { return `m${Date.now().toString(36)}${(++_measSeq).toString(36)}`; }
 import { clampAngle } from "../model/servo";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
@@ -506,6 +509,19 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         while (seen.has(id)) id += "_";
         seen.add(id);
         return { ...s, id };
+      });
+    }
+    // Même dé-duplication pour les cotes de mesure : d'anciens profils (compteur
+    // remis à 0 au reload) ont pu enregistrer des ids identiques → déplacer une
+    // cote en déplaçait plusieurs (updateMeasurement matche tous les ids égaux).
+    if (b2?.measurements) {
+      const seen = new Set<string>();
+      b2.measurements = b2.measurements.map((m, i) => {
+        if (!seen.has(m.id)) { seen.add(m.id); return m; }
+        let id = `${m.id}_${i}`;
+        while (seen.has(id)) id += "_";
+        seen.add(id);
+        return { ...m, id };
       });
     }
     const calib: Record<number, ServoCalibration> = {};

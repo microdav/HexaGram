@@ -43,6 +43,8 @@ interface Robot2DState {
   activeLayer: ShapeLayer;
   /** Forme sélectionnée (id) — pour déplacement / édition / suppression. */
   selectedShapeId: string | null;
+  /** Cote de mesure sélectionnée (id) — pour suppression au clavier. */
+  selectedMeasureId: string | null;
   /** Sommets en cours de tracé au crayon (vide = pas de tracé). */
   penPoints: Pt2[];
 
@@ -59,6 +61,7 @@ interface Robot2DState {
   setPendingMeasure: (p: { x: number; z: number } | null) => void;
   setActiveLayer: (l: ShapeLayer) => void;
   selectShape: (id: string | null) => void;
+  selectMeasure: (id: string | null) => void;
   setPenPoints: (pts: Pt2[]) => void;
 }
 
@@ -87,17 +90,21 @@ export const useRobot2DStore = create<Robot2DState>((set) => ({
   pendingMeasure: null,
   activeLayer: "real",
   selectedShapeId: null,
+  selectedMeasureId: null,
   penPoints: [],
 
   // Sélection mutuellement exclusive : choisir une patte / le châssis désélectionne
-  // toute forme, et inversement — un seul élément actif à la fois dans le dessin.
-  select: (selected) => set({ selected, selectedShapeId: null }),
-  // Changer d'outil annule un tracé crayon en cours et un point de mesure pendant.
-  setTool: (tool) => set({ tool, pendingMeasure: null, penPoints: [] }),
+  // toute forme/cote, et inversement — un seul élément actif à la fois dans le dessin.
+  select: (selected) => set({ selected, selectedShapeId: null, selectedMeasureId: null }),
+  // Changer d'outil annule un tracé crayon en cours, un point de mesure pendant et
+  // toute sélection de cote.
+  setTool: (tool) => set({ tool, pendingMeasure: null, penPoints: [], selectedMeasureId: null }),
   setFace: (face) => set({ face }),
   setActiveLayer: (activeLayer) => set({ activeLayer }),
   selectShape: (selectedShapeId) =>
-    set(selectedShapeId ? { selectedShapeId, selected: null } : { selectedShapeId }),
+    set(selectedShapeId ? { selectedShapeId, selected: null, selectedMeasureId: null } : { selectedShapeId }),
+  selectMeasure: (selectedMeasureId) =>
+    set(selectedMeasureId ? { selectedMeasureId, selected: null, selectedShapeId: null } : { selectedMeasureId }),
   setPenPoints: (penPoints) => set({ penPoints }),
   setSnapEnabled: (snapEnabled) => set({ snapEnabled }),
   setSnapStepCm: (snapStepCm) => set({ snapStepCm: Math.max(0.1, snapStepCm) }),
