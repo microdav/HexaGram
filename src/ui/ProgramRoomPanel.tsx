@@ -6,6 +6,7 @@ import { useSequencerStore } from "../store/useSequencerStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { resolveProgramKeyframes, type ProgramKeyframe } from "../model/programPlayback";
+import { SpeedWheel } from "./SpeedWheel";
 import type { Program } from "../model/program";
 
 type RunnableProgram = Pick<Program, "initPose" | "steps" | "loop">;
@@ -14,8 +15,6 @@ interface ProgramRoomPanelProps {
   /** Brouillon courant à exécuter (avec ses modifications non enregistrées). */
   program: RunnableProgram | null;
 }
-
-const SPEEDS = [0.25, 0.5, 1, 2, 4];
 
 /** Signature structurelle (hors noms) pour ne re-résoudre la frise qu'au besoin. */
 function programSignature(p: RunnableProgram | null): string {
@@ -192,17 +191,13 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
         <span className="program-room-title">🏠 Salle d'exécution</span>
         {error && <span className="program-room-error">{error}</span>}
         <span className="program-room-spacer" />
-        <label className="program-room-speed" title="Vitesse de lecture">
+        <label className="program-room-speed" title="Vitesse d'exécution">
           <span aria-hidden="true">⏱</span>
-          <select
-            aria-label="Vitesse de lecture"
+          <SpeedWheel
             value={playbackSpeed}
-            onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-          >
-            {SPEEDS.map((v) => (
-              <option key={v} value={v}>{v}×</option>
-            ))}
-          </select>
+            onChange={setPlaybackSpeed}
+            title="Vitesse d'exécution"
+          />
         </label>
         <button
           type="button"

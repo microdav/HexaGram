@@ -4,7 +4,6 @@ import type { PanelSide } from '../store/useToolboxStore';
 import { Toolbox } from './Toolbox';
 import { GeometryContent, CogContent } from './GeometryPanel';
 import { ServoGroupContent } from './ServoPanel';
-import { SimulationContent } from './SimulationPanel';
 import { SequencerControlsContent } from './SequencerControlsContent';
 import { ElectromechanicsContent } from './ElectromechanicsPanel';
 import { WalkSpeedContent } from './WalkSpeedPanel';
@@ -17,7 +16,6 @@ const ServoRight = () => <ServoGroupContent side="right" />;
 const REGISTRY: Record<string, { title: string; Content: ComponentType }> = {
   geometry:          { title: 'Géométrie',                    Content: GeometryContent },
   cog:               { title: 'Centre de gravité',            Content: CogContent },
-  simulation:        { title: 'Simulation',                   Content: SimulationContent },
   'servos-left':     { title: 'Servos gauche',                Content: ServoLeft },
   'servos-right':    { title: 'Servos droite',                Content: ServoRight },
   'seq-ctrl':        { title: 'Lecture',                      Content: SequencerControlsContent },

@@ -1,6 +1,5 @@
 import { useSequencerStore } from '../store/useSequencerStore';
-
-const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 5, 10];
+import { SpeedWheel } from './SpeedWheel';
 
 export function SequencerControlsContent() {
   const steps = useSequencerStore((s) => s.steps);
@@ -40,17 +39,11 @@ export function SequencerControlsContent() {
       >
         ■
       </button>
-      <select
-        className="seq-speed-select"
-        aria-label="Vitesse de lecture"
-        title="Vitesse de lecture"
+      <SpeedWheel
         value={playbackSpeed}
-        onChange={(e) => useSequencerStore.getState().setPlaybackSpeed(Number(e.target.value))}
-      >
-        {PLAYBACK_SPEEDS.map((v) => (
-          <option key={v} value={v}>x{v}</option>
-        ))}
-      </select>
+        onChange={(v) => useSequencerStore.getState().setPlaybackSpeed(v)}
+        title="Vitesse de lecture"
+      />
       {playError && (
         <div
           className="seq-ctrl-error"

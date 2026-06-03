@@ -2033,18 +2033,93 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   opacity: 0.85;
   margin-top: 4px;
 }
-.seq-speed-select {
+/* Sélecteur de vitesse (lecture séquenceur + exécution salle) :
+   un libellé « ×1,0 » qui ouvre une popin « roulette ». */
+.speed-wheel-trigger {
   background: var(--bg-panel, var(--bg));
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
   height: 22px;
-  padding: 0 4px;
+  min-width: 44px;
+  padding: 0 8px;
   font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
-.toolbox-inline .seq-speed-select { height: 18px; font-size: 10px; padding: 0 3px; }
+.speed-wheel-trigger:hover { background: var(--border); }
+.speed-wheel-trigger.active { border-color: var(--accent, var(--border)); }
+.toolbox-inline .speed-wheel-trigger { height: 18px; font-size: 10px; min-width: 38px; padding: 0 6px; }
+
+/* Popin « roulette » : deux colonnes défilantes (entier, dixième) séparées par
+   une virgule, valeur centrée en gras avec voisins estompés. */
+.speed-pop {
+  position: fixed;
+  left: var(--sp-left);
+  top: var(--sp-top);
+  z-index: 4000;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel, var(--bg));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.speed-wheel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 110px; /* 5 lignes × 22px */
+  padding: 0 8px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Bandeau de sélection centré, derrière les chiffres */
+.speed-wheel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 24px;
+  transform: translateY(-50%);
+  background: var(--border);
+  opacity: 0.45;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.speed-wheel-mult,
+.speed-wheel-sep {
+  position: relative;
+  z-index: 1;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wheel-col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+  outline: none;
+}
+.wheel-row {
+  height: 22px;
+  line-height: 22px;
+  min-width: 24px;
+  text-align: center;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.22;
+}
+.wheel-row[data-off="1"] { opacity: 0.5; }
+.wheel-row--sel { opacity: 1; font-weight: 700; font-size: 16px; }
 
 /* Mode compact (ancré dans le séquenceur) */
 .toolbox-inline {

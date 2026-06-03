@@ -71,7 +71,6 @@ function shiftFloating(
 const DEFAULTS: Record<string, ToolboxConfig> = {
   geometry:         { panel: 'left',  order: 0, minimized: false, floatPos: { x: 280, y: 120 } },
   cog:              { panel: 'left',  order: 1, minimized: false, floatPos: { x: 280, y: 300 } },
-  simulation:       { panel: 'left',  order: 2, minimized: false, floatPos: { x: 280, y: 480 } },
   electromechanics: { panel: 'left',  order: 3, minimized: false, floatPos: { x: 280, y: 480 } },
   'walk-speed':     { panel: 'left',  order: 4, minimized: false, floatPos: { x: 280, y: 540 } },
   'photo-space':    { panel: 'left',  order: 5, minimized: true,  floatPos: { x: 280, y: 600 } },
