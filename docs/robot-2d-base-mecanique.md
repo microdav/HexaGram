@@ -170,8 +170,16 @@ Rendu **un mesh par morceau** :
   **double-clic** sur le corps = réoriente le long de la patte. Fémur/tibia restent des marqueurs
   schématiques déplaçables (double-clic = réinitialiser).
 - **Mesurer** : cote CAO (départ→arrivée) avec longueur, **étiquette déplaçable** (décalage), double-clic
-  supprime. **Aimantation** sur sommets/ancrages/servos/cotes (témoin cyan ; priorité point > grille >
-  arrondi mm). **Verrouillage d'axe** horizontal/vertical (≤ ~5°) : ligne verte + drapeau ↔/↕.
+  supprime. **Aimantation** : priorité 1) point précis ≤ 12 px (sommet de forme, pignon coxa,
+  articulation fémur/tibia, pied, extrémité de cote) ; 2) **bord** ≤ 8 px (arête de châssis ou de
+  partie de patte — accroche sur la ligne) ; 3) grille (arrondi mm). **Verrouillage d'axe**
+  horizontal/vertical (≤ ~5°) : ligne verte + drapeau ↔/↕. Les cotes sont **roses** (`--r2d-dim`).
+  - **Liaison d'extrémité** (`Measurement2D.aRef`/`bRef`, type `MeasureRef`) : quand un point est posé
+    sur un élément mobile (pignon coxa, articulation, pied, bord de patte, sommet/bord de forme), il
+    **mémorise la liaison** et **suit l'élément** quand il bouge (le libellé se recalcule). Les bords
+    stockent `edge`+`t` (paramètre le long de l'arête). Résolution au rendu via `resolveMeasureRef`
+    (contexte `MeasureCtx` injecté par le canvas) ; repli sur la position figée `a`/`b` si la liaison
+    ne se résout plus (forme supprimée, arête disparue). Les morceaux bakés restent des points libres.
 
 ### Faces & profil (sélecteur bas-gauche)
 

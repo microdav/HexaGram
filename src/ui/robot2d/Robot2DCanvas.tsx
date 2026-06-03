@@ -2,12 +2,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useHexapodStore } from "../../store/useHexapodStore";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useRobot2DStore, newShapeId } from "../../store/useRobot2DStore";
-import { defaultAnchorsFromGeometry, segmentWidthsOf, type LegAnchor, type Pt2, type Shape2D } from "../../model/hexapod";
+import { defaultAnchorsFromGeometry, segmentWidthsOf, type LegAnchor, type MeasureRef, type Pt2, type Shape2D } from "../../model/hexapod";
 import { coxaServoDimsM, findServoType } from "../../model/servoTypes";
 import { tessellateCircle } from "../../model/chassisBake";
 import { commitHistory } from "../../store/useRobot2DHistory";
 import { ringIssues } from "../../model/polygon";
 import {
+  bandPoly,
   circleInfo,
   coxaServoGeom,
   dirToYaw,
@@ -16,11 +17,13 @@ import {
   offsetFromPointer,
   pointInPoly,
   projectToSegment,
+  resolveMeasureRef,
   screenToWorld,
   snapMeters,
   snapToVertices,
   worldToScreen,
   yawToDir,
+  type MeasureCtx,
   type View,
 } from "./canvas2d";
 
@@ -102,6 +105,8 @@ export function Robot2DCanvas() {
   const [hoverShapeId, setHoverShapeId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ a: Pt2; b: Pt2 } | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  // Liaison du 1er point de la cote en cours (le 2e est connu au clic de validation).
+  const pendingRefRef = useRef<MeasureRef | undefined>(undefined);
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -201,19 +206,22 @@ export function Robot2DCanvas() {
   // Sommets de toutes les formes (aimantation point-à-point).
   const allVerts = useMemo(() => shapes.flatMap((s) => s.poly), [shapes]);
 
-  // Cibles d'accroche pour l'outil mesure : sommets de formes + ancrages de
-  // pattes + servos + extrémités des cotes existantes.
-  const snapTargets = useMemo(() => {
-    const pts: Pt2[] = [...allVerts];
+  // Cibles d'accroche ponctuelles de l'outil mesure, chacune porteuse de sa liaison
+  // (le point de cote s'y rattache) : sommets de formes, pignon coxa, articulations
+  // fémur/tibia, pied. Les extrémités d'autres cotes restent des points libres.
+  const snapPoints = useMemo(() => {
+    const pts: { x: number; z: number; ref?: MeasureRef }[] = [];
+    for (const s of shapes) s.poly.forEach((p, i) => pts.push({ x: p.x, z: p.z, ref: { kind: "shapeVertex", shapeId: s.id, index: i } }));
     for (const a of anchors) {
-      pts.push({ x: a.x, z: a.z });
+      pts.push({ x: a.x, z: a.z, ref: { kind: "coxaPinion", leg: a.index } });
       const { joints, foot } = legJointPoints(a, segments, markers);
-      for (const j of joints) pts.push({ x: j.x, z: j.z });
-      pts.push(foot);
+      pts.push({ x: joints[1].x, z: joints[1].z, ref: { kind: "legJoint", leg: a.index, joint: "femur" } });
+      pts.push({ x: joints[2].x, z: joints[2].z, ref: { kind: "legJoint", leg: a.index, joint: "tibia" } });
+      pts.push({ x: foot.x, z: foot.z, ref: { kind: "legFoot", leg: a.index } });
     }
-    for (const m of measurements) { pts.push(m.a); pts.push(m.b); }
+    for (const m of measurements) { pts.push({ x: m.a.x, z: m.a.z }); pts.push({ x: m.b.x, z: m.b.z }); }
     return pts;
-  }, [allVerts, anchors, segments, markers, measurements]);
+  }, [shapes, anchors, segments, markers, measurements]);
 
   const rawWorld = (clientX: number, clientY: number) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -270,39 +278,57 @@ export function Robot2DCanvas() {
     return { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 };
   };
 
-  // Rectangle (4 sommets) d'un segment de patte p→q, épaisseur w centrée sur l'axe.
-  const bandPoly = (p: Pt2, q: Pt2, w: number): Pt2[] => {
-    const dx = q.x - p.x, dz = q.z - p.z;
-    const len = Math.hypot(dx, dz) || 1;
-    const nx = (-dz / len) * (w / 2), nz = (dx / len) * (w / 2);
-    return [
-      { x: p.x + nx, z: p.z + nz }, { x: q.x + nx, z: q.z + nz },
-      { x: q.x - nx, z: q.z - nz }, { x: p.x - nx, z: p.z - nz },
-    ];
-  };
-
   // Bords (segments) aimantables pour l'outil mesure : arêtes du châssis (formes +
   // morceaux bakés) et de chaque partie de patte (bandes coxa/fémur/tibia + corps
-  // du servo coxa). Un point de mesure peut s'accrocher sur la ligne d'un bord.
+  // du servo coxa). `mkRef(edge, t)` produit la liaison du point posé sur ce bord
+  // (le point suivra l'arête). Les morceaux bakés (regénérés) restent libres.
   const snapEdges = useMemo(() => {
-    const edges: { a: Pt2; b: Pt2 }[] = [];
-    const addRing = (ring: Pt2[]) => {
+    const edges: { a: Pt2; b: Pt2; mkRef?: (t: number) => MeasureRef }[] = [];
+    const addRing = (ring: Pt2[], mk?: (edge: number, t: number) => MeasureRef) => {
       const n = ring.length;
-      for (let i = 0; i < n; i++) edges.push({ a: ring[i], b: ring[(i + 1) % n] });
+      for (let i = 0; i < n; i++) edges.push({ a: ring[i], b: ring[(i + 1) % n], mkRef: mk ? (t) => mk(i, t) : undefined });
     };
-    for (const s of shapes) addRing(s.poly);
+    for (const s of shapes) addRing(s.poly, (edge, t) => ({ kind: "shapeEdge", shapeId: s.id, edge, t }));
     for (const pc of pieces) { addRing(pc.outer); for (const h of pc.holes) addRing(h); }
     for (const a of anchors) {
       const { joints, foot } = legJointPoints(a, segments, markers);
       const segW = segmentWidthsOf(geometry, a.index);
-      addRing(bandPoly(joints[0], joints[1], segW.coxa));
-      addRing(bandPoly(joints[1], joints[2], segW.femur));
-      addRing(bandPoly(joints[2], foot, segW.tibia));
-      if (showServos) addRing(coxaServoGeom(a, coxaDims, coxaAngle(a.index)).corners);
+      addRing(bandPoly(joints[0], joints[1], segW.coxa), (edge, t) => ({ kind: "legEdge", leg: a.index, part: "coxa", edge, t }));
+      addRing(bandPoly(joints[1], joints[2], segW.femur), (edge, t) => ({ kind: "legEdge", leg: a.index, part: "femur", edge, t }));
+      addRing(bandPoly(joints[2], foot, segW.tibia), (edge, t) => ({ kind: "legEdge", leg: a.index, part: "tibia", edge, t }));
+      if (showServos) addRing(coxaServoGeom(a, coxaDims, coxaAngle(a.index)).corners, (edge, t) => ({ kind: "coxaBodyEdge", leg: a.index, edge, t }));
     }
     return edges;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapes, pieces, anchors, segments, markers, geometry, coxaDims, coxaServos, showServos]);
+
+  // Contexte de résolution des liaisons : recalcule la position monde d'un point lié
+  // depuis l'état courant (appelé au rendu de chaque cote → suit le mouvement).
+  const measureCtx = useMemo<MeasureCtx>(() => {
+    const anchorOf = (leg: number) => anchors.find((a) => a.index === leg) ?? null;
+    return {
+      coxaPinion: (leg) => { const a = anchorOf(leg); return a ? { x: a.x, z: a.z } : null; },
+      legJoint: (leg, joint) => {
+        const a = anchorOf(leg);
+        if (!a) return null;
+        const j = legJointPoints(a, segments, markers).joints.find((x) => x.joint === joint);
+        return j ? { x: j.x, z: j.z } : null;
+      },
+      legFoot: (leg) => { const a = anchorOf(leg); return a ? legJointPoints(a, segments, markers).foot : null; },
+      legBandCorners: (leg, part) => {
+        const a = anchorOf(leg);
+        if (!a) return null;
+        const { joints, foot } = legJointPoints(a, segments, markers);
+        const segW = segmentWidthsOf(geometry, leg);
+        if (part === "coxa") return bandPoly(joints[0], joints[1], segW.coxa);
+        if (part === "femur") return bandPoly(joints[1], joints[2], segW.femur);
+        return bandPoly(joints[2], foot, segW.tibia);
+      },
+      coxaBodyCorners: (leg) => { const a = anchorOf(leg); return a ? coxaServoGeom(a, coxaDims, coxaAngle(leg)).corners : null; },
+      shapePoly: (shapeId) => shapes.find((s) => s.id === shapeId)?.poly ?? null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchors, segments, markers, geometry, coxaDims, coxaServos, shapes]);
 
   // Cibles d'accroche pour le CENTRE d'une forme déplacée : sommets, milieux
   // d'arêtes (= centres des côtés d'un rectangle) et centre de chaque autre forme.
@@ -338,33 +364,36 @@ export function Robot2DCanvas() {
 
   // Accroche mesure, par ordre de priorité : 1) point cible précis (sommet, pignon
   // coxa, articulation, extrémité de cote) ≤ 12 px ; 2) bord de châssis ou de patte
-  // (accroche sur la ligne) ≤ 8 px ; 3) grille.
-  const snapMeasure = (cx: number, cy: number): { p: Pt2; hit: boolean } => {
+  // (accroche sur la ligne) ≤ 8 px ; 3) grille. `ref` = liaison de l'accroche, si
+  // l'élément est mobile (le point de cote la suivra ensuite).
+  const snapMeasure = (cx: number, cy: number): { p: Pt2; hit: boolean; ref?: MeasureRef } => {
     const raw = rawWorld(cx, cy);
     const ps = worldToScreen(raw.x, raw.z, view);
-    let best: Pt2 | null = null;
+    let best: { x: number; z: number; ref?: MeasureRef } | null = null;
     let bestD = 12;
-    for (const t of snapTargets) {
+    for (const t of snapPoints) {
       const s = worldToScreen(t.x, t.z, view);
       const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
       if (d < bestD) { bestD = d; best = t; }
     }
-    if (best) return { p: best, hit: true };
+    if (best) return { p: { x: best.x, z: best.z }, hit: true, ref: best.ref };
     let bestEdge: Pt2 | null = null;
     let bestED = 8;
+    let bestRef: MeasureRef | undefined;
     for (const e of snapEdges) {
       const f = projectToSegment(raw, e.a, e.b, view);
-      if (f.dPx < bestED) { bestED = f.dPx; bestEdge = f.pt; }
+      if (f.dPx < bestED) { bestED = f.dPx; bestEdge = f.pt; bestRef = e.mkRef?.(f.t); }
     }
-    if (bestEdge) return { p: bestEdge, hit: true };
+    if (bestEdge) return { p: bestEdge, hit: true, ref: bestRef };
     const step = snapEnabled ? snapStepCm : 0.1; // au moins 1 mm
     return { p: { x: snapMeters(raw.x, step), z: snapMeters(raw.z, step) }, hit: false };
   };
 
   // Point de mesure final : accroche point/grille puis verrouillage d'axe
-  // (horizontal/vertical) par rapport au point de départ, si proche d'un axe.
-  const measurePoint = (cx: number, cy: number): { p: Pt2; hit: boolean; axis: "h" | "v" | null } => {
-    const { p, hit } = snapMeasure(cx, cy);
+  // (horizontal/vertical) par rapport au point de départ, si proche d'un axe. Le
+  // verrouillage d'axe déplace le point hors de l'accroche → la liaison est levée.
+  const measurePoint = (cx: number, cy: number): { p: Pt2; hit: boolean; axis: "h" | "v" | null; ref?: MeasureRef } => {
+    const { p, hit, ref } = snapMeasure(cx, cy);
     if (pendingMeasure && !hit) {
       const dx = p.x - pendingMeasure.x, dz = p.z - pendingMeasure.z;
       const adx = Math.abs(dx), adz = Math.abs(dz);
@@ -375,7 +404,7 @@ export function Robot2DCanvas() {
         if (adz <= adx * T) return { p: { x: p.x, z: pendingMeasure.z }, hit, axis: "v" };
       }
     }
-    return { p, hit, axis: null };
+    return { p, hit, axis: null, ref };
   };
 
   // ── Édition des formes ─────────────────────────────────────────────────────
@@ -512,7 +541,11 @@ export function Robot2DCanvas() {
         }
         else if (d.kind === "measureOffset") {
           const m = (useHexapodStore.getState().geometry.body2D?.measurements ?? []).find((x) => x.id === d.id);
-          if (m) updateMeasurement(d.id, { offset: offsetFromPointer(m.a, m.b, w) });
+          if (m) {
+            const ra = resolveMeasureRef(m.aRef, m.a, measureCtx);
+            const rb = resolveMeasureRef(m.bRef, m.b, measureCtx);
+            updateMeasurement(d.id, { offset: offsetFromPointer(ra, rb, w) });
+          }
         } else if (d.kind === "shapeVertex") {
           const sh = shapes.find((s) => s.id === d.id);
           if (sh) replaceShape(d.id, sh.poly.map((p, k) => (k === d.i ? w : p)));
@@ -641,9 +674,9 @@ export function Robot2DCanvas() {
     }
     if (e.button !== 0) return;
     if (tool === "measure") {
-      const { p } = measurePoint(e.clientX, e.clientY);
-      if (!pendingMeasure) setPendingMeasure(p);
-      else { addMeasurement(pendingMeasure, p); setPendingMeasure(null); setAxisLock(null); commitHistory("Mesure ajoutée"); }
+      const { p, ref } = measurePoint(e.clientX, e.clientY);
+      if (!pendingMeasure) { setPendingMeasure(p); pendingRefRef.current = ref; }
+      else { addMeasurement(pendingMeasure, p, pendingRefRef.current, ref); pendingRefRef.current = undefined; setPendingMeasure(null); setAxisLock(null); commitHistory("Mesure ajoutée"); }
       return;
     }
     const w = toWorld(e.clientX, e.clientY);
@@ -835,7 +868,10 @@ export function Robot2DCanvas() {
 
         {/* Cotes de mesure */}
         {measurements.map((m) => {
-          const g = measureGeom(m.a, m.b, m.offset, view);
+          // Extrémités liées : recalculées depuis l'état courant (suivent l'élément).
+          const a = resolveMeasureRef(m.aRef, m.a, measureCtx);
+          const b = resolveMeasureRef(m.bRef, m.b, measureCtx);
+          const g = measureGeom(a, b, m.offset, view);
           return (
             <g key={m.id} className={`r2d-dim${selectedMeasureId === m.id ? " selected" : ""}`}>
               <line x1={g.a.sx} y1={g.a.sy} x2={g.ao.sx} y2={g.ao.sy} className="r2d-dim-ext" />
@@ -1026,6 +1062,23 @@ export function Robot2DCanvas() {
               <text x={aS.sx} y={aS.sy - 11} className="r2d-leg-label" textAnchor="middle">{a.index}</text>
             </g>
           );
+        })}
+
+        {/* Croix rose sur l'objet aux extrémités de cote LIÉES (le point suit l'élément).
+            Rendu au-dessus des pattes/formes pour rester visible sur le pignon coxa. */}
+        {measurements.map((m) => {
+          const ends = [m.aRef ? resolveMeasureRef(m.aRef, m.a, measureCtx) : null,
+                        m.bRef ? resolveMeasureRef(m.bRef, m.b, measureCtx) : null];
+          return ends.map((pt, k) => {
+            if (!pt) return null;
+            const s = worldToScreen(pt.x, pt.z, view);
+            return (
+              <g key={`${m.id}-${k}`} className="r2d-dim-link">
+                <line x1={s.sx - 5} y1={s.sy} x2={s.sx + 5} y2={s.sy} />
+                <line x1={s.sx} y1={s.sy - 5} x2={s.sx} y2={s.sy + 5} />
+              </g>
+            );
+          });
         })}
 
         {/* Guides d'aimantation des servos coxa : pendant le déplacement d'un coxa,

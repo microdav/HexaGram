@@ -33,12 +33,33 @@ export interface CoxaServo {
   angleOffsetDeg: number;
 }
 
-/** Cote de mesure (annotation) : segment a→b + décalage perpendiculaire (m). */
+/**
+ * Liaison d'une extrémité de cote à un élément mobile : le point de mesure suit
+ * l'élément quand il bouge (et le libellé se met à jour). Sans liaison, le point
+ * reste fixe (coordonnées monde figées dans `a`/`b`). Les bords stockent l'index
+ * d'arête + le paramètre `t∈[0,1]` du pied de perpendiculaire le long de l'arête.
+ */
+export type MeasureRef =
+  | { kind: "coxaPinion"; leg: number }
+  | { kind: "legJoint"; leg: number; joint: "coxa" | "femur" | "tibia" }
+  | { kind: "legFoot"; leg: number }
+  | { kind: "legEdge"; leg: number; part: "coxa" | "femur" | "tibia"; edge: number; t: number }
+  | { kind: "coxaBodyEdge"; leg: number; edge: number; t: number }
+  | { kind: "shapeVertex"; shapeId: string; index: number }
+  | { kind: "shapeEdge"; shapeId: string; edge: number; t: number };
+
+/**
+ * Cote de mesure (annotation) : segment a→b + décalage perpendiculaire (m).
+ * `aRef`/`bRef` : liaison optionnelle de chaque extrémité ({@link MeasureRef}).
+ * `a`/`b` servent de position de repli quand la liaison ne se résout plus.
+ */
 export interface Measurement2D {
   id: string;
   a: Pt2;
   b: Pt2;
   offset: number;
+  aRef?: MeasureRef;
+  bRef?: MeasureRef;
 }
 
 /**

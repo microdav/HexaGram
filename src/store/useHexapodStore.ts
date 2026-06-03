@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type Shape2D } from "../model/hexapod";
+import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type MeasureRef, type Shape2D } from "../model/hexapod";
 import { bakeRealShapes } from "../model/chassisBake";
 import { findServoType } from "../model/servoTypes";
 import { useProjectStore } from "./useProjectStore";
@@ -164,7 +164,7 @@ interface HexapodState {
   /** Remplace la composition de formes : rebake les morceaux + la bbox chassis. */
   setShapes: (shapes: Shape2D[]) => void;
   /** Cotes de mesure (persistées dans body2D). */
-  addMeasurement: (a: { x: number; z: number }, b: { x: number; z: number }) => void;
+  addMeasurement: (a: { x: number; z: number }, b: { x: number; z: number }, aRef?: MeasureRef, bRef?: MeasureRef) => void;
   updateMeasurement: (id: string, patch: Partial<Pick<Measurement2D, "offset">>) => void;
   removeMeasurement: (id: string) => void;
   clearMeasurements: () => void;
@@ -369,10 +369,10 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       return { geometry: { ...g, chassis, body2D } };
     }),
 
-  addMeasurement: (a, b) =>
+  addMeasurement: (a, b, aRef, bRef) =>
     set((state) => {
       const g = state.geometry;
-      const measurements = [...(g.body2D?.measurements ?? []), { id: newMeasurementId(), a, b, offset: 0 }];
+      const measurements = [...(g.body2D?.measurements ?? []), { id: newMeasurementId(), a, b, offset: 0, aRef, bRef }];
       return { geometry: { ...g, body2D: mergeBody2D(g, { measurements }) } };
     }),
 

@@ -36,7 +36,20 @@ const ChassisPieceSchema = z.object({ outer: z.array(Pt2Schema), holes: z.array(
 const LegAnchorSchema = z.object({ index: z.number(), x: z.number(), z: z.number(), yawDeg: z.number() });
 const ServoMarkerSchema = z.object({ servoId: z.number(), x: z.number(), z: z.number() });
 const CoxaServoSchema = z.object({ legIndex: z.number(), angleOffsetDeg: z.number() });
-const MeasurementSchema = z.object({ id: z.string(), a: Pt2Schema, b: Pt2Schema, offset: z.number() });
+// Liaison d'une extrémité de cote à un élément mobile (le point la suit).
+const MeasureRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("coxaPinion"), leg: z.number() }),
+  z.object({ kind: z.literal("legJoint"), leg: z.number(), joint: z.enum(["coxa", "femur", "tibia"]) }),
+  z.object({ kind: z.literal("legFoot"), leg: z.number() }),
+  z.object({ kind: z.literal("legEdge"), leg: z.number(), part: z.enum(["coxa", "femur", "tibia"]), edge: z.number(), t: z.number() }),
+  z.object({ kind: z.literal("coxaBodyEdge"), leg: z.number(), edge: z.number(), t: z.number() }),
+  z.object({ kind: z.literal("shapeVertex"), shapeId: z.string(), index: z.number() }),
+  z.object({ kind: z.literal("shapeEdge"), shapeId: z.string(), edge: z.number(), t: z.number() }),
+]);
+const MeasurementSchema = z.object({
+  id: z.string(), a: Pt2Schema, b: Pt2Schema, offset: z.number(),
+  aRef: MeasureRefSchema.optional(), bRef: MeasureRefSchema.optional(),
+});
 // Maquette « Robot 2D » — sans ce champ, zod le supprimait à l'enregistrement.
 const Body2DSchema = z.object({
   outline: z.object({ length: z.number(), width: z.number(), cornerRadius: z.number().optional() }).optional(),

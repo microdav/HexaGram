@@ -1,4 +1,4 @@
-import type { HexapodGeometry, LegAnchor } from "../../model/hexapod";
+import type { HexapodGeometry, LegAnchor, MeasureRef } from "../../model/hexapod";
 import type { ServoDimsM } from "../../model/servoTypes";
 
 /**
@@ -99,7 +99,7 @@ export function snapToVertices(p: Pt, verts: Pt[], pxThresh: number, v: View): P
  * (monde, borné au segment) ainsi que la distance écran (px) au point. Sert à
  * accrocher un point de mesure sur la ligne d'un bord (châssis ou partie de patte).
  */
-export function projectToSegment(p: Pt, a: Pt, b: Pt, v: View): { pt: Pt; dPx: number } {
+export function projectToSegment(p: Pt, a: Pt, b: Pt, v: View): { pt: Pt; dPx: number; t: number } {
   const P = worldToScreen(p.x, p.z, v);
   const A = worldToScreen(a.x, a.z, v);
   const B = worldToScreen(b.x, b.z, v);
@@ -109,7 +109,54 @@ export function projectToSegment(p: Pt, a: Pt, b: Pt, v: View): { pt: Pt; dPx: n
   t = Math.max(0, Math.min(1, t));
   const fx = A.sx + t * dx, fy = A.sy + t * dy;
   const w = screenToWorld(fx, fy, v);
-  return { pt: { x: w.x, z: w.z }, dPx: Math.hypot(P.sx - fx, P.sy - fy) };
+  return { pt: { x: w.x, z: w.z }, dPx: Math.hypot(P.sx - fx, P.sy - fy), t };
+}
+
+/** Rectangle (4 sommets) d'un segment de patte p→q, épaisseur w centrée sur l'axe. */
+export function bandPoly(p: Pt, q: Pt, w: number): Pt[] {
+  const dx = q.x - p.x, dz = q.z - p.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const nx = (-dz / len) * (w / 2), nz = (dx / len) * (w / 2);
+  return [
+    { x: p.x + nx, z: p.z + nz }, { x: q.x + nx, z: q.z + nz },
+    { x: q.x - nx, z: q.z - nz }, { x: p.x - nx, z: p.z - nz },
+  ];
+}
+
+/**
+ * Accès géométrique injecté pour re-résoudre les liaisons de cote depuis l'état
+ * courant : chaque fonction renvoie la position monde (ou null si indisponible).
+ */
+export interface MeasureCtx {
+  coxaPinion: (leg: number) => Pt | null;
+  legJoint: (leg: number, joint: "coxa" | "femur" | "tibia") => Pt | null;
+  legFoot: (leg: number) => Pt | null;
+  legBandCorners: (leg: number, part: "coxa" | "femur" | "tibia") => Pt[] | null;
+  coxaBodyCorners: (leg: number) => Pt[] | null;
+  shapePoly: (shapeId: string) => Pt[] | null;
+}
+
+/**
+ * Résout la position monde d'une extrémité de cote d'après sa liaison et l'état
+ * courant. Retombe sur `fallback` (la position figée `a`/`b`) si la liaison est
+ * absente ou ne se résout plus (forme supprimée, index d'arête hors limites…).
+ */
+export function resolveMeasureRef(ref: MeasureRef | undefined, fallback: Pt, ctx: MeasureCtx): Pt {
+  if (!ref) return fallback;
+  const onEdge = (ring: Pt[] | null, edge: number, t: number): Pt => {
+    if (!ring || ring.length < 2 || edge < 0 || edge >= ring.length) return fallback;
+    const a = ring[edge], b = ring[(edge + 1) % ring.length];
+    return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+  };
+  switch (ref.kind) {
+    case "coxaPinion": return ctx.coxaPinion(ref.leg) ?? fallback;
+    case "legJoint": return ctx.legJoint(ref.leg, ref.joint) ?? fallback;
+    case "legFoot": return ctx.legFoot(ref.leg) ?? fallback;
+    case "legEdge": return onEdge(ctx.legBandCorners(ref.leg, ref.part), ref.edge, ref.t);
+    case "coxaBodyEdge": return onEdge(ctx.coxaBodyCorners(ref.leg), ref.edge, ref.t);
+    case "shapeVertex": { const poly = ctx.shapePoly(ref.shapeId); return poly?.[ref.index] ?? fallback; }
+    case "shapeEdge": return onEdge(ctx.shapePoly(ref.shapeId), ref.edge, ref.t);
+  }
 }
 
 /** Géométrie écran d'une cote a→b décalée de `offset` (m), + longueur mesurée. */
