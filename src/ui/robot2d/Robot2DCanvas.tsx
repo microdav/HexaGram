@@ -95,6 +95,8 @@ export function Robot2DCanvas() {
   const [hover, setHover] = useState<{ x: number; z: number } | null>(null);
   const [snapHit, setSnapHit] = useState<{ x: number; z: number } | null>(null);
   const [axisLock, setAxisLock] = useState<"h" | "v" | null>(null);
+  // Patte en cours de déplacement (servo coxa) → affiche les guides d'aimantation en croix.
+  const [coxaDragIndex, setCoxaDragIndex] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; shapeId: string } | null>(null);
   const [hoverShapeId, setHoverShapeId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ a: Pt2; b: Pt2 } | null>(null);
@@ -225,11 +227,15 @@ export function Robot2DCanvas() {
   const toWorld = (cx: number, cy: number, excludeId?: string) => snapWorld(rawWorld(cx, cy), excludeId);
 
   // Accroche dédiée au déplacement d'un servo coxa : 1) point cible le plus proche
-  // (sommet / milieu de bord / centre) ≤ 12 px ; 2) sinon, si le pointeur est dans
-  // une barre du châssis, on aimante le centre vertical (X) de cette barre ; 3) grille.
-  const snapCoxa = (cx: number, cy: number): { p: Pt2; hit: boolean } => {
+  // (sommet / milieu de bord / centre) ≤ 12 px ; 2) aimantation croisée aux autres
+  // pignons coxa (X et Z indépendants) → leurs lignes-guides se superposent ; 3) sinon,
+  // si le pointeur est dans une barre du châssis, on aimante le centre vertical (X) de
+  // cette barre ; 4) grille. `dragIndex` = patte tirée, exclue de l'aimantation croisée.
+  const COXA_ALIGN_PX = 10;
+  const snapCoxa = (cx: number, cy: number, dragIndex: number): { p: Pt2; hit: boolean } => {
     const raw = rawWorld(cx, cy);
     const ps = worldToScreen(raw.x, raw.z, view);
+    // 1) Point précis du châssis : verrouille les deux axes (prioritaire).
     let best: Pt2 | null = null, bestD = 12;
     for (const t of coxaSnapPoints) {
       const s = worldToScreen(t.x, t.z, view);
@@ -237,14 +243,25 @@ export function Robot2DCanvas() {
       if (d < bestD) { bestD = d; best = t; }
     }
     if (best) return { p: best, hit: true };
-    for (const r of coxaRegions) {
-      if (pointInPoly(raw, r.poly)) {
-        const z = snapEnabled ? snapMeters(raw.z, snapStepCm) : raw.z;
-        return { p: { x: r.cx, z }, hit: true };
-      }
+    // 2) Point de départ : centre X de la barre survolée, sinon grille / brut.
+    let out: Pt2;
+    let hit = false;
+    const region = coxaRegions.find((r) => pointInPoly(raw, r.poly));
+    if (region) { out = { x: region.cx, z: snapEnabled ? snapMeters(raw.z, snapStepCm) : raw.z }; hit = true; }
+    else if (snapEnabled) out = { x: snapMeters(raw.x, snapStepCm), z: snapMeters(raw.z, snapStepCm) };
+    else out = { x: raw.x, z: raw.z };
+    // 3) Aimantation croisée aux autres pignons coxa, X et Z séparément. Même X monde
+    //    ⇒ lignes horizontales superposées ; même Z monde ⇒ lignes verticales superposées.
+    let bestDX = COXA_ALIGN_PX, bestDZ = COXA_ALIGN_PX;
+    for (const a of anchors) {
+      if (a.index === dragIndex) continue;
+      const s = worldToScreen(a.x, a.z, view);
+      const dh = Math.abs(s.sy - ps.sy); // même X monde ⇒ même y écran
+      if (dh < bestDX) { bestDX = dh; out = { x: a.x, z: out.z }; hit = true; }
+      const dv = Math.abs(s.sx - ps.sx); // même Z monde ⇒ même x écran
+      if (dv < bestDZ) { bestDZ = dv; out = { x: out.x, z: a.z }; hit = true; }
     }
-    if (snapEnabled) return { p: { x: snapMeters(raw.x, snapStepCm), z: snapMeters(raw.z, snapStepCm) }, hit: false };
-    return { p: raw, hit: false };
+    return { p: out, hit };
   };
 
   const bboxCenter = (poly: Pt2[]): Pt2 => {
@@ -439,14 +456,18 @@ export function Robot2DCanvas() {
         if (d.kind === "pan") { setPan({ x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) }); return; }
         if (d.kind === "draft") { setDraft((dr) => (dr ? { ...dr, b: snapWorld(rawWorld(e.clientX, e.clientY)) } : dr)); return; }
         const w = toWorld(e.clientX, e.clientY, d.kind === "shapeVertex" ? d.id : undefined);
-        if (d.kind === "anchor") setLegAnchor(d.index, { x: w.x, z: w.z });
+        if (d.kind === "anchor") {
+          const { p, hit } = snapCoxa(e.clientX, e.clientY, d.index);
+          setLegAnchor(d.index, { x: p.x, z: p.z });
+          setSnapHit(hit ? p : null);
+        }
         else if (d.kind === "yaw") {
           const a = anchors[d.index];
           const yaw = dirToYaw(w.x - a.x, w.z - a.z);
           setLegAnchor(d.index, { yawDeg: snapEnabled ? Math.round(yaw) : yaw });
         } else if (d.kind === "servo") setServoMarker(d.servoId, { x: w.x, z: w.z });
         else if (d.kind === "coxaMove") {
-          const { p, hit } = snapCoxa(e.clientX, e.clientY);
+          const { p, hit } = snapCoxa(e.clientX, e.clientY, d.index);
           setLegAnchor(d.index, { x: p.x, z: p.z });
           setSnapHit(hit ? p : null);
         } else if (d.kind === "coxaRot") {
@@ -493,10 +514,10 @@ export function Robot2DCanvas() {
       if (d.kind === "draft" && draft) {
         finalizeDraft(draft);
         setDraft(null);
-      } else if (d.kind === "anchor") commitHistory("Ancrage déplacé");
+      } else if (d.kind === "anchor") { commitHistory("Ancrage déplacé"); setSnapHit(null); setCoxaDragIndex(null); }
       else if (d.kind === "yaw") commitHistory("Orientation patte");
       else if (d.kind === "servo") commitHistory("Servo déplacé");
-      else if (d.kind === "coxaMove") { commitHistory("Servo coxa déplacé"); setSnapHit(null); }
+      else if (d.kind === "coxaMove") { commitHistory("Servo coxa déplacé"); setSnapHit(null); setCoxaDragIndex(null); }
       else if (d.kind === "coxaRot") commitHistory("Servo coxa orienté");
       else if (d.kind === "shapeVertex") commitHistory("Sommet déplacé");
       else if (d.kind === "shapeMove") { commitHistory("Forme déplacée"); setSnapHit(null); }
@@ -932,7 +953,7 @@ export function Robot2DCanvas() {
                         patte, donc l'axe coxa suit). Double-clic = réoriente le long de la patte. */}
                     <polygon points={pts}
                       className={`r2d-coxa-body${place ? " movable" : ""}`}
-                      onPointerDown={(e) => { if (!place) return; e.stopPropagation(); select({ type: "leg", index: a.index }); dragRef.current = { kind: "coxaMove", index: a.index }; }}
+                      onPointerDown={(e) => { if (!place) return; e.stopPropagation(); select({ type: "leg", index: a.index }); dragRef.current = { kind: "coxaMove", index: a.index }; setCoxaDragIndex(a.index); }}
                       onDoubleClick={(e) => { e.stopPropagation(); setCoxaServoAngle(a.index, null); }}>
                       <title>{`Servo coxa — patte ${a.index} (glisser = déplacer, poignée = pivoter)`}</title>
                     </polygon>
@@ -968,11 +989,38 @@ export function Robot2DCanvas() {
                 return (<><line x1={aS.sx} y1={aS.sy} x2={hS.sx} y2={hS.sy} className="r2d-yaw-line" /><circle cx={hS.sx} cy={hS.sy} r={6} className="r2d-handle r2d-handle-yaw" onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { kind: "yaw", index: a.index }; }} /></>);
               })()}
               <circle cx={aS.sx} cy={aS.sy} r={7} className={`r2d-anchor${isSel ? " selected" : ""}`}
-                onPointerDown={(e) => { e.stopPropagation(); select({ type: "leg", index: a.index }); if (tool === "select") dragRef.current = { kind: "anchor", index: a.index }; }} />
+                onPointerDown={(e) => { e.stopPropagation(); select({ type: "leg", index: a.index }); if (tool === "select") { dragRef.current = { kind: "anchor", index: a.index }; setCoxaDragIndex(a.index); } }} />
               <text x={aS.sx} y={aS.sy - 11} className="r2d-leg-label" textAnchor="middle">{a.index}</text>
             </g>
           );
         })}
+
+        {/* Guides d'aimantation des servos coxa : pendant le déplacement d'un coxa,
+            une croix bleu clair « infinie » par pignon (horizontale = X monde, verticale
+            = Z monde). Les lignes superposées entre le coxa tiré et un autre s'accentuent. */}
+        {coxaDragIndex !== null && (() => {
+          const drag = anchors.find((a) => a.index === coxaDragIndex);
+          if (!drag) return null;
+          const EPS = 1e-4; // ~0,1 mm : après aimantation l'égalité est exacte
+          return (
+            <g className="r2d-coxa-guides">
+              {anchors.map((a) => {
+                const s = worldToScreen(a.x, a.z, view);
+                // Superposition d'une ligne (du coxa tiré ⇄ d'un autre) ⇒ accentuation.
+                const onH = anchors.some((b) => b.index !== a.index && Math.abs(b.x - a.x) < EPS
+                  && (a.index === drag.index || b.index === drag.index));
+                const onV = anchors.some((b) => b.index !== a.index && Math.abs(b.z - a.z) < EPS
+                  && (a.index === drag.index || b.index === drag.index));
+                return (
+                  <g key={a.index}>
+                    <line x1={0} y1={s.sy} x2={size.w} y2={s.sy} className={`r2d-coxa-guide${onH ? " matched" : ""}`} />
+                    <line x1={s.sx} y1={0} x2={s.sx} y2={size.h} className={`r2d-coxa-guide${onV ? " matched" : ""}`} />
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })()}
 
         {/* Indication avant */}
         {(() => { const f = worldToScreen(contentHalf.hx, 0, view); return <text x={f.sx} y={f.sy} className="r2d-front-label" textAnchor="middle">avant ↑</text>; })()}

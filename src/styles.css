@@ -6711,6 +6711,10 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-coxa-rot-line { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
 .r2d-coxa-rot { fill: var(--accent); stroke: #1a1d24; stroke-width: 1.5; cursor: grab; }
 .r2d-coxa-rot:active { cursor: grabbing; }
+/* Guides d'aimantation : croix en pointillé bleu clair depuis chaque pignon coxa
+   pendant le déplacement. « matched » = ligne superposée à celle d'un autre coxa. */
+.r2d-coxa-guide { stroke: #5fd0ff; stroke-width: 1; stroke-dasharray: 5 5; opacity: 0.3; pointer-events: none; }
+.r2d-coxa-guide.matched { stroke: #aceaff; stroke-width: 2; stroke-dasharray: none; opacity: 0.95; }
 
 /* Panneaux gauche / droite */
 .r2d-left-panel, .r2d-tools-panel { display: flex; flex-direction: column; gap: 6px; }
