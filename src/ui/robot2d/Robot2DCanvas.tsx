@@ -716,7 +716,7 @@ export function Robot2DCanvas() {
     <div className="r2d-canvas-wrap" ref={wrapRef}>
       <svg
         ref={svgRef}
-        className={`r2d-canvas${tool === "measure" ? " measuring" : ""}${passthrough ? " passthrough" : ""}${tool === "pen" || tool === "rect" || tool === "circle" ? " drawing" : ""}`}
+        className={`r2d-canvas${tool === "measure" ? " measuring" : ""}${passthrough ? " passthrough" : ""}${tool === "pen" || tool === "rect" || tool === "circle" ? " drawing" : ""}${selected?.type === "leg" ? " leg-selected" : ""}`}
         width={size.w}
         height={size.h}
         onWheel={onWheel}

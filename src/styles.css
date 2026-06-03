@@ -6558,6 +6558,11 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-canvas.passthrough .r2d-leg-line,
 .r2d-canvas.passthrough .r2d-foot { pointer-events: none; }
 .r2d-canvas.drawing { cursor: crosshair; }
+/* Patte sélectionnée : le châssis (morceaux bakés + formes) s'estompe pour faire
+   ressortir la patte et son servo coxa. */
+.r2d-canvas.leg-selected .r2d-piece,
+.r2d-canvas.leg-selected .r2d-shape.real,
+.r2d-canvas.leg-selected .r2d-shape.virtual { opacity: 0.25; }
 
 /* Aperçu crayon / rect / cercle */
 .r2d-draft { fill: rgba(245, 197, 24, 0.12); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
@@ -6701,6 +6706,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 }
 .r2d-coxa-body.movable { cursor: move; fill: rgba(52, 80, 122, 0.5); }
 .r2d-coxa-body.movable:active { cursor: grabbing; }
+/* Servo coxa de la patte sélectionnée : fait partie intégrante de la patte ⇒ bords jaunes. */
+.r2d-leg.selected .r2d-coxa-body { fill: rgba(245, 197, 24, 0.2); stroke: var(--accent-hover); }
 .r2d-coxa-pinion {
   fill: #e0a23a;
   stroke: #1a1d24;
