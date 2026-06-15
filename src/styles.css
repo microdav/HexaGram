@@ -5594,10 +5594,157 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   color: var(--text-dim); white-space: pre-wrap; margin: 4px 0 0;
 }
 
+.electro-cal-limits {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Mode tablette : cibles tactiles agrandies */
 .app.tablet .electro-channel input { width: 70px; padding: 8px; font-size: 15px; }
 .app.tablet .electro-servo-test { gap: 12px; }
 .app.tablet .electro-servo-cal .btn.btn-sm { padding: 8px 14px; font-size: 15px; }
+
+/* ── Assistant de calibration guidé (modale) ─────────────────────────────── */
+.calib-wiz { max-width: 560px; text-align: left; }
+.calib-wiz-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+.calib-wiz-step {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.calib-wiz-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.calib-leg-chip {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.calib-leg-chip:hover { color: var(--text); }
+.calib-leg-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06212a;
+  font-weight: 600;
+}
+.calib-wiz-servo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.calib-wiz-servo-id { font-size: 15px; }
+.calib-wiz-servo-meta { font-size: 12px; color: var(--text-dim); }
+.calib-warn { color: #e6a23c; }
+
+.calib-wiz-banner {
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  margin: 8px 0;
+}
+.calib-wiz-banner.warn { background: rgba(230, 162, 60, 0.12); color: #e6a23c; }
+.calib-wiz-banner.ok { background: rgba(46, 204, 113, 0.12); color: #46c884; }
+
+.calib-wiz-body { margin: 6px 0; }
+.calib-phase-tag {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.calib-wiz-expect { font-size: 14px; line-height: 1.5; margin: 6px 0 12px; }
+.calib-expect-dir {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.calib-expect-arrow {
+  display: inline-block;
+  font-size: 20px;
+  color: var(--accent);
+  margin-right: 4px;
+}
+.calib-wiz-question { font-size: 14px; margin: 10px 0 6px; }
+.calib-wiz-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.btn-ok {
+  border-color: #2ecc71;
+  color: #46c884;
+}
+.btn-ok:hover { background: rgba(46, 204, 113, 0.15); }
+
+.calib-wiz-hint { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 4px 0 12px; }
+.calib-jog {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+.calib-jog input[type="range"] { flex: 1; }
+.calib-jog-val {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+  font-size: 14px;
+}
+.calib-limits {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  margin: 10px 0;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.calib-limits strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+.calib-limits .btn { margin-left: auto; }
+.calib-wiz-nav-inline { margin-top: 4px; }
+
+.calib-wiz-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.calib-wiz-nav { display: flex; gap: 8px; }
+.calib-wiz-done { margin-top: 14px; }
+
+.app.tablet .calib-leg-chip { font-size: 14px; padding: 8px 14px; }
+.app.tablet .calib-wiz-actions .btn { padding: 8px 14px; font-size: 15px; }
 
 /* ── Aide carte SSC-32U (onglet Électronique) ────────────────────────────── */
 .electro-help {

@@ -17,6 +17,7 @@ import { findCommandElectronics } from "../model/commandElectronics";
 import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
 import { ElectroArchitecture } from "./ElectroArchitecture";
 import { ElectroSequencePanel } from "./ElectroSequencePanel";
+import { CalibrationWizard } from "./CalibrationWizard";
 
 const JOINT_LABEL: Record<string, string> = {
   coxa: "Coxa",
@@ -74,6 +75,8 @@ export function ElectroniquePage() {
   // Rappel « alim servo absente » : masquable une fois lu (la carte ne remonte
   // pas l'état réel de VS, c'est un avertissement contextuel).
   const [powerNoteDismissed, setPowerNoteDismissed] = useState(false);
+  // Assistant de calibration guidé (sens de rotation + butées) — modale.
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   // Auto-scroll de la console vers le bas à chaque nouveau message.
   const consoleBodyRef = useRef<HTMLDivElement>(null);
@@ -458,6 +461,14 @@ export function ElectroniquePage() {
             <>
               {/* ── Actions globales ─────────────────────────────────── */}
               <section className="electro-globals">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setWizardOpen(true)}
+                  title="Vérifier le sens de rotation et régler les butées, patte par patte"
+                >
+                  🧭 Assistant de calibration guidé
+                </button>
                 <button type="button" className="btn" onClick={autoMap}>
                   Auto-mapper les canaux (0–17)
                 </button>
@@ -534,8 +545,8 @@ export function ElectroniquePage() {
                   <div className="electro-servo-test">
                     <input
                       type="range"
-                      min={s.minDeg}
-                      max={s.maxDeg}
+                      min={binding.minDeg ?? s.minDeg}
+                      max={binding.maxDeg ?? s.maxDeg}
                       step={1}
                       value={angle}
                       disabled={!connected || binding.channel == null}
@@ -594,6 +605,14 @@ export function ElectroniquePage() {
                     >
                       RAZ
                     </button>
+                    {(binding.minDeg != null || binding.maxDeg != null) && (
+                      <span
+                        className="electro-cal-limits"
+                        title="Butées définies via l'assistant de calibration"
+                      >
+                        ⟦ {binding.minDeg ?? s.minDeg}° … {binding.maxDeg ?? s.maxDeg}° ⟧
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -607,6 +626,9 @@ export function ElectroniquePage() {
           {subTab === "sequence" && <ElectroSequencePanel />}
         </div>
       </div>
+
+      {/* ── Assistant de calibration guidé (modale) ────────────────────── */}
+      {wizardOpen && <CalibrationWizard onClose={() => setWizardOpen(false)} />}
 
       {/* ── Panneau console série bas (escamotable) ────────────────────── */}
       <div

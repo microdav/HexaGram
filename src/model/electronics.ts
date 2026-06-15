@@ -24,6 +24,14 @@ export interface ServoBinding {
   centerOffsetDeg: number;
   /** Inverse le sens de rotation (palonnier monté à l'envers / côté miroir). */
   invert: boolean;
+  /**
+   * Butée logicielle min (deg, côté commande). `null` = pas de limite définie,
+   * on retombe sur la plage du modèle (`ServoDef.minDeg`). Réglée via l'assistant
+   * de calibration pour borner la course réelle du servo sur le robot.
+   */
+  minDeg: number | null;
+  /** Butée logicielle max (deg, côté commande). `null` = plage du modèle. */
+  maxDeg: number | null;
 }
 
 export interface SerialConnectionConfig {
@@ -42,8 +50,9 @@ export const DEFAULT_BAUD_RATE = 115200;
 export const COMMON_BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 250000];
 
 export function defaultBinding(servoId: number): ServoBinding {
-  // Par défaut : canal = id du servo (mappage 1:1), sans offset ni inversion.
-  return { channel: servoId, centerOffsetDeg: 0, invert: false };
+  // Par défaut : canal = id du servo (mappage 1:1), sans offset, sans inversion,
+  // sans butées personnalisées (plage du modèle).
+  return { channel: servoId, centerOffsetDeg: 0, invert: false, minDeg: null, maxDeg: null };
 }
 
 export function defaultElectronics(): ProjectElectronics {
@@ -69,6 +78,10 @@ export function normalizeElectronics(
           ? r.centerOffsetDeg
           : 0,
       invert: !!r?.invert,
+      minDeg:
+        r && typeof r.minDeg === "number" && Number.isFinite(r.minDeg) ? r.minDeg : null,
+      maxDeg:
+        r && typeof r.maxDeg === "number" && Number.isFinite(r.maxDeg) ? r.maxDeg : null,
     };
   }
   return {

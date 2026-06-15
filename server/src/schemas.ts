@@ -287,6 +287,10 @@ export const ServoBindingSchema = z.object({
   channel: z.number().int().nullable(),
   centerOffsetDeg: z.number(),
   invert: z.boolean(),
+  // Butées logicielles réglées via l'assistant de calibration. Optionnelles pour
+  // accepter les configs enregistrées avant leur introduction (null = plage modèle).
+  minDeg: z.number().nullable().optional(),
+  maxDeg: z.number().nullable().optional(),
 });
 
 export const ProjectElectronicsSchema = z.object({

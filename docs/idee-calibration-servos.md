@@ -1,6 +1,21 @@
 # Idée — Paramétrage / calibration par servo
 
-Statut : à implémenter.
+Statut : **partiellement implémenté**.
+
+Déjà en place (onglet Électronique → « Liaison & calibration ») :
+
+- `ServoBinding` porte `invert`, `centerOffsetDeg`, et désormais `minDeg`/`maxDeg`
+  (butées logicielles, `null` = plage du modèle) — persistés (cf. schéma serveur).
+- **Assistant de calibration guidé** ([src/ui/CalibrationWizard.tsx](../src/ui/CalibrationWizard.tsx)) :
+  patte par patte, servo par servo. Étape 1 « sens de rotation » (0° → +45°, la
+  consigne attendue — avant/arrière, haut/bas — est **calculée depuis le modèle 3D**
+  via `computeFootTip`, et on bascule `invert` si le robot tourne à l'envers) ;
+  étape 2 « butées min/max » (jog + capture).
+- Le slider de test de chaque servo respecte les butées calibrées.
+
+Reste à faire (intégration multi-couches, cf. ci-dessous) : appliquer `minDeg`/`maxDeg`
+et `zeroOffsetDeg` côté `buildServos`/`kinematics`/`ServoArc` (aujourd'hui les butées
+ne bornent que le slider de test et l'assistant, pas encore la 3D ni le séquenceur).
 
 ## Besoin
 
