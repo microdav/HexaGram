@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSerialStore } from "../store/useSerialStore";
 import { useHexapodStore } from "../store/useHexapodStore";
-import { SERVOS, LEG_NAMES, computeLegMounts } from "../model/hexapod";
-import { computeFootTip } from "../model/kinematics";
-import { defaultPose, servoIndex } from "../model/pose";
+import { SERVOS, LEG_NAMES } from "../model/hexapod";
+import { servoIndex, JOINT_REFERENCE_DEG } from "../model/pose";
 import { defaultBinding, type ServoBinding } from "../model/electronics";
-import type { HexapodGeometry } from "../model/hexapod";
+import { jointFootMotion } from "../model/servoDirection";
 
 const JOINTS = ["coxa", "femur", "tibia"] as const;
 type Joint = (typeof JOINTS)[number];
@@ -17,52 +16,27 @@ const JOINT_LABEL: Record<Joint, string> = {
   tibia: "Tibia (jambe)",
 };
 
+/** Position physique de référence attendue, par articulation (cf. JOINT_REFERENCE_DEG). */
+const ZERO_HINT: Record<Joint, string> = {
+  coxa: "La patte doit pointer droit dans son axe (coxa alignée avec l'ancrage du châssis).",
+  femur: "Le fémur doit être horizontal, dans le prolongement de la coxa.",
+  tibia: "Le tibia doit être perpendiculaire au fémur (pied droit sous le genou) — en général le centre du servo.",
+};
+
 /** Angle de test envoyé pour la vérification du sens (course confortable, sûre). */
 const SENS_DEG = 45;
-/** Petit incrément pour sonder la direction du mouvement dans le modèle 3D. */
-const PROBE_DEG = 30;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/**
- * Direction (repère châssis) dans laquelle le bout de patte se déplace, dans le
- * MODÈLE 3D, quand on augmente l'angle logique du servo donné. Sert à formuler
- * une consigne (« vers l'avant », « monte ») qui correspond exactement à la 3D :
- * le but de la calibration est justement de faire coller le robot réel au modèle.
- * Repère : +X = avant, +Z = droite, +Y = haut.
- */
-function jointMotion(
-  geometry: HexapodGeometry,
-  legIndex: number,
-  joint: Joint
-): { x: number; y: number; z: number } {
-  const mount = computeLegMounts(geometry).find((m) => m.index === legIndex);
-  if (!mount) return { x: 0, y: 0, z: 0 };
-  const idx = servoIndex(legIndex, joint);
-  const p0 = defaultPose();
-  p0[idx] = 0;
-  const p1 = defaultPose();
-  p1[idx] = PROBE_DEG;
-  const t0 = computeFootTip(mount, p0, geometry);
-  const t1 = computeFootTip(mount, p1, geometry);
-  return { x: t1.x - t0.x, y: t1.y - t0.y, z: t1.z - t0.z };
-}
-
 /** Consigne lisible (+ flèche) attendue dans la 3D pour un mouvement positif. */
 function describeExpected(joint: Joint, d: { x: number; y: number; z: number }) {
+  // Coxa = pivot vertical : balancement avant/arrière de la patte (+X = avant).
   if (joint === "coxa") {
-    // Coxa = pivot horizontal : on décrit avant/arrière en priorité (cadrage demandé),
-    // sinon gauche/droite si le balancement est surtout latéral.
-    if (Math.abs(d.x) >= Math.abs(d.z)) {
-      return d.x >= 0
-        ? { label: "vers l'AVANT du robot", arrow: "↑" }
-        : { label: "vers l'ARRIÈRE du robot", arrow: "↓" };
-    }
-    return d.z >= 0
-      ? { label: "vers la DROITE du robot", arrow: "→" }
-      : { label: "vers la GAUCHE du robot", arrow: "←" };
+    return d.x >= 0
+      ? { label: "vers l'AVANT du robot", arrow: "↑" }
+      : { label: "vers l'ARRIÈRE du robot", arrow: "↓" };
   }
-  // Fémur / tibia = pivot vertical : le bout de patte monte ou descend.
+  // Fémur / tibia = pivot horizontal : le bout de patte monte ou descend.
   return d.y >= 0
     ? { label: "le bout de patte MONTE (se lève)", arrow: "↑" }
     : { label: "le bout de patte DESCEND (se baisse)", arrow: "↓" };
@@ -79,7 +53,7 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
 
   const [legIndex, setLegIndex] = useState(0);
   const [jointIdx, setJointIdx] = useState(0);
-  const [phase, setPhase] = useState<"sens" | "butees">("sens");
+  const [phase, setPhase] = useState<"sens" | "zero" | "butees">("sens");
   const [played, setPlayed] = useState(false);
   const [verdict, setVerdict] = useState<"pending" | "ok" | "fixed">("pending");
   const [liveDeg, setLiveDeg] = useState(0);
@@ -96,9 +70,11 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
   const channel = binding.channel;
   const wired = channel != null;
   const stepNo = legIndex * 3 + jointIdx + 1;
+  // Angle modèle où le repère physique est identifiable (tibia = −90° perpendiculaire).
+  const refDeg = JOINT_REFERENCE_DEG[joint];
 
   const motion = useMemo(
-    () => jointMotion(geometry, legIndex, joint),
+    () => jointFootMotion(geometry, legIndex, joint),
     [geometry, legIndex, joint]
   );
   const expected = describeExpected(joint, motion);
@@ -172,9 +148,15 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
 
   function acceptSens() {
     setVerdict(verdict === "fixed" ? "fixed" : "ok");
-    setPhase("butees");
-    setLiveDeg(0);
-    if (canMove) void sendServoAngle(servoId, 0);
+    setPhase("zero");
+    if (canMove) void sendServoAngle(servoId, refDeg);
+  }
+
+  // Phase zéro : ajuste l'offset (le servo reste sur son angle de référence pour
+  // voir l'effet en direct — perpendiculaire pour le tibia, etc.).
+  async function adjustOffset(delta: number) {
+    await patch({ centerOffsetDeg: +(binding.centerOffsetDeg + delta).toFixed(1) });
+    if (connected && wired) await sendServoAngle(servoId, refDeg);
   }
 
   // Phase butées : amène le servo à un angle puis capture min/max.
@@ -303,10 +285,87 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* ── Phase 2 : butées min / max ─────────────────────────────────── */}
+        {/* ── Phase 2 : zéro mécanique (offset) ──────────────────────────── */}
+        {phase === "zero" && (
+          <div className="calib-wiz-body">
+            <div className="calib-phase-tag">Étape 2 — Zéro mécanique</div>
+            <p className="calib-wiz-hint">
+              Repère ({refDeg}°). {ZERO_HINT[joint]} Ajustez l'offset jusqu'à ce que le segment
+              atteigne ce repère sur le robot. Tenez la patte en l'air, sans charge.
+              <br />
+              💡 Si le palonnier est monté à un quart de tour (cas du tibia perpendiculaire),
+              utilisez <strong>±90°</strong> pour le ramener au repère, puis affinez.
+            </p>
+
+            <div className="calib-wiz-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={!canMove}
+                onClick={() => void sendServoAngle(servoId, refDeg)}
+              >
+                Aller au repère ({refDeg}°)
+              </button>
+            </div>
+
+            {/* Offset grossier : rattrape un montage à un quart de tour. */}
+            <div className="calib-jog">
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(-90)}>
+                −90° ¼t
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(90)}>
+                +90° ¼t
+              </button>
+              <span className="calib-jog-val">{binding.centerOffsetDeg.toFixed(1)}°</span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => void patch({ centerOffsetDeg: 0 })}
+                title="Remettre l'offset à 0"
+              >
+                RAZ
+              </button>
+            </div>
+
+            {/* Offset fin : affine l'alignement. */}
+            <div className="calib-jog">
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(-5)}>
+                −5°
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(-0.5)}>
+                −0,5°
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(0.5)}>
+                +0,5°
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => void adjustOffset(5)}>
+                +5°
+              </button>
+            </div>
+
+            <div className="calib-wiz-actions calib-wiz-nav-inline">
+              <button type="button" className="btn" onClick={() => setPhase("sens")}>
+                ← Revenir au sens
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setPhase("butees");
+                  setLiveDeg(refDeg);
+                  if (canMove) void sendServoAngle(servoId, refDeg);
+                }}
+              >
+                Butées →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase 3 : butées min / max ─────────────────────────────────── */}
         {phase === "butees" && (
           <div className="calib-wiz-body">
-            <div className="calib-phase-tag">Étape 2 — Butées min / max</div>
+            <div className="calib-phase-tag">Étape 3 — Butées min / max</div>
             <p className="calib-wiz-hint">
               Amenez doucement le servo jusqu'à sa limite mécanique <strong>sûre</strong> (sans
               forcer ni toucher le sol/châssis), puis enregistrez-la comme min ou max.
@@ -387,8 +446,8 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
             </div>
 
             <div className="calib-wiz-actions calib-wiz-nav-inline">
-              <button type="button" className="btn" onClick={() => setPhase("sens")}>
-                ← Revenir au sens
+              <button type="button" className="btn" onClick={() => setPhase("zero")}>
+                ← Revenir au zéro
               </button>
             </div>
           </div>

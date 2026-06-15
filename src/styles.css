@@ -5501,6 +5501,37 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .electro-dot--unsupported { background: #6b7280; }
 @keyframes electro-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+/* ── Boîte « Liaison robot » (Conception 3D) ─────────────────────────────── */
+.robotlink { display: flex; flex-direction: column; gap: 8px; }
+.robotlink-status { display: flex; align-items: center; gap: 8px; }
+.robotlink-dot {
+  width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+.robotlink-dot--connected { background: #34d399; }
+.robotlink-dot--connecting { background: #fbbf24; animation: electro-pulse 1s infinite; }
+.robotlink-dot--error { background: #ff5c5c; }
+.robotlink-dot--disconnected,
+.robotlink-dot--unsupported { background: #6b7280; }
+.robotlink-status-label { font-weight: 600; font-size: 13px; }
+.robotlink-status-detail { font-size: 11px; color: var(--text-dim); }
+.robotlink-btn { width: 100%; justify-content: center; }
+.robotlink-sep { height: 1px; background: var(--border); margin: 2px 0; }
+.robotlink-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; font-size: 12px; color: var(--text-dim);
+}
+.robotlink-row select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 13px;
+}
+.robotlink-meta { font-size: 11px; color: var(--text-dim); text-align: center; }
+.robotlink-note {
+  font-size: 11px; line-height: 1.4; border-radius: 6px; padding: 6px 8px;
+}
+.robotlink-note.warn { background: rgba(230, 162, 60, 0.12); color: #e6a23c; }
+.app.tablet .robotlink-row select { padding: 8px; font-size: 15px; }
+
 .electro-globals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .electro-hint { font-size: 12px; color: var(--text-dim); flex: 1 1 260px; }
 
@@ -5542,7 +5573,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 
 .electro-legs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  /* Exactement 3 colonnes → ligne 1 = pattes gauches (0,1,2), ligne 2 = pattes droites (3,4,5). */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .electro-leg {
@@ -5576,9 +5608,19 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 
 .electro-servo-test { display: flex; align-items: center; gap: 8px; }
 .electro-servo-test input[type="range"] { flex: 1; }
+.electro-dir {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  min-width: 42px;
+  text-align: center;
+}
+.app.tablet .electro-dir { font-size: 12px; min-width: 52px; }
 .electro-angle { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; font-size: 13px; }
 
-.electro-servo-cal { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.electro-servo-cal { display: flex; align-items: center; gap: 6px; font-size: 12px; flex-wrap: wrap; }
 .electro-cal-label { color: var(--text-dim); }
 .electro-cal-val { font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
 .electro-cal-reset { margin-left: 4px; }

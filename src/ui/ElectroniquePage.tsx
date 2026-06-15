@@ -3,6 +3,9 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSerialStore } from "../store/useSerialStore";
 import { useToolboxStore } from "../store/useToolboxStore";
 import { SERVOS, LEG_NAMES } from "../model/hexapod";
+import { JOINT_REFERENCE_DEG } from "../model/pose";
+import { sliderEndLabels } from "../model/servoDirection";
+import { useHexapodStore } from "../store/useHexapodStore";
 import {
   COMMON_BAUD_RATES,
   defaultBinding,
@@ -36,6 +39,7 @@ const STATUS_LABEL: Record<string, string> = {
 export function ElectroniquePage() {
   const activeProject = useProjectStore((s) => s.activeProject);
   const updateElectronics = useProjectStore((s) => s.updateElectronics);
+  const geometry = useHexapodStore((s) => s.geometry);
 
   const status = useSerialStore((s) => s.status);
   const portLabel = useSerialStore((s) => s.portLabel);
@@ -204,7 +208,16 @@ export function ElectroniquePage() {
 
   function patchBinding(servoId: number, partial: Partial<ServoBinding>) {
     const patch: Partial<ProjectElectronics> = { bindings: buildBindings(servoId, partial) };
-    void updateElectronics(patch);
+    return updateElectronics(patch);
+  }
+
+  // Ajuste l'offset d'un servo PUIS envoie son angle de référence — dans cet ordre,
+  // sinon la commande partirait avec l'ancien offset (updateElectronics est async).
+  async function bumpOffset(servoId: number, joint: "coxa" | "femur" | "tibia", delta: number) {
+    const b = electronics?.bindings[servoId];
+    const cur = b?.centerOffsetDeg ?? 0;
+    await patchBinding(servoId, { centerOffsetDeg: +(cur + delta).toFixed(1) });
+    if (connected && b?.channel != null) void sendServoAngle(servoId, JOINT_REFERENCE_DEG[joint]);
   }
 
   function onChangeBaud(b: number) {
@@ -508,6 +521,9 @@ export function ElectroniquePage() {
               const angle = testAngles[s.id] ?? 0;
               const isDup = binding.channel != null && dupChannels.has(binding.channel);
               const isIdentifying = identifying === s.id;
+              // Direction attendue (modèle 3D) à chaque extrémité du slider — c'est la
+              // référence vers laquelle régler « Inverser » (indépendant de son état).
+              const dirs = sliderEndLabels(geometry, legIdx, s.joint);
               return (
                 <div
                   className={`electro-servo${isIdentifying ? " electro-servo--ident" : ""}`}
@@ -532,28 +548,6 @@ export function ElectroniquePage() {
                       />
                       {isDup && <span className="electro-dup-flag" title="Canal en double">⚠</span>}
                     </label>
-                    <label className="electro-invert">
-                      <input
-                        type="checkbox"
-                        checked={binding.invert}
-                        onChange={(e) => patchBinding(s.id, { invert: e.target.checked })}
-                      />
-                      Inverser
-                    </label>
-                  </div>
-
-                  <div className="electro-servo-test">
-                    <input
-                      type="range"
-                      min={binding.minDeg ?? s.minDeg}
-                      max={binding.maxDeg ?? s.maxDeg}
-                      step={1}
-                      value={angle}
-                      disabled={!connected || binding.channel == null}
-                      onChange={(e) => void sendServoAngle(s.id, Number(e.target.value))}
-                      aria-label={`Test ${LEG_NAMES[legIdx]} ${JOINT_LABEL[s.joint]}`}
-                    />
-                    <span className="electro-angle">{angle.toFixed(0)}°</span>
                     <button
                       type="button"
                       className="btn btn-sm"
@@ -572,6 +566,34 @@ export function ElectroniquePage() {
                     >
                       Identifier
                     </button>
+                    <label className="electro-invert">
+                      <input
+                        type="checkbox"
+                        checked={binding.invert}
+                        onChange={(e) => patchBinding(s.id, { invert: e.target.checked })}
+                      />
+                      Inverser
+                    </label>
+                  </div>
+
+                  <div className="electro-servo-test">
+                    <span className="electro-dir" title="Mouvement réel à cette extrémité">
+                      {dirs.low}
+                    </span>
+                    <input
+                      type="range"
+                      min={s.minDeg}
+                      max={s.maxDeg}
+                      step={1}
+                      value={angle}
+                      disabled={!connected || binding.channel == null}
+                      onChange={(e) => void sendServoAngle(s.id, Number(e.target.value))}
+                      aria-label={`Test ${LEG_NAMES[legIdx]} ${JOINT_LABEL[s.joint]}`}
+                    />
+                    <span className="electro-dir" title="Mouvement réel à cette extrémité">
+                      {dirs.high}
+                    </span>
+                    <span className="electro-angle">{angle.toFixed(0)}°</span>
                   </div>
 
                   <div className="electro-servo-cal">
@@ -579,10 +601,22 @@ export function ElectroniquePage() {
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => {
-                        patchBinding(s.id, { centerOffsetDeg: binding.centerOffsetDeg - 0.5 });
-                        if (connected && binding.channel != null) void sendServoAngle(s.id, 0);
-                      }}
+                      onClick={() => void bumpOffset(s.id, s.joint, -90)}
+                      title="Quart de tour (ex. tibia perpendiculaire)"
+                    >
+                      −90°
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => void bumpOffset(s.id, s.joint, -5)}
+                    >
+                      −5°
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => void bumpOffset(s.id, s.joint, -0.5)}
                     >
                       −
                     </button>
@@ -590,17 +624,29 @@ export function ElectroniquePage() {
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => {
-                        patchBinding(s.id, { centerOffsetDeg: binding.centerOffsetDeg + 0.5 });
-                        if (connected && binding.channel != null) void sendServoAngle(s.id, 0);
-                      }}
+                      onClick={() => void bumpOffset(s.id, s.joint, 0.5)}
                     >
                       +
                     </button>
                     <button
                       type="button"
+                      className="btn btn-sm"
+                      onClick={() => void bumpOffset(s.id, s.joint, 5)}
+                    >
+                      +5°
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => void bumpOffset(s.id, s.joint, 90)}
+                      title="Quart de tour (ex. tibia perpendiculaire)"
+                    >
+                      +90°
+                    </button>
+                    <button
+                      type="button"
                       className="btn btn-sm electro-cal-reset"
-                      onClick={() => patchBinding(s.id, { centerOffsetDeg: 0 })}
+                      onClick={() => void patchBinding(s.id, { centerOffsetDeg: 0 })}
                       title="Remettre l'offset à 0"
                     >
                       RAZ

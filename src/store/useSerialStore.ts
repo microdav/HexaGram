@@ -70,6 +70,11 @@ interface SerialState {
   centerServo: (servoId: number) => Promise<void>;
   /** Tous les servos liés à leur zéro logique. */
   centerAll: () => Promise<void>;
+  /**
+   * Envoie une pose complète (18 angles logiques, indexés par servo) à tous les
+   * servos câblés. `timeMs` > 0 demande une transition douce (T sur SSC-32U).
+   */
+  sendPose: (pose: number[], timeMs?: number) => Promise<void>;
   /** Arrêt d'urgence : coupe le couple de tous les canaux liés. */
   releaseAll: () => Promise<void>;
   /** Fait osciller un servo pour l'identifier physiquement. */
@@ -307,6 +312,33 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       }
     }
     useToastStore.getState().show("Tous les servos centrés");
+  },
+
+  sendPose: async (pose, timeMs = 0) => {
+    if (get().status !== "connected") return;
+    const { protocol, servo, controller, electronics } = hardwareContext();
+    if (!electronics) return;
+    let count = 0;
+    for (let id = 0; id < 18; id++) {
+      const binding = electronics.bindings[id] ?? defaultBinding(id);
+      if (binding.channel == null) continue;
+      const deg = Number.isFinite(pose[id]) ? pose[id] : 0;
+      const us = angleToPulseUs(deg, binding, servo, controller);
+      const cmd = protocol.move(binding.channel, us, timeMs);
+      try {
+        await link.writeString(cmd);
+        pushLog(set, "tx", cmd);
+        set((s) => ({ testAngles: { ...s.testAngles, [id]: deg } }));
+        count++;
+        await sleep(6);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Écriture échouée";
+        set({ status: "error", errorMsg: msg });
+        pushLog(set, "info", `Erreur écriture : ${msg}`);
+        break;
+      }
+    }
+    useToastStore.getState().show(`Position envoyée (${count} servo${count > 1 ? "s" : ""})`);
   },
 
   releaseAll: async () => {

@@ -76,6 +76,7 @@ const DEFAULTS: Record<string, ToolboxConfig> = {
   'photo-space':    { panel: 'left',  order: 5, minimized: true,  floatPos: { x: 280, y: 600 } },
   'servos-left':    { panel: 'right', order: 0, minimized: false, floatPos: { x: 900, y: 120 } },
   'servos-right':   { panel: 'right', order: 1, minimized: false, floatPos: { x: 900, y: 320 } },
+  'robot-link':     { panel: 'right', order: 2, minimized: false, floatPos: { x: 900, y: 520 } },
   'seq-ctrl':       { panel: null,    order: 0, minimized: false, floatPos: { x: Math.round(window.innerWidth / 2 - 100), y: 60 } },
   poses:            { panel: null,    order: 0, minimized: false, floatPos: { x: Math.max(280, Math.round(window.innerWidth * 0.65)), y: 120 } },
 };
