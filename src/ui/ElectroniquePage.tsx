@@ -54,7 +54,6 @@ export function ElectroniquePage() {
   const connect = useSerialStore((s) => s.connect);
   const disconnect = useSerialStore((s) => s.disconnect);
   const sendServoAngle = useSerialStore((s) => s.sendServoAngle);
-  const centerServo = useSerialStore((s) => s.centerServo);
   const centerAll = useSerialStore((s) => s.centerAll);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const identify = useSerialStore((s) => s.identify);
@@ -211,13 +210,14 @@ export function ElectroniquePage() {
     return updateElectronics(patch);
   }
 
-  // Ajuste l'offset d'un servo PUIS envoie son angle de référence — dans cet ordre,
-  // sinon la commande partirait avec l'ancien offset (updateElectronics est async).
-  async function bumpOffset(servoId: number, joint: "coxa" | "femur" | "tibia", delta: number) {
+  // Ajuste l'offset d'un servo PUIS renvoie l'angle de test COURANT (sans bouger le
+  // slider), pour voir l'effet sur place. L'ordre importe : updateElectronics est
+  // async, sinon la commande partirait avec l'ancien offset.
+  async function bumpOffset(servoId: number, delta: number, atAngle: number) {
     const b = electronics?.bindings[servoId];
     const cur = b?.centerOffsetDeg ?? 0;
     await patchBinding(servoId, { centerOffsetDeg: +(cur + delta).toFixed(1) });
-    if (connected && b?.channel != null) void sendServoAngle(servoId, JOINT_REFERENCE_DEG[joint]);
+    if (connected && b?.channel != null) void sendServoAngle(servoId, atAngle);
   }
 
   function onChangeBaud(b: number) {
@@ -506,8 +506,10 @@ export function ElectroniquePage() {
                   Tester la carte (VER)
                 </button>
                 <span className="electro-hint">
-                  Calibration : amenez le servo à <strong>0°</strong>, puis ajustez l'offset −/+
-                  jusqu'à l'alignement mécanique. Enregistrement automatique.
+                  Les flèches sous chaque slider indiquent le mouvement <strong>attendu</strong>{" "}
+                  (modèle) : si une patte part à l'inverse, cochez « Inverser ». « Neutre » amène à
+                  la position de repos ; réglez ensuite le « Zéro » pour l'alignement mécanique.
+                  Enregistrement automatique.
                 </span>
               </section>
 
@@ -552,10 +554,10 @@ export function ElectroniquePage() {
                       type="button"
                       className="btn btn-sm"
                       disabled={!connected || binding.channel == null}
-                      onClick={() => void centerServo(s.id)}
-                      title="Envoyer le zéro logique"
+                      onClick={() => void sendServoAngle(s.id, JOINT_REFERENCE_DEG[s.joint])}
+                      title="Amener à la position neutre (coxa/fémur : aligné ; tibia : perpendiculaire)"
                     >
-                      Centrer
+                      Neutre
                     </button>
                     <button
                       type="button"
@@ -577,7 +579,7 @@ export function ElectroniquePage() {
                   </div>
 
                   <div className="electro-servo-test">
-                    <span className="electro-dir" title="Mouvement réel à cette extrémité">
+                    <span className="electro-dir" title="Mouvement attendu (modèle) à cette extrémité">
                       {dirs.low}
                     </span>
                     <input
@@ -590,18 +592,23 @@ export function ElectroniquePage() {
                       onChange={(e) => void sendServoAngle(s.id, Number(e.target.value))}
                       aria-label={`Test ${LEG_NAMES[legIdx]} ${JOINT_LABEL[s.joint]}`}
                     />
-                    <span className="electro-dir" title="Mouvement réel à cette extrémité">
+                    <span className="electro-dir" title="Mouvement attendu (modèle) à cette extrémité">
                       {dirs.high}
                     </span>
                     <span className="electro-angle">{angle.toFixed(0)}°</span>
                   </div>
 
                   <div className="electro-servo-cal">
-                    <span className="electro-cal-label">Offset 0&nbsp;:</span>
+                    <span
+                      className="electro-cal-label"
+                      title="Décalage entre le 0 du servo et le 0 mécanique attendu"
+                    >
+                      Zéro&nbsp;:
+                    </span>
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, -90)}
+                      onClick={() => void bumpOffset(s.id, -90, angle)}
                       title="Quart de tour (ex. tibia perpendiculaire)"
                     >
                       −90°
@@ -609,14 +616,14 @@ export function ElectroniquePage() {
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, -5)}
+                      onClick={() => void bumpOffset(s.id, -5, angle)}
                     >
                       −5°
                     </button>
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, -0.5)}
+                      onClick={() => void bumpOffset(s.id, -0.5, angle)}
                     >
                       −
                     </button>
@@ -624,21 +631,21 @@ export function ElectroniquePage() {
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, 0.5)}
+                      onClick={() => void bumpOffset(s.id, 0.5, angle)}
                     >
                       +
                     </button>
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, 5)}
+                      onClick={() => void bumpOffset(s.id, 5, angle)}
                     >
                       +5°
                     </button>
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => void bumpOffset(s.id, s.joint, 90)}
+                      onClick={() => void bumpOffset(s.id, 90, angle)}
                       title="Quart de tour (ex. tibia perpendiculaire)"
                     >
                       +90°
