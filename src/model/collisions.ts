@@ -1,7 +1,7 @@
 import { Matrix4, Vector3 } from "three";
 import { degToRad } from "./servo";
 import { servoIndex, type Pose } from "./pose";
-import type { HexapodGeometry, LegMount } from "./hexapod";
+import { mountingOffsetOf, type HexapodGeometry, type LegMount } from "./hexapod";
 
 export interface CollisionPrefs {
   enabled: boolean;
@@ -33,9 +33,12 @@ export function computeLegJointPositions(
   pose: Pose,
   geometry: HexapodGeometry
 ): [Vector3, Vector3, Vector3, Vector3] {
-  const coxaDeg = pose[servoIndex(mount.index, "coxa")];
-  const femurDeg = pose[servoIndex(mount.index, "femur")];
-  const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
+  const ci = servoIndex(mount.index, "coxa");
+  const fi = servoIndex(mount.index, "femur");
+  const ti = servoIndex(mount.index, "tibia");
+  const coxaDeg = pose[ci] + mountingOffsetOf(geometry, ci);
+  const femurDeg = pose[fi] + mountingOffsetOf(geometry, fi);
+  const tibiaDeg = pose[ti] + mountingOffsetOf(geometry, ti);
   const { coxa, femur, tibia } = geometry.segments;
 
   const base = new Matrix4()

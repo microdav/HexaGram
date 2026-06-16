@@ -7,7 +7,7 @@ import { servoIndex, type Pose } from "../model/pose";
 import { mirrorLegOf, useHexapodStore } from "../store/useHexapodStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { useToolboxStore } from "../store/useToolboxStore";
-import { SERVOS, computeLegMounts, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { SERVOS, computeLegMounts, mountingOffsetOf, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
 import { findServoType } from "../model/servoTypes";
 import { computeFootTip, computeBodyTransform } from "../model/kinematics";
 import { solveIK } from "../model/ik";
@@ -31,6 +31,45 @@ const HEXAPOD_YELLOW = "#f5c518";
 const COLLISION_RED = "#ef4444";
 const JOINT_COLOR = "#222";
 const JOINT_HOVER_COLOR = "#7ab8ff";
+const SERVO_CASE = "#1b1b1b";
+
+/** Dimensions du boîtier servo (m) + décalage de l'axe de sortie (le « 2/3 »). */
+interface ServoDimsM {
+  l: number;
+  w: number;
+  h: number;
+  shaft: number;
+}
+
+/**
+ * Corps de servo représenté par une boîte rectangulaire, **fixée au segment
+ * parent**, dont l'axe de sortie (pignon) coïncide avec le pivot de
+ * l'articulation à l'origine du groupe. Le boîtier est décalé en arrière du
+ * pivot de `shaft` (le pignon n'est pas centré : ~2/3 de la longueur, comme un
+ * servo hobby standard). `axis` = sens de l'arbre de sortie :
+ *  - "Y" : coxa (pivot vertical) — boîtier couché sous le plan du pivot ;
+ *  - "Z" : fémur/tibia (pivot horizontal latéral) — arbre le long de Z.
+ */
+function ServoBody({ axis, dims }: { axis: "Y" | "Z"; dims: ServoDimsM }) {
+  const { l, w, h, shaft } = dims;
+  if (axis === "Y") {
+    // Arbre vertical : faces L×W horizontales, hauteur H sous le pivot.
+    return (
+      <mesh position={[-shaft, -h / 2, 0]}>
+        <boxGeometry args={[l, h, w]} />
+        <meshStandardMaterial color={SERVO_CASE} />
+      </mesh>
+    );
+  }
+  // Arbre latéral (Z) : longueur L le long du segment, épaisseur verticale W,
+  // profondeur H le long de l'arbre ; pignon décalé sur la face +Z.
+  return (
+    <mesh position={[-shaft, 0, -h / 2]}>
+      <boxGeometry args={[l, w, h]} />
+      <meshStandardMaterial color={SERVO_CASE} />
+    </mesh>
+  );
+}
 
 const FOOT_NORMAL = "#888";
 const FOOT_HOVER  = "#f5c518";
@@ -77,6 +116,15 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
       tibiaFoot: sh.tibiaFoot,
     };
   }, [segmentHeights, mount.index, chassisH, servoTypeId, customServoTypes]);
+  // Dimensions du boîtier servo (m) issues du catalogue (corps + axe au 2/3).
+  const servoDimsM = useMemo<ServoDimsM>(() => {
+    const spec = findServoType(servoTypeId, customServoTypes ?? []);
+    const l = (spec?.dimensionsMm.l ?? 40.7) / 1000;
+    const w = (spec?.dimensionsMm.w ?? 20.1) / 1000;
+    const h = (spec?.dimensionsMm.h ?? 37.8) / 1000;
+    const shaft = (spec?.shaftOffsetMm ?? (spec ? spec.dimensionsMm.l / 2 - 10 : 10)) / 1000;
+    return { l, w, h, shaft };
+  }, [servoTypeId, customServoTypes]);
   const tibiaGeo = useMemo(
     () => makeTaperedBox(segs.tibia, segW.tibia, segH.tibiaKnee, segH.tibiaFoot),
     [segs.tibia, segW.tibia, segH.tibiaKnee, segH.tibiaFoot]
@@ -99,6 +147,14 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const coxaDeg = pose[coxaId];
   const femurDeg = pose[femurId];
   const tibiaDeg = pose[tibiaId];
+
+  // Offset de montage (deg) par articulation : rotation statique entre le repère
+  // servo (pose) et la géométrie 3D. Le segment + l'arc sont rendus dans ce repère
+  // décalé, la rotation dynamique restant la valeur de pose (0 = centre servo).
+  const mountingOffsets = useHexapodStore((s) => s.geometry.mountingOffsetsDeg);
+  const coxaOff = mountingOffsetOf({ mountingOffsetsDeg: mountingOffsets } as HexapodGeometry, coxaId);
+  const femurOff = mountingOffsetOf({ mountingOffsetsDeg: mountingOffsets } as HexapodGeometry, femurId);
+  const tibiaOff = mountingOffsetOf({ mountingOffsetsDeg: mountingOffsets } as HexapodGeometry, tibiaId);
 
   const coxaDef = SERVOS[coxaId];
   const femurDef = SERVOS[femurId];
@@ -300,14 +356,15 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
         .sub(ds.bodyPos)
         .applyQuaternion(invQuat);
 
-      // Solve IK and push servo angles (setServoAngle clamps to ±90°).
+      // Solve IK (angles géométriques) puis repasse en repère servo (pose) en
+      // retranchant l'offset de montage avant d'écrire (setServoAngle clampe ±90°).
       const { geometry: geom } = useHexapodStore.getState();
       const angles = solveIK(mount, targetLocal, geom);
 
       const s = useHexapodStore.getState();
-      s.setServoAngle(coxaId, angles.coxaDeg);
-      s.setServoAngle(femurId, angles.femurDeg);
-      s.setServoAngle(tibiaId, angles.tibiaDeg);
+      s.setServoAngle(coxaId, angles.coxaDeg - mountingOffsetOf(geom, coxaId));
+      s.setServoAngle(femurId, angles.femurDeg - mountingOffsetOf(geom, femurId));
+      s.setServoAngle(tibiaId, angles.tibiaDeg - mountingOffsetOf(geom, tibiaId));
     };
 
     const handleUp = () => {
@@ -362,20 +419,25 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
         <meshStandardMaterial color={jointColor(showCoxa)} />
       </mesh>
       {!clean && (
-        <ServoArc
-          axis="Y"
-          minDeg={coxaDef.minDeg}
-          maxDeg={coxaDef.maxDeg}
-          currentDeg={coxaDeg}
-          radius={coxaArcR}
-          visible={showCoxa}
-          onEnter={() => onEnter("coxa")}
-          onLeave={() => onLeave("coxa")}
-          onAngle={(d) => setServoAngle(coxaId, d)}
-        />
+        <group rotation={[0, degToRad(coxaOff), 0]}>
+          <ServoArc
+            axis="Y"
+            minDeg={coxaDef.minDeg}
+            maxDeg={coxaDef.maxDeg}
+            currentDeg={coxaDeg}
+            radius={coxaArcR}
+            visible={showCoxa}
+            onEnter={() => onEnter("coxa")}
+            onLeave={() => onLeave("coxa")}
+            onAngle={(d) => setServoAngle(coxaId, d)}
+          />
+        </group>
       )}
 
-      <group rotation={[0, degToRad(coxaDeg), 0]}>
+      {/* Boîtier servo coxa (fixé au châssis, arbre vertical au pivot) */}
+      <ServoBody axis="Y" dims={servoDimsM} />
+
+      <group rotation={[0, degToRad(coxaOff + coxaDeg), 0]}>
         <mesh position={[segs.coxa / 2, 0, 0]}>
           <boxGeometry args={[segs.coxa, segH.coxa, segW.coxa]} />
           <meshStandardMaterial color={coxaColor} emissive={collidingSegs?.has(0) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(0) ? 0.4 : 0} />
@@ -387,20 +449,25 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
             <meshStandardMaterial color={jointColor(showFemur)} />
           </mesh>
           {!clean && (
-            <ServoArc
-              axis="Z"
-              minDeg={femurDef.minDeg}
-              maxDeg={femurDef.maxDeg}
-              currentDeg={femurDeg}
-              radius={femurArcR}
-              visible={showFemur}
-              onEnter={() => onEnter("femur")}
-              onLeave={() => onLeave("femur")}
-              onAngle={(d) => setServoAngle(femurId, d)}
-            />
+            <group rotation={[0, 0, degToRad(femurOff)]}>
+              <ServoArc
+                axis="Z"
+                minDeg={femurDef.minDeg}
+                maxDeg={femurDef.maxDeg}
+                currentDeg={femurDeg}
+                radius={femurArcR}
+                visible={showFemur}
+                onEnter={() => onEnter("femur")}
+                onLeave={() => onLeave("femur")}
+                onAngle={(d) => setServoAngle(femurId, d)}
+              />
+            </group>
           )}
 
-          <group rotation={[0, 0, degToRad(femurDeg)]}>
+          {/* Boîtier servo fémur (fixé à la coxa, arbre latéral au genou-hanche) */}
+          <ServoBody axis="Z" dims={servoDimsM} />
+
+          <group rotation={[0, 0, degToRad(femurOff + femurDeg)]}>
             <mesh position={[segs.femur / 2, 0, 0]}>
               <boxGeometry args={[segs.femur, segH.femur, segW.femur]} />
               <meshStandardMaterial color={femurColor} emissive={collidingSegs?.has(1) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(1) ? 0.4 : 0} />
@@ -412,20 +479,25 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
                 <meshStandardMaterial color={jointColor(showTibia)} />
               </mesh>
               {!clean && (
-                <ServoArc
-                  axis="Z"
-                  minDeg={tibiaDef.minDeg}
-                  maxDeg={tibiaDef.maxDeg}
-                  currentDeg={tibiaDeg}
-                  radius={tibiaArcR}
-                  visible={showTibia}
-                  onEnter={() => onEnter("tibia")}
-                  onLeave={() => onLeave("tibia")}
-                  onAngle={(d) => setServoAngle(tibiaId, d)}
-                />
+                <group rotation={[0, 0, degToRad(tibiaOff)]}>
+                  <ServoArc
+                    axis="Z"
+                    minDeg={tibiaDef.minDeg}
+                    maxDeg={tibiaDef.maxDeg}
+                    currentDeg={tibiaDeg}
+                    radius={tibiaArcR}
+                    visible={showTibia}
+                    onEnter={() => onEnter("tibia")}
+                    onLeave={() => onLeave("tibia")}
+                    onAngle={(d) => setServoAngle(tibiaId, d)}
+                  />
+                </group>
               )}
 
-              <group rotation={[0, 0, degToRad(tibiaDeg)]}>
+              {/* Boîtier servo tibia (fixé au fémur, arbre latéral au genou) */}
+              <ServoBody axis="Z" dims={servoDimsM} />
+
+              <group rotation={[0, 0, degToRad(tibiaOff + tibiaDeg)]}>
                 {/* Tibia conique : genou → pied (geometry x ∈ [0, tibia]). */}
                 <mesh position={[0, 0, 0]} geometry={tibiaGeo}>
                   <meshStandardMaterial color={tibiaColor} emissive={collidingSegs?.has(2) ? "#7f1d1d" : "#000"} emissiveIntensity={collidingSegs?.has(2) ? 0.4 : 0} />

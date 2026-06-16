@@ -72,6 +72,8 @@ const HexapodGeometrySchema = z.object({
   cog: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   legLayout: z.enum(["star", "linear"]).optional(),
   body2D: Body2DSchema.optional(),
+  // Offset de montage par servo (deg, 18) : pose modèle → géométrie 3D. Tibia −90°.
+  mountingOffsetsDeg: z.array(z.number()).optional(),
 });
 
 const KeyframeSchema = z.object({

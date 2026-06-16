@@ -132,6 +132,25 @@ export interface HexapodGeometry {
   segmentHeights?: { coxa: number; femur: number; tibia: number; tibiaFoot?: number }[];
   /** Maquette 2D — source de vérité des ancrages/châssis quand présente. */
   body2D?: Body2D;
+  /**
+   * Offset de montage par servo (deg, index 0..17). Décalage structurel entre la
+   * pose **modèle** (repère servo : 0 = centre du servo) et l'angle **géométrique**
+   * rendu en 3D : `géométrique = pose + offset`. Le tibia est monté perpendiculaire
+   * au fémur quand le servo est au centre → offset −90°. Absent (profil legacy non
+   * migré) ⇒ offset 0 (ancien comportement, pose = géométrique).
+   */
+  mountingOffsetsDeg?: number[];
+}
+
+/** Offsets de montage par défaut (18) : tibia −90° (perpendiculaire au centre), reste 0. */
+export function defaultMountingOffsets(): number[] {
+  return Array.from({ length: 18 }, (_, i) => (i % 3 === 2 ? -90 : 0));
+}
+
+/** Offset de montage (deg) d'un servo ; 0 si absent (profil legacy non migré). */
+export function mountingOffsetOf(geom: HexapodGeometry, servoId: number): number {
+  const arr = geom.mountingOffsetsDeg;
+  return Array.isArray(arr) && Number.isFinite(arr[servoId]) ? arr[servoId] : 0;
 }
 
 export interface LegMount {
@@ -145,6 +164,7 @@ export const DEFAULT_GEOMETRY: HexapodGeometry = {
   chassis: { length: 0.34, width: 0.18, height: 0.065 },
   segments: { coxa: 0.05, femur: 0.08, tibia: 0.115 },
   cog: { x: 0, y: 0, z: 0 },
+  mountingOffsetsDeg: defaultMountingOffsets(),
 };
 
 /** Épaisseurs de patte par défaut (m), vue de dessus, quand non renseignées. */
@@ -257,9 +277,11 @@ export function buildServos(): ServoDef[] {
   // Plage de 180° par servo (±90°) — correspond à la course standard d'un servo
   // hobby, et donne un arc 3D parfaitement symétrique pour chaque articulation.
   for (let leg = 0; leg < 6; leg++) {
+    // defaultDeg en repère servo (0 = centre). Le repos « fémur −20° / tibia +30° »
+    // rend la même géométrie qu'avant (tibia +30 + offset −90 = −60° géométrique).
     servos.push({ id: id++, legIndex: leg, joint: "coxa", minDeg: -90, maxDeg: 90, defaultDeg: 0 });
     servos.push({ id: id++, legIndex: leg, joint: "femur", minDeg: -90, maxDeg: 90, defaultDeg: -20 });
-    servos.push({ id: id++, legIndex: leg, joint: "tibia", minDeg: -90, maxDeg: 90, defaultDeg: -60 });
+    servos.push({ id: id++, legIndex: leg, joint: "tibia", minDeg: -90, maxDeg: 90, defaultDeg: 30 });
   }
   return servos;
 }

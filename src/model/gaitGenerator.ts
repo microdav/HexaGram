@@ -1,4 +1,4 @@
-import type { HexapodGeometry, LegMount } from "./hexapod";
+import { mountingOffsetOf, type HexapodGeometry, type LegMount } from "./hexapod";
 import type { ServoCalibration } from "../store/useHexapodStore";
 import type { SequencerStep } from "../store/useSequencerStore";
 import { clampAngle, degToRad } from "./servo";
@@ -91,7 +91,8 @@ interface GaitBase {
 function computeGaitBase(
   calibration: Record<number, ServoCalibration>,
   useSoft: boolean,
-  liftFraction: number
+  liftFraction: number,
+  geometry: HexapodGeometry
 ): GaitBase {
   // Coxa: most conservative range across all 6 legs, plafonné à 45°.
   let minCoxaRange = Infinity;
@@ -113,9 +114,13 @@ function computeGaitBase(
     tibiaMax = Math.min(tibiaMax, tLim.max);
   }
 
-  // Neutral stance: standard defaults clamped to available range
-  const stanceFemur = clampAngle(-20, femurMin, femurMax);
-  const stanceTibia = clampAngle(-60, tibiaMin, tibiaMax);
+  // Neutral stance en **repère servo** : la consigne géométrique standard (fémur
+  // −20°, tibia −60°) moins l'offset de montage, clampée aux butées (servo).
+  // La géométrie produite reste identique (offset rajouté dans la FK).
+  const femurOffset = mountingOffsetOf(geometry, 1);
+  const tibiaOffset = mountingOffsetOf(geometry, 2);
+  const stanceFemur = clampAngle(-20 - femurOffset, femurMin, femurMax);
+  const stanceTibia = clampAngle(-60 - tibiaOffset, tibiaMin, tibiaMax);
 
   // Lift: shift from stance by 40° (femur) and 30° (tibia) proportional to liftFraction
   const liftFemur = clampAngle(stanceFemur + 40 * liftFraction, femurMin, femurMax);
@@ -324,7 +329,7 @@ function computeStabilityScores(
 export function generateGait(config: GaitGeneratorConfig): GaitResult {
   const { geometry, legMounts, calibration, gaitType, stepFraction, liftFraction, useSoftLimits } = config;
 
-  const base = computeGaitBase(calibration, useSoftLimits, liftFraction);
+  const base = computeGaitBase(calibration, useSoftLimits, liftFraction, geometry);
   // Débattement réellement tenable pour cette géométrie + démarche ; `stepFraction`
   // (0.1–1.0) en sélectionne une fraction. Garantit des séquences qui ne basculent
   // pas et rend le curseur « amplitude de pas » utile sur toute sa course.

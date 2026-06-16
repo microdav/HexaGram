@@ -122,6 +122,92 @@ addColumnIfMissing("poses",          "thumbnail_context", "TEXT");
 addColumnIfMissing("users",          "is_admin",          "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("users",          "is_active",         "INTEGER NOT NULL DEFAULT 1");
 
+// ── Migration « offset de montage » (convention repère servo) ────────────────
+// Bascule unique : les angles étaient stockés en repère géométrique (tibia 0 =
+// aligné). On passe au repère servo (0 = centre = tibia perpendiculaire) en
+// décalant le tibia de +90° dans toutes les poses stockées, et en posant
+// geometry.mountingOffsetsDeg (tibia −90°). La FK rajoute l'offset → rendu
+// IDENTIQUE ; seul l'envoi au robot devient correct. Idempotent via user_version.
+const MOUNTING_MIGRATION_VERSION = 1;
+const TIBIA_INDICES = [2, 5, 8, 11, 14, 17];
+const DEFAULT_MOUNTING_OFFSETS = Array.from({ length: 18 }, (_, i) => (i % 3 === 2 ? -90 : 0));
+
+function shiftTibiaPose(angles: unknown): unknown {
+  if (!Array.isArray(angles)) return angles;
+  const out = angles.slice();
+  for (const i of TIBIA_INDICES) {
+    if (typeof out[i] === "number") out[i] = out[i] + 90;
+  }
+  return out;
+}
+
+function shiftStepsPoses(steps: unknown): void {
+  if (!Array.isArray(steps)) return;
+  for (const step of steps) {
+    if (step && Array.isArray((step as { pose?: unknown }).pose)) {
+      (step as { pose: unknown }).pose = shiftTibiaPose((step as { pose: unknown }).pose);
+    }
+  }
+}
+
+function runMountingOffsetMigration(): void {
+  const cur = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (cur >= MOUNTING_MIGRATION_VERSION) return;
+
+  db.exec("BEGIN");
+  try {
+    // Poses
+    const poses = db.prepare("SELECT id, angles FROM poses").all() as Array<{ id: string; angles: string }>;
+    const updPose = db.prepare("UPDATE poses SET angles = ? WHERE id = ?");
+    for (const p of poses) {
+      try { updPose.run(JSON.stringify(shiftTibiaPose(JSON.parse(p.angles))), p.id); } catch { /* skip */ }
+    }
+    // Séquences (steps[].pose)
+    const seqs = db.prepare("SELECT id, steps FROM sequences").all() as Array<{ id: string; steps: string }>;
+    const updSeq = db.prepare("UPDATE sequences SET steps = ? WHERE id = ?");
+    for (const s of seqs) {
+      try { const steps = JSON.parse(s.steps); shiftStepsPoses(steps); updSeq.run(JSON.stringify(steps), s.id); } catch { /* skip */ }
+    }
+    // Programmes (data.initPose + data.steps[].pose ; steps "ref" sans pose ignorés)
+    const progs = db.prepare("SELECT id, data FROM programs").all() as Array<{ id: string; data: string }>;
+    const updProg = db.prepare("UPDATE programs SET data = ? WHERE id = ?");
+    for (const pr of progs) {
+      try {
+        const data = JSON.parse(pr.data);
+        if (Array.isArray(data.initPose)) data.initPose = shiftTibiaPose(data.initPose);
+        shiftStepsPoses(data.steps);
+        updProg.run(JSON.stringify(data), pr.id);
+      } catch { /* skip */ }
+    }
+    // Profils (geometry.mountingOffsetsDeg + keyframes[].pose)
+    const profs = db.prepare("SELECT id, data FROM robot_profiles").all() as Array<{ id: string; data: string }>;
+    const updProf = db.prepare("UPDATE robot_profiles SET data = ? WHERE id = ?");
+    for (const rp of profs) {
+      try {
+        const data = JSON.parse(rp.data);
+        if (data.geometry && !Array.isArray(data.geometry.mountingOffsetsDeg)) {
+          data.geometry.mountingOffsetsDeg = DEFAULT_MOUNTING_OFFSETS;
+        }
+        if (Array.isArray(data.keyframes)) {
+          for (const kf of data.keyframes) {
+            if (kf && Array.isArray(kf.pose)) kf.pose = shiftTibiaPose(kf.pose);
+          }
+        }
+        updProf.run(JSON.stringify(data), rp.id);
+      } catch { /* skip */ }
+    }
+    db.exec(`PRAGMA user_version = ${MOUNTING_MIGRATION_VERSION}`);
+    db.exec("COMMIT");
+    console.log(
+      `[hexagram-api] migration offsets de montage : ${poses.length} pose(s), ${seqs.length} séquence(s), ${progs.length} programme(s), ${profs.length} profil(s) — tibia +90° (repère servo)`
+    );
+  } catch (e) {
+    db.exec("ROLLBACK");
+    console.error("[hexagram-api] migration offsets de montage ÉCHEC (rollback)", e);
+  }
+}
+runMountingOffsetMigration();
+
 // ── Administrateur central : microdav ────────────────────────────────────────
 // Promotion idempotente d'un compte existant (sans toucher au mot de passe).
 // microdav ne peut jamais perdre l'admin ni être désactivé/supprimé (cf. admin.ts).

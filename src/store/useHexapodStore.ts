@@ -546,6 +546,10 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         // Maquette 2D : présente => source de vérité ; absente (anciens profils)
         // => undefined => computeLegMounts retombe sur le calcul paramétrique.
         body2D: d.geometry.body2D,
+        // Offsets de montage : on prend EXACTEMENT ceux du profil. Absent (profil
+        // legacy non migré) => undefined => offset 0 (les poses restent géométriques
+        // tant que la migration serveur n'a pas tourné, donc aucun rendu cassé).
+        mountingOffsetsDeg: d.geometry.mountingOffsetsDeg,
       },
       keyframes: d.keyframes,
       mirrorEnabled: d.prefs.mirrorEnabled,

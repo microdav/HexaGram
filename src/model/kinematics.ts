@@ -1,7 +1,7 @@
 import { Matrix3, Matrix4, Quaternion, Vector3 } from "three";
 import { degToRad } from "./servo";
 import { servoIndex, type Pose } from "./pose";
-import type { HexapodGeometry, LegMount } from "./hexapod";
+import { mountingOffsetOf, type HexapodGeometry, type LegMount } from "./hexapod";
 
 /** Foot tip position expressed in the chassis-local frame. */
 export function computeFootTip(
@@ -9,9 +9,13 @@ export function computeFootTip(
   pose: Pose,
   geometry: HexapodGeometry
 ): Vector3 {
-  const coxaDeg = pose[servoIndex(mount.index, "coxa")];
-  const femurDeg = pose[servoIndex(mount.index, "femur")];
-  const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
+  // Angle géométrique = angle de pose (repère servo) + offset de montage.
+  const ci = servoIndex(mount.index, "coxa");
+  const fi = servoIndex(mount.index, "femur");
+  const ti = servoIndex(mount.index, "tibia");
+  const coxaDeg = pose[ci] + mountingOffsetOf(geometry, ci);
+  const femurDeg = pose[fi] + mountingOffsetOf(geometry, fi);
+  const tibiaDeg = pose[ti] + mountingOffsetOf(geometry, ti);
   const { coxa, femur, tibia } = geometry.segments;
 
   const m = new Matrix4()
@@ -227,9 +231,12 @@ const BODY_MASS_FRACTION = 0.6;
  * Each segment's mass is proportional to its length; mass center = segment midpoint.
  */
 function computeLegCom(mount: LegMount, pose: Pose, geometry: HexapodGeometry): Vector3 {
-  const coxaDeg = pose[servoIndex(mount.index, "coxa")];
-  const femurDeg = pose[servoIndex(mount.index, "femur")];
-  const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
+  const ci = servoIndex(mount.index, "coxa");
+  const fi = servoIndex(mount.index, "femur");
+  const ti = servoIndex(mount.index, "tibia");
+  const coxaDeg = pose[ci] + mountingOffsetOf(geometry, ci);
+  const femurDeg = pose[fi] + mountingOffsetOf(geometry, fi);
+  const tibiaDeg = pose[ti] + mountingOffsetOf(geometry, ti);
   const { coxa, femur, tibia } = geometry.segments;
 
   const mBase = new Matrix4()

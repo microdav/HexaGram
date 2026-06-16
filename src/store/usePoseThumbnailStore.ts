@@ -58,6 +58,10 @@ export function computeThumbnailContext(
     cy: r(geometry.cog.y),
     cz: r(geometry.cog.z),
     ll: geometry.legLayout ?? 'star',
+    // Offsets de montage : changent l'orientation rendue des segments → invalident.
+    mo: Array.isArray(geometry.mountingOffsetsDeg)
+      ? geometry.mountingOffsetsDeg.map((o) => Math.round(o))
+      : 0,
     // Ancrages 2D : font autorité sur les positions de pattes → doivent
     // invalider les vignettes quand la maquette change.
     b2: geometry.body2D?.anchors

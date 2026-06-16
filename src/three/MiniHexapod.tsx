@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { DoubleSide, Shape, Vector3 } from "three";
-import { computeLegMounts, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
+import { computeLegMounts, mountingOffsetOf, segmentWidthsOf, segmentHeightsOf, type HexapodGeometry, type LegMount } from "../model/hexapod";
 import { findServoType } from "../model/servoTypes";
 import { useProjectStore } from "../store/useProjectStore";
 import { makeTaperedBox } from "./legGeometry";
@@ -56,9 +56,13 @@ function MiniLeg({ mount, pose, geometry }: MiniLegProps) {
     [segs.tibia, segW.tibia, tibiaKnee, sh.tibiaFoot]
   );
   useEffect(() => () => tibiaGeo.dispose(), [tibiaGeo]);
-  const coxaDeg = pose[servoIndex(mount.index, "coxa")];
-  const femurDeg = pose[servoIndex(mount.index, "femur")];
-  const tibiaDeg = pose[servoIndex(mount.index, "tibia")];
+  // Angle géométrique = pose (repère servo) + offset de montage (cf. computeFootTip).
+  const ci = servoIndex(mount.index, "coxa");
+  const fi = servoIndex(mount.index, "femur");
+  const ti = servoIndex(mount.index, "tibia");
+  const coxaDeg = pose[ci] + mountingOffsetOf(geometry, ci);
+  const femurDeg = pose[fi] + mountingOffsetOf(geometry, fi);
+  const tibiaDeg = pose[ti] + mountingOffsetOf(geometry, ti);
   const jointR = 0.012;
 
   return (

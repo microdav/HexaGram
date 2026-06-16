@@ -10,20 +10,19 @@ export const servoIndex = (legIndex: number, joint: "coxa" | "femur" | "tibia"):
 };
 
 /**
- * Angle modèle (deg) où la position physique de référence d'une articulation est
- * la plus facile à identifier pour caler le zéro mécanique :
- *  - coxa : patte dans son axe (0°)
- *  - fémur : horizontal (0°)
- *  - tibia : perpendiculaire au fémur (−90°) — sur les montages courants c'est le
- *    centre du servo ; le tibia ne s'aligne jamais à plat avec le fémur.
+ * Angle **modèle** (repère servo, deg) de la position de référence = **centre du
+ * servo (0°)** pour toutes les articulations. L'offset de montage
+ * (`mountingOffsetsDeg`, cf. hexapod.ts) traduit ce 0 en géométrie 3D : coxa/fémur
+ * restent à 0° géométrique, le tibia rend perpendiculaire (offset −90°). Le « 0
+ * modèle » coïncide ainsi avec le centre physique du servo sur le robot.
  */
 export const JOINT_REFERENCE_DEG: Record<"coxa" | "femur" | "tibia", number> = {
   coxa: 0,
   femur: 0,
-  tibia: -90,
+  tibia: 0,
 };
 
-/** Pose de référence (repère par articulation) — pattes tendues, tibias perpendiculaires. */
+/** Pose de référence : tous les servos au centre (0°) — tibias perpendiculaires via l'offset. */
 export const referencePose = (): Pose => SERVOS.map((s) => JOINT_REFERENCE_DEG[s.joint]);
 
 export interface Keyframe {
