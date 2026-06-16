@@ -118,6 +118,8 @@ addColumnIfMissing("projects",       "preferences", "TEXT NOT NULL DEFAULT '{}'"
 // champs sont portés par chaque step à l'intérieur du JSON `steps`.
 addColumnIfMissing("poses",          "thumbnail",         "TEXT");
 addColumnIfMissing("poses",          "thumbnail_context", "TEXT");
+// Marque « pose de base » (stance de référence pour la génération de démarche).
+addColumnIfMissing("poses",          "is_base",           "INTEGER NOT NULL DEFAULT 0");
 // Droits d'administration et état d'activation des comptes.
 addColumnIfMissing("users",          "is_admin",          "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("users",          "is_active",         "INTEGER NOT NULL DEFAULT 1");

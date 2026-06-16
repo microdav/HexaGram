@@ -48,6 +48,11 @@ export interface SavedPose {
   /** Ordre dans la grille de la toolbox. */
   position: number;
   /**
+   * Marque cette pose comme **pose de base** (posture d'appui de référence) :
+   * proposée comme stance pour la génération de démarche (cf. gaitGenerator).
+   */
+  isBase?: boolean;
+  /**
    * Vignette PNG (dataURL) générée côté client et persistée pour réutilisation.
    * Validée à l'hydratation via `thumbnailContext` ; ignorée si le contexte
    * de rendu actuel (géométrie/gravité/transparence/caméra) a changé.

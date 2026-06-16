@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type DragEvent } from 'react';
+import { useState, useRef, useEffect, type DragEvent, type MouseEvent } from 'react';
 import { useSavedPosesStore } from '../store/useSavedPosesStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useSequencerStore } from '../store/useSequencerStore';
@@ -76,6 +76,13 @@ export function PosesContent() {
     setRenameId(null);
   };
 
+  // Marque/démarque une pose comme « pose de base » (stance pour la génération
+  // de démarche). N'altère pas la sélection (stopPropagation sur le clic carte).
+  const handleToggleBase = async (e: MouseEvent, p: SavedPose) => {
+    e.stopPropagation();
+    await useSavedPosesStore.getState().setBase(p.id, !p.isBase);
+  };
+
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirmDialog({
       title: 'Supprimer la pose',
@@ -146,7 +153,7 @@ export function PosesContent() {
             return (
               <div
                 key={p.id}
-                className={`pose-card${selectedPoseId === p.id ? ' selected' : ''}${dragOverIdx === idx && internalDragId !== p.id ? ' drag-over' : ''}${internalDragId === p.id ? ' dragging' : ''}`}
+                className={`pose-card${selectedPoseId === p.id ? ' selected' : ''}${p.isBase ? ' base' : ''}${dragOverIdx === idx && internalDragId !== p.id ? ' drag-over' : ''}${internalDragId === p.id ? ' dragging' : ''}`}
                 draggable={!isRenaming}
                 onDragStart={(e) => onPoseDragStart(e, p.id)}
                 onDragOver={(e) => onPoseDragOver(e, idx)}
@@ -197,6 +204,19 @@ export function PosesContent() {
                     +seq
                   </button>
                 )}
+                <button
+                  type="button"
+                  className={`pose-card-base${p.isBase ? ' on' : ''}`}
+                  onClick={(e) => handleToggleBase(e, p)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title={
+                    p.isBase
+                      ? "Pose de base (stance pour la génération de démarche) — cliquer pour retirer"
+                      : "Définir comme pose de base (stance pour la génération de démarche)"
+                  }
+                >
+                  {p.isBase ? "★" : "☆"}
+                </button>
                 <button
                   type="button"
                   className="pose-card-del"

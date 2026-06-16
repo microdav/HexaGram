@@ -31,6 +31,8 @@ interface SavedPosesState {
   add: (name: string, angles: Pose) => Promise<SavedPose>;
   rename: (id: string, name: string) => Promise<void>;
   updateAngles: (id: string, angles: Pose) => Promise<void>;
+  /** Marque/démarque une pose comme « pose de base » (stance pour la démarche). */
+  setBase: (id: string, isBase: boolean) => Promise<void>;
   remove: (id: string) => Promise<void>;
   reorder: (orderedIds: string[]) => Promise<void>;
   getById: (id: string) => SavedPose | undefined;
@@ -220,6 +222,18 @@ export const useSavedPosesStore = create<SavedPosesState>()(
               ? { ...p, angles: angles.slice(), thumbnail: null, thumbnailContext: null, updatedAt: now }
               : p
           ),
+        }));
+      },
+
+      setBase: async (id, isBase) => {
+        if (isBackend()) {
+          try {
+            await api.put(`/poses/${id}`, { isBase });
+          } catch { /* keep local change */ }
+        }
+        const now = Date.now();
+        set((s) => ({
+          poses: s.poses.map((p) => (p.id === id ? { ...p, isBase, updatedAt: now } : p)),
         }));
       },
 

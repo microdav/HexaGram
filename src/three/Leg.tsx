@@ -172,9 +172,9 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const servoIdOf = (k: JointKey): number => servoIndex(mount.index, k);
 
   const onEnter = (k: JointKey) => {
-    // Pendant un glisser (pied ou centre de gravité), le survol d'une
-    // articulation ne doit pas révéler son arc — le raycaster continue
-    // sinon de déclencher le survol et c'est gênant (PC comme tablette).
+    // Le survol ne révèle PLUS l'arc : l'affichage se fait au clic (toggle), cf.
+    // onJointClick/onTap. On garde le suivi des compteurs/timers pour que le
+    // masquage d'un arc épinglé ne se déclenche pas par erreur.
     const st = useHexapodStore.getState();
     if (st.footDragging || st.cogDragging) return;
     counts.current[k] += 1;
@@ -183,7 +183,6 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
       window.clearTimeout(t);
       timers.current[k] = null;
     }
-    setArcShown(servoIdOf(k), true);
   };
 
   const onLeave = (k: JointKey) => {
@@ -215,7 +214,8 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
       } else {
         setTabletServoEdit({ servoId: id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
       }
-    } else if (lastPointerType.current === "touch") {
+    } else {
+      // PC (et tactile hors mode tablette) : le clic bascule l'affichage de l'arc.
       onTap(k);
     }
   };

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type MeasureRef, type Shape2D } from "../model/hexapod";
+import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, defaultMountingOffsets, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type MeasureRef, type Shape2D } from "../model/hexapod";
 import { bakeRealShapes } from "../model/chassisBake";
 import { findServoType } from "../model/servoTypes";
 import { useProjectStore } from "./useProjectStore";
@@ -546,10 +546,14 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         // Maquette 2D : présente => source de vérité ; absente (anciens profils)
         // => undefined => computeLegMounts retombe sur le calcul paramétrique.
         body2D: d.geometry.body2D,
-        // Offsets de montage : on prend EXACTEMENT ceux du profil. Absent (profil
-        // legacy non migré) => undefined => offset 0 (les poses restent géométriques
-        // tant que la migration serveur n'a pas tourné, donc aucun rendu cassé).
-        mountingOffsetsDeg: d.geometry.mountingOffsetsDeg,
+        // Offsets de montage : ceux du profil, ou repli sur les défauts (tibia −90°)
+        // s'ils manquent. La migration « repère servo » est universelle ; un profil
+        // sans offset est donc un profil migré dont le champ a été perdu à un
+        // enregistrement (poses déjà en repère servo) — on le réinjecte pour assainir
+        // la donnée et éviter un tibia rendu à plat (cf. mountingOffsetOf).
+        mountingOffsetsDeg: Array.isArray(d.geometry.mountingOffsetsDeg)
+          ? d.geometry.mountingOffsetsDeg
+          : defaultMountingOffsets(),
       },
       keyframes: d.keyframes,
       mirrorEnabled: d.prefs.mirrorEnabled,

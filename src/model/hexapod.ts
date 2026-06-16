@@ -147,10 +147,22 @@ export function defaultMountingOffsets(): number[] {
   return Array.from({ length: 18 }, (_, i) => (i % 3 === 2 ? -90 : 0));
 }
 
-/** Offset de montage (deg) d'un servo ; 0 si absent (profil legacy non migré). */
+/**
+ * Offset de montage (deg) d'un servo. Repli sur l'offset PAR DÉFAUT (tibia −90°,
+ * reste 0) quand la géométrie n'a pas d'offset explicite.
+ *
+ * Pourquoi ce repli (et pas 0) : la migration « repère servo » est universelle
+ * (décale toutes les poses de +90° et pose `mountingOffsetsDeg`). Une géométrie
+ * sans `mountingOffsetsDeg` est donc une géométrie **migrée dont l'offset a été
+ * perdu** à un enregistrement (le champ peut repartir du store/Robot 2D sans être
+ * réinjecté), PAS un profil legacy — les poses sont déjà en repère servo. Sans ce
+ * repli, le tibia s'affiche à plat à 0° au lieu de perpendiculaire, et la 3D ne
+ * correspond plus au robot (la pose brute, elle, part toujours en repère servo).
+ */
 export function mountingOffsetOf(geom: HexapodGeometry, servoId: number): number {
   const arr = geom.mountingOffsetsDeg;
-  return Array.isArray(arr) && Number.isFinite(arr[servoId]) ? arr[servoId] : 0;
+  if (Array.isArray(arr) && Number.isFinite(arr[servoId])) return arr[servoId];
+  return servoId % 3 === 2 ? -90 : 0;
 }
 
 export interface LegMount {

@@ -14,6 +14,7 @@ import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collision
 import { useProfilesStore } from "../store/useProfilesStore";
 import { useToastStore } from "../store/useToastStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
+import { useSavedPosesStore } from "../store/useSavedPosesStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import {
   generateGait,
@@ -259,6 +260,8 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const [genStepFraction, setGenStepFraction] = useState(0.6);
   const [genLiftFraction, setGenLiftFraction] = useState(0.5);
   const [genUseSoft, setGenUseSoft] = useState(true);
+  // Pose de base choisie pour la stance de la démarche ("" = stance intégrée).
+  const [genBasePoseId, setGenBasePoseId] = useState("");
   const [generating, setGenerating] = useState(false);
 
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
@@ -278,6 +281,13 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const setWeightConfigStore = useHexapodStore((s) => s.setWeightConfig);
 
   const showToast = useToastStore((s) => s.show);
+
+  const savedPoses = useSavedPosesStore((s) => s.poses);
+  const basePoses = useMemo(() => savedPoses.filter((p) => p.isBase), [savedPoses]);
+  const genBasePose = useMemo(
+    () => basePoses.find((p) => p.id === genBasePoseId)?.angles,
+    [basePoses, genBasePoseId]
+  );
 
   const sequences = useSavedSequencesStore((s) => s.sequences);
   const sequencesLoading = useSavedSequencesStore((s) => s.loading);
@@ -304,10 +314,15 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setGenStepFraction(0.6);
     setGenLiftFraction(0.5);
     setGenUseSoft(true);
+    setGenBasePoseId("");
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (open && tab === "sequences") listSequences();
+    if (open && tab === "sequences") {
+      listSequences();
+      // Charge les poses pour proposer une « pose de base » au générateur.
+      useSavedPosesStore.getState().list().catch(() => {});
+    }
   }, [open, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCalibChange = (
@@ -344,12 +359,13 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
           stepFraction: genStepFraction,
           liftFraction: genLiftFraction,
           useSoftLimits: genUseSoft,
+          basePose: genBasePose,
         });
         result[gt] = Math.min(...stabilityScores);
       }
     }
     return result;
-  }, [showGenerator, selectedGaits, genStepFraction, genLiftFraction, genUseSoft, storeGeometry, calibration]);
+  }, [showGenerator, selectedGaits, genStepFraction, genLiftFraction, genUseSoft, storeGeometry, calibration, genBasePose]);
 
   const handleLoadSequence = async (id: string) => {
     const seq = await loadSequenceById(id);
@@ -361,6 +377,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setGenerating(true);
     try {
       const mounts = computeLegMounts(storeGeometry);
+      let lastSeq: Awaited<ReturnType<typeof saveSequence>> | undefined;
       for (const gt of selectedGaits) {
         const { steps } = generateGait({
           geometry: storeGeometry,
@@ -370,9 +387,14 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
           stepFraction: genStepFraction,
           liftFraction: genLiftFraction,
           useSoftLimits: genUseSoft,
+          basePose: genBasePose,
         });
-        await saveSequence(gaitSequenceName(gt, activeProfile?.name), steps);
+        lastSeq = await saveSequence(gaitSequenceName(gt, activeProfile?.name), steps);
       }
+      // Charge la dernière séquence générée dans le séquenceur : `save()` la rend
+      // active mais ne pousse pas ses étapes ; sans ça la grille reste vide (le
+      // <select> pointe déjà dessus → re-sélectionner ne déclenche pas onChange).
+      if (lastSeq) loadSteps(lastSeq.steps, lastSeq.name);
       setShowGenerator(false);
       await listSequences();
       showToast(`${selectedGaits.size} séquence(s) générée(s)`);
@@ -660,6 +682,26 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                            "Wave — 6 étapes (séquentiel patte par patte)"}
                         </label>
                       ))}
+                    </div>
+                  </div>
+
+                  <div className="ggt-section">
+                    <div className="ggt-section-label">Pose de base (stance)</div>
+                    <select
+                      className="ggt-base-select"
+                      value={genBasePoseId}
+                      onChange={(e) => setGenBasePoseId(e.target.value)}
+                      aria-label="Pose de base pour la démarche"
+                    >
+                      <option value="">Stance intégrée (fémur −20°, tibia −60°)</option>
+                      {basePoses.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <div className="ggt-base-hint">
+                      {basePoses.length === 0
+                        ? "Astuce : marquez une pose comme « base » (★) dans Conception → Poses pour l'utiliser ici."
+                        : "La démarche partira de cette posture d'appui (par patte) au lieu de la stance intégrée."}
                     </div>
                   </div>
 

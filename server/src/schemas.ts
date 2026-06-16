@@ -180,6 +180,7 @@ export const CreatePoseSchema = z.object({
   position: z.number().int().nonnegative().optional(),
   thumbnail: z.string().nullable().optional(),
   thumbnailContext: z.string().nullable().optional(),
+  isBase: z.boolean().optional(),
 });
 
 export const UpdatePoseSchema = z.object({
@@ -188,6 +189,7 @@ export const UpdatePoseSchema = z.object({
   position: z.number().int().nonnegative().optional(),
   thumbnail: z.string().nullable().optional(),
   thumbnailContext: z.string().nullable().optional(),
+  isBase: z.boolean().optional(),
 });
 
 export const ReorderPosesSchema = z.object({

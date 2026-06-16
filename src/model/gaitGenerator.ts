@@ -17,6 +17,14 @@ export interface GaitGeneratorConfig {
   /** Fraction of the maximum achievable lift height (0.1–1.0). */
   liftFraction: number;
   useSoftLimits: boolean;
+  /**
+   * Pose de base (18 angles, repère servo) servant de **stance** : chaque patte
+   * adopte ses coxa/fémur/tibia comme posture d'appui, la démarche n'ajoutant que
+   * le débattement (coxa) et le lever (fémur/tibia). Absente → stance intégrée
+   * (fémur −20°, tibia −60° géométriques). Permet d'accorder la démarche à la
+   * posture réelle du robot.
+   */
+  basePose?: number[];
 }
 
 export interface GaitResult {
@@ -70,29 +78,28 @@ function getLimits(
 
 type Slot = "U" | "fwd" | "mid" | "bck";
 
-interface GaitParams {
-  swingAngle: number;
-  stanceFemur: number;
-  stanceTibia: number;
-  liftFemur: number;
-  liftTibia: number;
-}
-
-/** Paramètres indépendants du débattement coxa — calculés une seule fois par démarche. */
+/**
+ * Posture d'appui PAR PATTE, indépendante du débattement coxa — calculée une
+ * seule fois par démarche. Dérivée de la `basePose` si fournie (chaque patte
+ * adopte ses coxa/fémur/tibia), sinon de la stance intégrée.
+ */
 interface GaitBase {
   /** Débattement coxa maximal autorisé par les butées servo (plafonné à 45°). */
   coxaCap: number;
-  stanceFemur: number;
-  stanceTibia: number;
-  liftFemur: number;
-  liftTibia: number;
+  /** Coxa de repos par patte (0 sans pose de base). */
+  baseCoxa: number[];
+  stanceFemur: number[];
+  stanceTibia: number[];
+  liftFemur: number[];
+  liftTibia: number[];
 }
 
 function computeGaitBase(
   calibration: Record<number, ServoCalibration>,
   useSoft: boolean,
   liftFraction: number,
-  geometry: HexapodGeometry
+  geometry: HexapodGeometry,
+  basePose?: number[]
 ): GaitBase {
   // Coxa: most conservative range across all 6 legs, plafonné à 45°.
   let minCoxaRange = Infinity;
@@ -102,64 +109,61 @@ function computeGaitBase(
   }
   const coxaCap = Math.min(minCoxaRange, 45);
 
-  // Femur / tibia: most restrictive combined range across all 6 legs
-  let femurMin = FALLBACK_MIN, femurMax = FALLBACK_MAX;
-  let tibiaMin = FALLBACK_MIN, tibiaMax = FALLBACK_MAX;
+  // Stance intégrée (repère servo) : la consigne géométrique standard (fémur −20°,
+  // tibia −60°) moins l'offset de montage. Utilisée patte par patte si aucune pose
+  // de base n'est fournie. La géométrie produite reste identique (offset en FK).
+  const femurOffset = mountingOffsetOf(geometry, 1);
+  const tibiaOffset = mountingOffsetOf(geometry, 2);
+  const defStanceFemur = -20 - femurOffset;
+  const defStanceTibia = -60 - tibiaOffset;
+
+  const baseCoxa: number[] = [];
+  const stanceFemur: number[] = [];
+  const stanceTibia: number[] = [];
+  const liftFemur: number[] = [];
+  const liftTibia: number[] = [];
   for (let leg = 0; leg < 6; leg++) {
     const fLim = getLimits(leg * 3 + 1, calibration, useSoft);
     const tLim = getLimits(leg * 3 + 2, calibration, useSoft);
-    femurMin = Math.max(femurMin, fLim.min);
-    femurMax = Math.min(femurMax, fLim.max);
-    tibiaMin = Math.max(tibiaMin, tLim.min);
-    tibiaMax = Math.min(tibiaMax, tLim.max);
+    const bc = basePose && Number.isFinite(basePose[leg * 3]) ? basePose[leg * 3] : 0;
+    const rawF = basePose && Number.isFinite(basePose[leg * 3 + 1]) ? basePose[leg * 3 + 1] : defStanceFemur;
+    const rawT = basePose && Number.isFinite(basePose[leg * 3 + 2]) ? basePose[leg * 3 + 2] : defStanceTibia;
+    const sf = clampAngle(rawF, fLim.min, fLim.max);
+    const st = clampAngle(rawT, tLim.min, tLim.max);
+    baseCoxa.push(bc);
+    stanceFemur.push(sf);
+    stanceTibia.push(st);
+    // Lift: shift from stance by 40° (femur) and 30° (tibia) proportional to liftFraction.
+    liftFemur.push(clampAngle(sf + 40 * liftFraction, fLim.min, fLim.max));
+    liftTibia.push(clampAngle(st + 30 * liftFraction, tLim.min, tLim.max));
   }
 
-  // Neutral stance en **repère servo** : la consigne géométrique standard (fémur
-  // −20°, tibia −60°) moins l'offset de montage, clampée aux butées (servo).
-  // La géométrie produite reste identique (offset rajouté dans la FK).
-  const femurOffset = mountingOffsetOf(geometry, 1);
-  const tibiaOffset = mountingOffsetOf(geometry, 2);
-  const stanceFemur = clampAngle(-20 - femurOffset, femurMin, femurMax);
-  const stanceTibia = clampAngle(-60 - tibiaOffset, tibiaMin, tibiaMax);
-
-  // Lift: shift from stance by 40° (femur) and 30° (tibia) proportional to liftFraction
-  const liftFemur = clampAngle(stanceFemur + 40 * liftFraction, femurMin, femurMax);
-  const liftTibia = clampAngle(stanceTibia + 30 * liftFraction, tibiaMin, tibiaMax);
-
-  return { coxaCap, stanceFemur, stanceTibia, liftFemur, liftTibia };
-}
-
-function paramsWithSwing(base: GaitBase, swingAngle: number): GaitParams {
-  return {
-    swingAngle,
-    stanceFemur: base.stanceFemur,
-    stanceTibia: base.stanceTibia,
-    liftFemur: base.liftFemur,
-    liftTibia: base.liftTibia,
-  };
+  return { coxaCap, baseCoxa, stanceFemur, stanceTibia, liftFemur, liftTibia };
 }
 
 /** Returns [coxa, femur, tibia] for a leg in a given gait slot. */
 function slotAngles(
   slot: Slot,
   legIndex: number,
-  p: GaitParams
+  base: GaitBase,
+  swing: number
 ): [number, number, number] {
-  // Left legs (0-2): forward = negative coxa; right legs (3-5): forward = positive coxa
+  // Left legs (0-2): forward = negative coxa; right legs (3-5): forward = positive coxa.
   const sign = legIndex < 3 ? -1 : 1;
+  const c = base.baseCoxa[legIndex]; // coxa de repos (pose de base), 0 par défaut
   switch (slot) {
-    case "U":   return [0, p.liftFemur, p.liftTibia];
-    case "fwd": return [sign * p.swingAngle, p.stanceFemur, p.stanceTibia];
-    case "mid": return [0, p.stanceFemur, p.stanceTibia];
-    case "bck": return [-sign * p.swingAngle, p.stanceFemur, p.stanceTibia];
+    case "U":   return [c, base.liftFemur[legIndex], base.liftTibia[legIndex]];
+    case "fwd": return [c + sign * swing, base.stanceFemur[legIndex], base.stanceTibia[legIndex]];
+    case "mid": return [c, base.stanceFemur[legIndex], base.stanceTibia[legIndex]];
+    case "bck": return [c - sign * swing, base.stanceFemur[legIndex], base.stanceTibia[legIndex]];
   }
 }
 
 /** Builds a flat 18-value pose from 6 slot assignments [L0…L5]. */
-function buildPose(slots: Slot[], p: GaitParams): number[] {
+function buildPose(slots: Slot[], base: GaitBase, swing: number): number[] {
   const pose = new Array<number>(18);
   for (let leg = 0; leg < 6; leg++) {
-    const [coxa, femur, tibia] = slotAngles(slots[leg], leg, p);
+    const [coxa, femur, tibia] = slotAngles(slots[leg], leg, base, swing);
     pose[leg * 3]     = coxa;
     pose[leg * 3 + 1] = femur;
     pose[leg * 3 + 2] = tibia;
@@ -167,53 +171,53 @@ function buildPose(slots: Slot[], p: GaitParams): number[] {
   return pose;
 }
 
-function makeStep(name: string, slots: Slot[], p: GaitParams): SequencerStep {
-  return { id: uid(), name, type: "defined", pose: buildPose(slots, p) };
+function makeStep(name: string, slots: Slot[], base: GaitBase, swing: number): SequencerStep {
+  return { id: uid(), name, type: "defined", pose: buildPose(slots, base, swing) };
 }
 
 // ── Gait patterns ─────────────────────────────────────────────────────────────
 // Each entry is an array of 6 slots (L0, L1, L2, L3, L4, L5).
 
-function tripodSteps(p: GaitParams): SequencerStep[] {
+function tripodSteps(base: GaitBase, swing: number): SequencerStep[] {
   // Group A: L0, L2, L4 — Group B: L1, L3, L5
   return [
-    makeStep("A avant, B levé",    ["fwd","U",  "fwd","U",  "fwd","U"  ], p),
-    makeStep("A arrière, B avant", ["bck","fwd","bck","fwd","bck","fwd"], p),
-    makeStep("A levé, B avant",    ["U",  "fwd","U",  "fwd","U",  "fwd"], p),
-    makeStep("A avant, B arrière", ["fwd","bck","fwd","bck","fwd","bck"], p),
+    makeStep("A avant, B levé",    ["fwd","U",  "fwd","U",  "fwd","U"  ], base, swing),
+    makeStep("A arrière, B avant", ["bck","fwd","bck","fwd","bck","fwd"], base, swing),
+    makeStep("A levé, B avant",    ["U",  "fwd","U",  "fwd","U",  "fwd"], base, swing),
+    makeStep("A avant, B arrière", ["fwd","bck","fwd","bck","fwd","bck"], base, swing),
   ];
 }
 
-function rippleSteps(p: GaitParams): SequencerStep[] {
+function rippleSteps(base: GaitBase, swing: number): SequencerStep[] {
   // Diagonal pairs: A={L0,L5}, B={L2,L3}, C={L1,L4}
   // Stance progression: fwd → mid → bck → bck (4 steps)
   return [
-    makeStep("Paire A levée",     ["U",  "mid","bck","bck","mid","U"  ], p),
-    makeStep("Paire A atterrit",  ["fwd","bck","bck","bck","bck","fwd"], p),
-    makeStep("Paire B levée",     ["mid","bck","U",  "U",  "bck","mid"], p),
-    makeStep("Paire B atterrit",  ["bck","bck","fwd","fwd","bck","bck"], p),
-    makeStep("Paire C levée",     ["bck","U",  "mid","mid","U",  "bck"], p),
-    makeStep("Paire C atterrit",  ["bck","fwd","bck","bck","fwd","bck"], p),
+    makeStep("Paire A levée",     ["U",  "mid","bck","bck","mid","U"  ], base, swing),
+    makeStep("Paire A atterrit",  ["fwd","bck","bck","bck","bck","fwd"], base, swing),
+    makeStep("Paire B levée",     ["mid","bck","U",  "U",  "bck","mid"], base, swing),
+    makeStep("Paire B atterrit",  ["bck","bck","fwd","fwd","bck","bck"], base, swing),
+    makeStep("Paire C levée",     ["bck","U",  "mid","mid","U",  "bck"], base, swing),
+    makeStep("Paire C atterrit",  ["bck","fwd","bck","bck","fwd","bck"], base, swing),
   ];
 }
 
-function waveSteps(p: GaitParams): SequencerStep[] {
+function waveSteps(base: GaitBase, swing: number): SequencerStep[] {
   // Lift order: L0 → L3 → L1 → L4 → L2 → L5
   // Progression on ground: fwd → mid → mid → bck → bck (5-stance cycle)
   return [
-    makeStep("L0 levée (FL)", ["U",  "bck","mid","bck","mid","fwd"], p),
-    makeStep("L3 levée (FR)", ["fwd","bck","mid","U",  "bck","mid"], p),
-    makeStep("L1 levée (ML)", ["mid","U",  "bck","fwd","bck","mid"], p),
-    makeStep("L4 levée (MR)", ["mid","fwd","bck","mid","U",  "bck"], p),
-    makeStep("L2 levée (RL)", ["bck","mid","U",  "mid","fwd","bck"], p),
-    makeStep("L5 levée (RR)", ["bck","mid","fwd","bck","mid","U"  ], p),
+    makeStep("L0 levée (FL)", ["U",  "bck","mid","bck","mid","fwd"], base, swing),
+    makeStep("L3 levée (FR)", ["fwd","bck","mid","U",  "bck","mid"], base, swing),
+    makeStep("L1 levée (ML)", ["mid","U",  "bck","fwd","bck","mid"], base, swing),
+    makeStep("L4 levée (MR)", ["mid","fwd","bck","mid","U",  "bck"], base, swing),
+    makeStep("L2 levée (RL)", ["bck","mid","U",  "mid","fwd","bck"], base, swing),
+    makeStep("L5 levée (RR)", ["bck","mid","fwd","bck","mid","U"  ], base, swing),
   ];
 }
 
-function buildSteps(gaitType: GaitType, p: GaitParams): SequencerStep[] {
-  return gaitType === "tripod" ? tripodSteps(p)
-       : gaitType === "ripple" ? rippleSteps(p)
-       : waveSteps(p);
+function buildSteps(gaitType: GaitType, base: GaitBase, swing: number): SequencerStep[] {
+  return gaitType === "tripod" ? tripodSteps(base, swing)
+       : gaitType === "ripple" ? rippleSteps(base, swing)
+       : waveSteps(base, swing);
 }
 
 // ── Stability score computation ───────────────────────────────────────────────
@@ -245,7 +249,7 @@ function maxStableSwing(
   mounts: LegMount[]
 ): number {
   const isStable = (swing: number): boolean =>
-    buildSteps(gaitType, paramsWithSwing(base, swing)).every((s) => {
+    buildSteps(gaitType, base, swing).every((s) => {
       const bt = computeBodyTransform(s.pose, geometry, mounts, true);
       return bt.cogInside && bodyTiltRad(bt.quaternion) <= TILT_STABLE;
     });
@@ -327,17 +331,16 @@ function computeStabilityScores(
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function generateGait(config: GaitGeneratorConfig): GaitResult {
-  const { geometry, legMounts, calibration, gaitType, stepFraction, liftFraction, useSoftLimits } = config;
+  const { geometry, legMounts, calibration, gaitType, stepFraction, liftFraction, useSoftLimits, basePose } = config;
 
-  const base = computeGaitBase(calibration, useSoftLimits, liftFraction, geometry);
+  const base = computeGaitBase(calibration, useSoftLimits, liftFraction, geometry, basePose);
   // Débattement réellement tenable pour cette géométrie + démarche ; `stepFraction`
   // (0.1–1.0) en sélectionne une fraction. Garantit des séquences qui ne basculent
   // pas et rend le curseur « amplitude de pas » utile sur toute sa course.
   const safeSwing = maxStableSwing(gaitType, base, geometry, legMounts);
   const swingAngle = Math.max(0, Math.min(1, stepFraction)) * safeSwing;
-  const params = paramsWithSwing(base, swingAngle);
 
-  const steps = buildSteps(gaitType, params);
+  const steps = buildSteps(gaitType, base, swingAngle);
   const stabilityScores = computeStabilityScores(steps, geometry, legMounts);
 
   return { steps, stabilityScores };
