@@ -40,6 +40,10 @@ export function RobotLinkContent() {
   const disconnect = useSerialStore((s) => s.disconnect);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const sendPose = useSerialStore((s) => s.sendPose);
+  const liveMirror = useSerialStore((s) => s.liveMirror);
+  const setLiveMirror = useSerialStore((s) => s.setLiveMirror);
+  const mirrorOnRelease = useSerialStore((s) => s.mirrorOnRelease);
+  const setMirrorOnRelease = useSerialStore((s) => s.setMirrorOnRelease);
 
   const pose = useHexapodStore((s) => s.pose);
 
@@ -150,6 +154,37 @@ export function RobotLinkContent() {
           >
             ⊹ Pose de référence
           </button>
+
+          <div className="robotlink-sep" />
+
+          <label className="robotlink-live">
+            <input
+              type="checkbox"
+              checked={liveMirror}
+              disabled={boundCount === 0}
+              onChange={(e) => setLiveMirror(e.target.checked)}
+            />
+            <span>Mode Live (miroir 3D → robot)</span>
+            {liveMirror && <span className="robotlink-live-dot" title="Miroir actif" />}
+          </label>
+
+          {liveMirror && (
+            <label className="robotlink-live robotlink-live-sub">
+              <input
+                type="checkbox"
+                checked={mirrorOnRelease}
+                onChange={(e) => setMirrorOnRelease(e.target.checked)}
+              />
+              <span>Envoyer en fin de mouvement (au relâchement)</span>
+            </label>
+          )}
+
+          <div className="robotlink-note">
+            {liveMirror && mirrorOnRelease
+              ? "La position finale est envoyée au relâchement de la souris (moins de saccades)."
+              : "La pose 3D est streamée en continu au robot (~25 Hz, envoi groupé) — peut saccader."}{" "}
+            Décochez « Mode Live » ou « Arrêt » pour stopper.
+          </div>
 
           <div className="robotlink-meta">
             {boundCount} / {SERVOS.length} servos câblés · {protocol.label}

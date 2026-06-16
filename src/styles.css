@@ -5532,6 +5532,15 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .robotlink-note.warn { background: rgba(230, 162, 60, 0.12); color: #e6a23c; }
 .app.tablet .robotlink-row select { padding: 8px; font-size: 15px; }
 
+/* Toggle « Mode Live » (miroir 3D → robot) */
+.robotlink-live { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.robotlink-live input { cursor: pointer; }
+.robotlink-live-dot {
+  width: 8px; height: 8px; border-radius: 50%; margin-left: auto;
+  background: #34d399; animation: electro-pulse 1s infinite;
+}
+.robotlink-live-sub { padding-left: 22px; color: var(--text-dim); }
+
 .electro-globals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .electro-hint { font-size: 12px; color: var(--text-dim); flex: 1 1 260px; }
 

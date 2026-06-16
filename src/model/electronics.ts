@@ -125,6 +125,24 @@ export function angleToPulseUs(
   return Math.round(us);
 }
 
+/**
+ * Borne un angle de commande (deg, repère servo) aux **butées calibrées** du servo
+ * (`minDeg`/`maxDeg`), avec repli sur la plage du modèle (±90°) si non définies.
+ * À appliquer AVANT l'envoi d'une pose (Conception 3D / miroir live / séquence)
+ * pour ne jamais forcer un servo au-delà de sa course réglée. NB : ne pas
+ * l'appliquer au jog de calibration (sinon impossible de repousser une butée).
+ */
+export function clampToServoLimits(
+  deg: number,
+  binding: Pick<ServoBinding, "minDeg" | "maxDeg">,
+  servoId: number
+): number {
+  const def = SERVOS[servoId];
+  const lo = binding.minDeg ?? def?.minDeg ?? -90;
+  const hi = binding.maxDeg ?? def?.maxDeg ?? 90;
+  return Math.max(lo, Math.min(hi, deg));
+}
+
 /** Résout les specs servo/contrôleur depuis les ids matériel du projet. */
 export function resolveHardwareSpecs(hardware: {
   servoTypeId: string | null;
@@ -149,6 +167,12 @@ export interface SerialProtocol {
   label: string;
   /** Ordre de position : canal → impulsion µs (timeMs = durée de transition). */
   move(channel: number, pulseUs: number, timeMs?: number): string;
+  /**
+   * Ordre de position GROUPÉ : plusieurs canaux en une seule commande. Sur le
+   * SSC-32U, tous les servos démarrent/arrivent ensemble (un seul `T`) — idéal
+   * pour le miroir live (un seul write au lieu de 18). `timeMs` = transition.
+   */
+  moveGroup(channels: { ch: number; us: number }[], timeMs?: number): string;
   /** Relâchement d'un canal (impulsion nulle = couple coupé sur SSC-32U / firmwares compatibles). */
   release(channel: number): string;
 }
@@ -158,6 +182,9 @@ export const SSC32U_PROTOCOL: SerialProtocol = {
   id: "ssc32u",
   label: "SSC-32U (ASCII)",
   move: (ch, us, t = 0) => `#${ch} P${us}${t > 0 ? ` T${t}` : ""}\r`,
+  // Une seule ligne `#0 P.. #1 P.. … T<ms>\r` : mouvement synchronisé.
+  moveGroup: (channels, t = 0) =>
+    channels.map((c) => `#${c.ch} P${c.us}`).join(" ") + (t > 0 ? ` T${t}` : "") + "\r",
   release: (ch) => `#${ch} P0\r`,
 };
 
@@ -170,6 +197,8 @@ export const GENERIC_ASCII_PROTOCOL: SerialProtocol = {
   id: "generic-ascii",
   label: "Générique ASCII (firmware custom)",
   move: (ch, us) => `#${ch}P${us}\n`,
+  // Firmware ligne-par-ligne : on concatène les lignes en un seul write.
+  moveGroup: (channels) => channels.map((c) => `#${c.ch}P${c.us}`).join("\n") + "\n",
   release: (ch) => `#${ch}P0\n`,
 };
 

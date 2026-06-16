@@ -1,6 +1,25 @@
-# Idée — Reproduction live de l'espace 3D vers le robot connecté
+# Reproduction live de l'espace 3D vers le robot connecté
 
-Statut : **à implémenter** (prochaine étape).
+Statut : **implémenté** (v1).
+
+## Implémentation (v1)
+
+- Toggle **« Mode Live (miroir 3D → robot) »** dans la boîte [Liaison robot](../src/ui/RobotLinkPanel.tsx)
+  (`useSerialStore.liveMirror`, persisté localStorage). Indicateur point vert pulsé quand actif.
+- [useSerialStore](../src/store/useSerialStore.ts) : abonnement **unique** à `useHexapodStore.pose`
+  (agnostique de la source), throttle *trailing-edge* ~25 Hz (`MIRROR_INTERVAL_MS=40`), envoi
+  **groupé** `sendPoseLive` (un seul write, T=0) — pas de toast/log par trame.
+- Envoi groupé : `SerialProtocol.moveGroup` ([electronics.ts](../src/model/electronics.ts)) — SSC-32U
+  `#0 P.. #1 P.. … \r` (mouvement synchronisé), générique = lignes concaténées.
+- À l'activation, la pose courante est poussée immédiatement (amorçage).
+- Sous-option **« Envoyer en fin de mouvement (au relâchement) »** (cochée par défaut) :
+  n'envoie que la position finale au `pointerup` global (un seul envoi, sans saccades) ;
+  décochée = stream continu ~25 Hz. `useSerialStore.mirrorOnRelease`.
+- **Sécurité butées** : tout envoi de pose (`sendPose` + `sendPoseLive`) clampe l'angle aux
+  butées calibrées `minDeg/maxDeg` (`clampToServoLimits`, repli ±90°) — jamais de force au-delà
+  de la course réglée. Non appliqué au jog de calibration `sendServoAngle` (sinon impossible de
+  repousser une butée dans l'assistant).
+- Reste à faire éventuel : arbitrage du `T` selon la source (lecture de séquence vs manuel).
 
 ## Besoin
 

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { SerialLink, isWebSerialSupported } from "../serial/webSerial";
 import {
   angleToPulseUs,
+  clampToServoLimits,
   protocolForController,
   resolveHardwareSpecs,
   defaultBinding,
@@ -10,6 +11,7 @@ import {
 } from "../model/electronics";
 import { useProjectStore } from "./useProjectStore";
 import { useToastStore } from "./useToastStore";
+import { useHexapodStore } from "./useHexapodStore";
 
 export type SerialStatus =
   | "unsupported"
@@ -54,6 +56,14 @@ interface SerialState {
   /** Panneau console bas : ouvert / hauteur (px), persistés localement. */
   consoleOpen: boolean;
   consoleHeight: number;
+  /** Miroir live : la pose 3D (useHexapodStore.pose) est streamée au robot en
+   *  temps réel tant que ce mode est actif ET la carte connectée. Persisté. */
+  liveMirror: boolean;
+  /** Miroir live : n'envoyer qu'EN FIN DE MOUVEMENT (au relâchement souris) plutôt
+   *  qu'en continu — supprime les saccades. Défaut activé. Persisté. */
+  mirrorOnRelease: boolean;
+  /** Horodatage (ms) du dernier envoi du miroir live — indicateur d'activité UI. */
+  lastMirrorAt: number | null;
   /** Angle de test logique courant par servo (éphémère, non persisté). */
   testAngles: Record<number, number>;
   /** Servo en cours d'identification (wiggle) — pour feedback UI. */
@@ -63,6 +73,10 @@ interface SerialState {
   setTarget: (t: ConnTarget) => void;
   setConsoleOpen: (v: boolean) => void;
   setConsoleHeight: (h: number) => void;
+  /** Active/désactive le miroir live (envoie la pose courante à l'activation si connecté). */
+  setLiveMirror: (v: boolean) => void;
+  /** Bascule « envoyer en fin de mouvement » du miroir live. */
+  setMirrorOnRelease: (v: boolean) => void;
   clearLog: () => void;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -78,6 +92,11 @@ interface SerialState {
    * servos câblés. `timeMs` > 0 demande une transition douce (T sur SSC-32U).
    */
   sendPose: (pose: number[], timeMs?: number) => Promise<void>;
+  /**
+   * Envoi GROUPÉ et silencieux d'une pose (un seul write, T=0) pour le miroir
+   * live haute fréquence — pas de toast, pas de log par trame (sinon inondation).
+   */
+  sendPoseLive: (pose: number[]) => Promise<void>;
   /** Arrêt d'urgence : coupe le couple de tous les canaux liés. */
   releaseAll: () => Promise<void>;
   /** Fait osciller un servo pour l'identifier physiquement. */
@@ -131,6 +150,39 @@ function readConsole(): { open: boolean; height: number } {
 function writeConsole(open: boolean, height: number): void {
   try {
     localStorage.setItem(CONSOLE_KEY, JSON.stringify({ open, height }));
+  } catch {
+    /* ignore */
+  }
+}
+
+const LIVE_MIRROR_KEY = "hexagram.serial.liveMirror";
+function readLiveMirror(): boolean {
+  try {
+    return localStorage.getItem(LIVE_MIRROR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeLiveMirror(v: boolean): void {
+  try {
+    localStorage.setItem(LIVE_MIRROR_KEY, v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+const MIRROR_RELEASE_KEY = "hexagram.serial.mirrorOnRelease";
+function readMirrorOnRelease(): boolean {
+  // Défaut activé : seul "0" explicite désactive (moins de saccades par défaut).
+  try {
+    return localStorage.getItem(MIRROR_RELEASE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeMirrorOnRelease(v: boolean): void {
+  try {
+    localStorage.setItem(MIRROR_RELEASE_KEY, v ? "1" : "0");
   } catch {
     /* ignore */
   }
@@ -216,6 +268,9 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   rxByteCount: 0,
   consoleOpen: _console.open,
   consoleHeight: _console.height,
+  liveMirror: readLiveMirror(),
+  mirrorOnRelease: readMirrorOnRelease(),
+  lastMirrorAt: null,
   testAngles: {},
   identifying: null,
 
@@ -245,6 +300,21 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   setConsoleHeight: (h) => {
     writeConsole(get().consoleOpen, h);
     set({ consoleHeight: h });
+  },
+
+  setLiveMirror: (v) => {
+    writeLiveMirror(v);
+    set({ liveMirror: v });
+    // À l'activation, on pousse immédiatement la pose 3D courante (sinon il faut
+    // bouger un servo pour amorcer le miroir).
+    if (v && get().status === "connected") {
+      void get().sendPoseLive(useHexapodStore.getState().pose);
+    }
+  },
+
+  setMirrorOnRelease: (v) => {
+    writeMirrorOnRelease(v);
+    set({ mirrorOnRelease: v });
   },
 
   clearLog: () => set({ log: [], rxByteCount: 0 }),
@@ -325,7 +395,8 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     for (let id = 0; id < 18; id++) {
       const binding = electronics.bindings[id] ?? defaultBinding(id);
       if (binding.channel == null) continue;
-      const deg = Number.isFinite(pose[id]) ? pose[id] : 0;
+      const raw = Number.isFinite(pose[id]) ? pose[id] : 0;
+      const deg = clampToServoLimits(raw, binding, id); // sécurité : ne pas forcer au-delà des butées
       const us = angleToPulseUs(deg, binding, servo, controller);
       const cmd = protocol.move(binding.channel, us, timeMs);
       try {
@@ -342,6 +413,32 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       }
     }
     useToastStore.getState().show(`Position envoyée (${count} servo${count > 1 ? "s" : ""})`);
+  },
+
+  sendPoseLive: async (pose) => {
+    if (get().status !== "connected") return;
+    const { protocol, servo, controller, electronics } = hardwareContext();
+    if (!electronics) return;
+    const channels: { ch: number; us: number }[] = [];
+    const nextTest: Record<number, number> = {};
+    for (let id = 0; id < 18; id++) {
+      const binding = electronics.bindings[id] ?? defaultBinding(id);
+      if (binding.channel == null) continue;
+      const raw = Number.isFinite(pose[id]) ? pose[id] : 0;
+      const deg = clampToServoLimits(raw, binding, id); // sécurité : ne pas forcer au-delà des butées
+      channels.push({ ch: binding.channel, us: angleToPulseUs(deg, binding, servo, controller) });
+      nextTest[id] = deg;
+    }
+    if (channels.length === 0) return;
+    const cmd = protocol.moveGroup(channels, 0);
+    try {
+      await link.writeString(cmd);
+      set((s) => ({ testAngles: { ...s.testAngles, ...nextTest }, lastMirrorAt: nowMs() }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Écriture échouée";
+      set({ status: "error", errorMsg: msg });
+      pushLog(set, "info", `Erreur écriture (miroir live) : ${msg}`);
+    }
   },
 
   releaseAll: async () => {
@@ -406,3 +503,66 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     }
   },
 }));
+
+// ── Miroir live : stream de la pose 3D vers le robot ─────────────────────────
+// Abonnement UNIQUE au store hexapode, agnostique de la source (manuel, IK,
+// séquenceur, salle d'exécution — tous écrivent dans `pose`). Throttle
+// « trailing-edge » : jamais plus d'une trame par MIRROR_INTERVAL_MS, mais on
+// envoie toujours la dernière pose connue (pas de saut perdu). Envoi groupé/
+// silencieux via sendPoseLive. Inactif tant que liveMirror=false (coût nul).
+const MIRROR_INTERVAL_MS = 40; // ≈ 25 Hz
+let mirrorTimer: ReturnType<typeof setTimeout> | null = null;
+let mirrorPending = false;
+let lastMirroredPose = useHexapodStore.getState().pose;
+// Pose modifiée mais pas encore envoyée (mode « au relâchement » : on attend le
+// pointerup pour n'envoyer que la position finale, sans saccades).
+let mirrorDirty = false;
+
+function flushMirror(): void {
+  const s = useSerialStore.getState();
+  if (!s.liveMirror || s.status !== "connected") {
+    mirrorPending = false;
+    return;
+  }
+  void s.sendPoseLive(useHexapodStore.getState().pose);
+  mirrorTimer = setTimeout(() => {
+    mirrorTimer = null;
+    if (mirrorPending) {
+      mirrorPending = false;
+      flushMirror();
+    }
+  }, MIRROR_INTERVAL_MS);
+}
+
+function requestMirror(): void {
+  const s = useSerialStore.getState();
+  if (!s.liveMirror || s.status !== "connected") return;
+  if (mirrorTimer != null) {
+    mirrorPending = true; // une trame est en vol → on enverra la dernière au prochain tick
+    return;
+  }
+  flushMirror();
+}
+
+useHexapodStore.subscribe((state) => {
+  if (state.pose !== lastMirroredPose) {
+    lastMirroredPose = state.pose;
+    mirrorDirty = true;
+    // Mode continu : on streame (throttlé). Mode « au relâchement » : on attend
+    // le pointerup global (cf. listener ci-dessous), donc rien ici.
+    if (!useSerialStore.getState().mirrorOnRelease) requestMirror();
+  }
+});
+
+// Mode « au relâchement » : à la fin de tout geste souris, on envoie la position
+// finale une seule fois (si elle a changé). Input-agnostique (drag de pied, arcs,
+// sliders…). Le flag `mirrorDirty` évite d'émettre sur un simple clic sans effet.
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerup", () => {
+    const s = useSerialStore.getState();
+    if (s.liveMirror && s.mirrorOnRelease && s.status === "connected" && mirrorDirty) {
+      mirrorDirty = false;
+      void s.sendPoseLive(useHexapodStore.getState().pose);
+    }
+  });
+}
