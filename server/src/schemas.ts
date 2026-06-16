@@ -326,6 +326,17 @@ export const ProjectPeripheralSchema = z.object({
   note: z.string().nullable().optional(),
 });
 
+/** Groupe de pattes : nom + indices de pattes liées (0-5). Sert à orienter
+ *  plusieurs pattes ensemble et, plus tard, à piloter la carte par groupe. */
+export const LegGroupSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  legs: z.array(z.number().int().min(0).max(5)),
+  /** Sens du déplacement groupé : "axis" = cohérent selon l'axe robot (défaut),
+   *  "inverse" = même angle servo copié (les pattes opposées partent à l'inverse). */
+  sens: z.enum(["axis", "inverse"]).optional(),
+});
+
 export const ProjectHardwareSchema = z.object({
   servoTypeId: z.string().nullable().optional(),
   servoControllerId: z.string().nullable().optional(),
@@ -335,6 +346,7 @@ export const ProjectHardwareSchema = z.object({
   power: ProjectPowerSchema.optional(),
   commandEnabled: z.boolean().optional(),
   peripherals: z.array(ProjectPeripheralSchema).optional(),
+  legGroups: z.array(LegGroupSchema).optional(),
 }).passthrough();
 
 export const ProjectPreferencesSchema = z.object({
@@ -342,6 +354,8 @@ export const ProjectPreferencesSchema = z.object({
   photoSpaceViewDirection: z.tuple([z.number(), z.number(), z.number()]).optional(),
   /** Position de départ du robot dans la salle d'exécution (au sol, X/Z en mètres). */
   roomStartPos: z.object({ x: z.number(), z: z.number() }).optional(),
+  /** Pose de base (18 angles servo) appliquée à l'ouverture du projet, sans sélection de pose. */
+  basePose: z.array(z.number()).optional(),
 });
 
 export const CreateProjectSchema = z.object({

@@ -10,6 +10,7 @@ import { ContactMarkers } from "./ContactMarkers";
 import { CollisionMarker } from "./CollisionMarker";
 import { Leg } from "./Leg";
 import { TorqueIndicator } from "./TorqueIndicator";
+import { BodyHeightHandle } from "./BodyHeightHandle";
 
 const ARROW_COLOR = "#1a1a1a";
 
@@ -127,6 +128,8 @@ export function Hexapod({ clean = false, pose: poseOverride = null }: HexapodPro
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const bodyTransparent = useHexapodStore((s) => s.bodyTransparent);
   const showArrow = useHexapodStore((s) => s.collisionPrefs.showArrow);
+  const chassisSelected = useHexapodStore((s) => s.chassisSelected);
+  const setChassisSelected = useHexapodStore((s) => s.setChassisSelected);
   const pose = poseOverride ?? globalPose;
   const mounts = useMemo(() => computeLegMounts(geometry), [geometry]);
   const transform = useMemo(
@@ -159,12 +162,24 @@ export function Hexapod({ clean = false, pose: poseOverride = null }: HexapodPro
           transform.quaternion.w,
         ]}
       >
-        {/* Chassis — boîte simple, ou forme extrudée si un contour 2D est dessiné */}
-        <ChassisMesh
-          geometry={geometry}
-          transparent={clean ? false : bodyTransparent}
-          opacity={clean ? 1 : bodyTransparent ? 0.45 : 1}
-        />
+        {/* Chassis — boîte simple, ou forme extrudée si un contour 2D est dessiné.
+            En Conception, cliquer le châssis le sélectionne (poignée de hauteur + règle). */}
+        <group
+          onClick={
+            clean
+              ? undefined
+              : (e) => {
+                  e.stopPropagation();
+                  setChassisSelected(true);
+                }
+          }
+        >
+          <ChassisMesh
+            geometry={geometry}
+            transparent={clean ? false : bodyTransparent}
+            opacity={clean ? 1 : bodyTransparent ? 0.45 : 1}
+          />
+        </group>
 
         {/* Front face marker */}
         <mesh position={[geometry.chassis.length / 2 + 0.001, 0, 0]}>
@@ -212,6 +227,17 @@ export function Hexapod({ clean = false, pose: poseOverride = null }: HexapodPro
         {/* Indicateurs de couple par joint (actifs pendant la lecture de séquence) */}
         {!clean && <TorqueIndicator />}
       </group>
+
+      {/* Poignée 3D de réglage de la hauteur (châssis sélectionné, hors vue salle) */}
+      {!clean && chassisSelected && (
+        <BodyHeightHandle
+          anchor={[
+            transform.position.x,
+            transform.position.y + geometry.chassis.height / 2 + 0.012,
+            transform.position.z,
+          ]}
+        />
+      )}
 
       <ContactMarkers
         contacts={transform.contacts}

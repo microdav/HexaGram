@@ -9,6 +9,20 @@ import {
 import { defaultPower, normalizePower, type ProjectPower } from "../model/power";
 import { normalizePeripherals, type ProjectPeripheral } from "../model/peripherals";
 
+/** Groupe de pattes : nom + indices de pattes liées (0-5). Sert à orienter
+ *  plusieurs pattes ensemble et, plus tard, à piloter la carte par groupe. */
+/** Sens du déplacement groupé d'un groupe de pattes. */
+export type LegGroupSens = "axis" | "inverse";
+
+export interface LegGroup {
+  id: string;
+  name: string;
+  legs: number[];
+  /** "axis" = mouvement cohérent selon l'axe robot (défaut) ; "inverse" = même
+   *  angle servo copié (pattes opposées partent à l'inverse). */
+  sens?: LegGroupSens;
+}
+
 export interface ProjectHardware {
   servoTypeId: string | null;
   servoControllerId: string | null;
@@ -22,6 +36,8 @@ export interface ProjectHardware {
   commandEnabled: boolean;
   /** Capteurs & périphériques reliés à la carte de commande. */
   peripherals: ProjectPeripheral[];
+  /** Groupes de pattes (nom + pattes liées) pour orientation groupée et pilotage par groupe. */
+  legGroups: LegGroup[];
 }
 
 export const DEFAULT_HARDWARE: ProjectHardware = {
@@ -33,6 +49,7 @@ export const DEFAULT_HARDWARE: ProjectHardware = {
   power: defaultPower(),
   commandEnabled: true,
   peripherals: [],
+  legGroups: [],
 };
 
 export interface ProjectPreferences {
@@ -40,6 +57,8 @@ export interface ProjectPreferences {
   photoSpaceViewDirection?: [number, number, number];
   /** Position de départ du robot dans la salle d'exécution (au sol, X/Z en mètres). */
   roomStartPos?: { x: number; z: number };
+  /** Pose de base (18 angles servo) appliquée à l'ouverture du projet, sans sélection de pose. */
+  basePose?: number[];
 }
 
 export interface ProjectCounts {
@@ -100,7 +119,21 @@ function normalizeHardware(raw: Partial<ProjectHardware> | undefined): ProjectHa
     power: normalizePower(raw?.power),
     commandEnabled: raw?.commandEnabled !== false,
     peripherals: normalizePeripherals(raw?.peripherals),
+    legGroups: normalizeLegGroups(raw?.legGroups),
   };
+}
+
+/** Normalise les groupes de pattes : ids/noms valides, indices de pattes 0-5 uniques. */
+function normalizeLegGroups(raw: LegGroup[] | undefined): LegGroup[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((g, i) => ({
+    id: typeof g?.id === "string" && g.id ? g.id : `group-${i}`,
+    name: typeof g?.name === "string" ? g.name : `Groupe ${i + 1}`,
+    legs: Array.isArray(g?.legs)
+      ? [...new Set(g.legs.filter((n) => Number.isInteger(n) && n >= 0 && n <= 5))]
+      : [],
+    sens: g?.sens === "inverse" ? "inverse" : "axis",
+  }));
 }
 
 function normalizePreferences(raw: ProjectPreferences | undefined): ProjectPreferences {

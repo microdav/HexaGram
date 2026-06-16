@@ -140,6 +140,13 @@ export function StepInfoPanel() {
     e.currentTarget.focus();
   };
 
+  const handleDeselect = () => {
+    // Revient à la pose enregistrée de l'étape (abandonne les modifs en cours)
+    // puis désélectionne — l'utilisateur retrouve une scène « propre ».
+    useHexapodStore.getState().applyPose(step.pose);
+    useSequencerStore.getState().setSelectedStepIndex(-1);
+  };
+
   const handleAutoApplyChange = (checked: boolean) => {
     useSequencerStore.getState().setAutoApply(checked);
     if (!checked || !step) return;
@@ -154,7 +161,11 @@ export function StepInfoPanel() {
   };
 
   return (
-    <div className="step-info-panel">
+    <div className={`step-info-panel${dirty ? " step-info-panel--dirty" : ""}`}>
+      <div className="step-info-kind">
+        Étape sélectionnée
+        {dirty && <span className="step-info-dirty"> · ● modifié</span>}
+      </div>
       <input
         className="step-info-name"
         value={editName}
@@ -204,6 +215,14 @@ export function StepInfoPanel() {
         />
         <span>Enregistrer automatiquement</span>
       </label>
+      <button
+        type="button"
+        className="step-info-deselect"
+        onClick={handleDeselect}
+        title="Revenir à la pose enregistrée de l'étape et désélectionner"
+      >
+        Annuler la sélection
+      </button>
     </div>
   );
 }

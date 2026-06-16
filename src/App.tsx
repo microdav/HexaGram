@@ -225,6 +225,12 @@ export default function App() {
     if (!user || !activeProjectId) return;
     (async () => {
       await ensureBase();
+      // Pose de base du projet : posture appliquée à l'ouverture, sans sélection
+      // de pose. Appliquée après ensureBase (dont le profil) pour primer dessus.
+      const basePose = useProjectStore.getState().activeProject?.preferences.basePose;
+      if (basePose && basePose.length > 0) {
+        useHexapodStore.getState().applyPose(basePose);
+      }
       // Liste des programmes côté projet (et résolution du slug URL → ID)
       await listPrograms();
       const { programs: progs } = useProgramsStore.getState();

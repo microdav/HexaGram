@@ -209,22 +209,28 @@ src/
 │   ├── servo.ts            Définition d'un servo, helpers d'angle
 │   ├── pose.ts             Type Pose (18 angles), keyframes
 │   ├── kinematics.ts       Forward kinematics, plan d'appui, transform corps
+│   ├── ik.ts               Cinématique inverse d'une patte (foot-drag, hauteur)
+│   ├── bodyHeight.ts       Garde au sol / réglage de la hauteur du châssis (IK)
 │   └── collisions.ts       Détection segment-segment et segment-AABB
 ├── three/              Composants 3D React-Three-Fiber
-│   ├── Scene.tsx           Canvas principal, lumières, grille, persistence caméra
-│   ├── Hexapod.tsx         Châssis, flèches d'orientation, lift gravité
-│   ├── Leg.tsx             Patte articulée (3 segments, coloration collision)
+│   ├── Scene.tsx           Canvas principal, lumières, grille 1 cm, persistence caméra
+│   ├── Hexapod.tsx         Châssis (sélectionnable), flèches d'orientation, lift gravité
+│   ├── Leg.tsx             Patte articulée (3 segments, coloration collision, foot-drag)
+│   ├── BodyHeightHandle.tsx Poignée 3D de réglage de la hauteur du châssis
+│   ├── StepInfoPanel.tsx   Indicateur « Étape sélectionnée » (enregistrer / désélectionner)
+│   ├── PoseInfoPanel.tsx   Indicateur « Pose sélectionnée » (enregistrer / désélectionner)
 │   ├── CollisionMarker.tsx Flèche 3D oscillante sur le centre de collision
 │   ├── ContactMarkers.tsx  Marqueurs de contact + CoG drag handle
 │   └── Compass.tsx         Boussole 3D + indicateurs pitch/roll
 ├── ui/                 Panneaux HTML
-│   ├── ProfilePanel.tsx         Sélecteur de profil robot + sauvegarde
-│   ├── ProfileSettingsModal.tsx Paramètres profil (général, servos, collisions)
-│   ├── SimulationPanel.tsx      Toggles gravité / transparence + copie état
+│   ├── RobotLinkBar.tsx         Bandeau topbar : connexion USB + Arrêt/Urgence + console
+│   ├── ElectronicConsolePanel.tsx Console série (épinglée sous le bandeau ou flottante)
+│   ├── HeightRuler.tsx          Règle graduée cm/mm de la hauteur du châssis
+│   ├── ProfileSettingsModal.tsx Réglages base mécanique (réutilisé dans l'onglet Paramétrage robot)
+│   ├── ProjectPage.tsx          Page Projet (Général · Matériel · Paramétrage robot · Groupes de pattes)
 │   ├── GeometryPanel.tsx        Saisie dimensions + centre de gravité
 │   ├── ServoPanel.tsx           Sliders + verrouillage gravité
-│   ├── MirrorPanel.tsx          Toggle mode miroir
-│   ├── PoseList.tsx             Capture / restauration des poses
+│   ├── MirrorPanel.tsx          Miroir G/D + lien de groupe (sens axe robot / inverse)
 │   ├── AuthModal.tsx            Modal inscription / connexion
 │   ├── UserButton.tsx           Bouton utilisateur connecté
 │   ├── Modal.tsx                Composant modal générique

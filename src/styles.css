@@ -2744,6 +2744,121 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   backdrop-filter: blur(6px);
   z-index: 20;
 }
+/* Surbrillance quand des modifications ne sont pas encore enregistrées : rend
+   visible que les changements de pose 3D sont liés à la sélection en cours. */
+.step-info-panel--dirty {
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent);
+}
+.step-info-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.step-info-dirty { color: var(--accent); text-transform: none; letter-spacing: 0; }
+.step-info-deselect {
+  width: 100%;
+  height: 24px;
+  margin-top: 2px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.step-info-deselect:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* ── Règle graduée de hauteur du châssis (bord droit, encadrée jaune) ─────── */
+.height-ruler {
+  position: absolute;
+  top: 70px;
+  bottom: 140px;
+  left: 20px;
+  width: 66px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  background: rgba(21, 23, 28, 0.9);
+  border: 1px solid rgba(245, 197, 24, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.height-ruler-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.height-ruler-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.height-ruler-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  margin: 2px 0;
+  cursor: ns-resize;
+  border-left: 1px solid var(--border);
+}
+.hr-tick {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  height: 1px;
+  background: var(--text-dim);
+  pointer-events: none;
+}
+.hr-tick--major {
+  width: 16px;
+  height: 1px;
+  background: var(--text);
+}
+.hr-tick-label {
+  position: absolute;
+  left: 19px;
+  top: -7px;
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 1;
+}
+.hr-cursor {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 0;
+  border-top: 2px solid #ef4444;
+  pointer-events: none;
+}
+.hr-cursor::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -5px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #ef4444;
+}
+.height-ruler-unit {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
 /* Input stylé comme un label au repos, devient champ à l'édition */
 .step-info-name {
   width: 100%;
@@ -4352,6 +4467,109 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .pp-section {
   max-width: 800px;
 }
+
+/* ── Lien de groupe (panneau Conception, sous le miroir) ─────────────── */
+.link-group-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.link-group-label { font-size: 13px; color: var(--text); }
+.link-group-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.link-group-select:focus { outline: none; border-color: var(--accent); }
+.link-group-sens { display: flex; gap: 14px; }
+.link-group-sens label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.link-group-sens input { cursor: pointer; margin: 0; }
+
+/* ── Pose de base au chargement (onglet Général) ─────────────────────── */
+.pp-basepose-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pp-basepose-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pp-basepose-select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Groupes de pattes ───────────────────────────────────────────────── */
+.leg-groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.leg-group-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.leg-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.leg-group-name {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.leg-group-name:focus { outline: none; border-color: var(--accent); }
+.leg-group-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.leg-chip {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 4px 11px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.leg-chip:hover { color: var(--text); }
+.leg-chip.active {
+  background: rgba(245, 197, 24, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.pp-new-group-btn { align-self: flex-start; }
 /* Onglet Général : pleine largeur (formulaire projet + 2 colonnes base mécanique). */
 .pp-section-wide { max-width: none; }
 

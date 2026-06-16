@@ -38,15 +38,39 @@ conclure « c'est fait ».
   butées dans `hardware.electronics.bindings`). [src/store/useSerialStore.ts](src/store/useSerialStore.ts)
   pilote la liaison Web Serial : `sendPose`/`sendPoseLive` (clampés aux butées `minDeg/maxDeg`), **mode
   Live** (miroir 3D→robot, [docs/idee-reproduction-3d-robot.md](docs/idee-reproduction-3d-robot.md)),
-  console électronique transverse (bouton Outils). **Reste-à-faire priorisé** (pilotage SSC-32U) :
-  [docs/roadmap-pilotage-ssc32u.md](docs/roadmap-pilotage-ssc32u.md) — point d'entrée pour la suite.
+  `releaseAll` (arrêt d'urgence couple off) / `stopAll` (arrêt, fige les servos). **Reste-à-faire priorisé**
+  (pilotage SSC-32U) : [docs/roadmap-pilotage-ssc32u.md](docs/roadmap-pilotage-ssc32u.md).
+- **Bandeau « Liaison robot »** (topbar, [src/ui/RobotLinkBar.tsx](src/ui/RobotLinkBar.tsx)) : **point de
+  connexion central** — cible USB (contrôleur/commande) + vitesse + Connecter/Reconnecter, **Arrêt** et
+  **Arrêt d'urgence**, et la **console** ([src/ui/ElectronicConsolePanel.tsx](src/ui/ElectronicConsolePanel.tsx),
+  épinglée en déroulé sous le bandeau ou flottante). Affiché partout sauf l'onglet Projet (sauf si connecté).
+  Au chargement, `autoReconnect` rouvre **silencieusement** le port déjà autorisé (`getPorts()`, sans
+  geste), sans envoi de pose et **Mode Live forcé OFF**. Les pages (Électronique, boîte « Liaison robot »
+  de Conception) ne portent plus les contrôles de connexion (centralisés dans le bandeau).
 - **Routage** : pas de react-router. Onglets pilotés par `useToolboxStore.uiPrefs.activeTab` + sync URL
   dans [src/hooks/useUrlState.ts](src/hooks/useUrlState.ts). Onglets :
   `projet · robot2d · conception · programmation · electronique · admin`.
+- **Page Projet** ([src/ui/ProjectPage.tsx](src/ui/ProjectPage.tsx)) : projet le plus récent sélectionné
+  par défaut (App.tsx). Onglets internes **Général · Matériel · Paramétrage robot · Groupes de pattes**, tous
+  en **enregistrement automatique** (plus aucun bouton « Enregistrer », `ProfilePanel` supprimé ;
+  `guardProfileEdit` sauve en silence). « Paramétrage robot » réutilise `ProfileSettings`
+  (servos/collisions/séquences). « Général » porte la **pose de base au chargement**
+  (`preferences.basePose`, appliquée à l'ouverture du projet sans sélectionner de pose).
+- **Groupes de pattes** : `hardware.legGroups` (`LegGroup` = `{id,name,legs[],sens}`). En Conception,
+  `useHexapodStore.linkedGroupId` lie un groupe aux déplacements (sélecteur dans `MirrorPanel`) :
+  `setServoAngle` propage le mouvement aux pattes du groupe — `sens:"axis"` (défaut, cohérent selon l'axe
+  robot : coxa inversée pour le côté opposé, fémur/tibia identiques) ou `"inverse"` (même angle copié).
+- **Conception 3D** : indicateurs de sélection bas-droite ([StepInfoPanel](src/three/StepInfoPanel.tsx) /
+  [PoseInfoPanel](src/three/PoseInfoPanel.tsx)) avec Enregistrer + Annuler la sélection. **Hauteur du
+  châssis** : clic châssis → poignée 3D ([BodyHeightHandle](src/three/BodyHeightHandle.tsx)) + règle cm/mm
+  ([HeightRuler](src/ui/HeightRuler.tsx)) ; `setBodyClearance` ajuste par IK les pattes au sol
+  ([src/model/bodyHeight.ts](src/model/bodyHeight.ts), pieds collés au sol, borné butées + sol). Grille du
+  sol = 1 cm (cellules) / 10 cm (sections).
 - **Persistance** : profil = blob JSON `RobotProfileData` (table `robot_profiles`), validé par
   [server/src/schemas.ts](server/src/schemas.ts). `serializeProfile`/`applyProfile` côté store.
 - **Modèle** (`src/model/`) : `hexapod` (géométrie, servos, ancrages), `kinematics` (FK, transform corps),
-  `servo`, `pose`, `collisions`, `gaitGenerator`, `chassisBake`/`chassisShape`/`polygon` (Robot 2D).
+  `ik` (cinématique inverse), `bodyHeight` (garde au sol / hauteur châssis), `servo`, `pose`, `collisions`,
+  `gaitGenerator`, `chassisBake`/`chassisShape`/`polygon` (Robot 2D).
 
 ## Robot 2D & base mécanique
 
@@ -58,6 +82,8 @@ Sous-système central documenté en détail : **[docs/robot-2d-base-mecanique.md
 - **Schéma serveur strict** : zod **supprime les champs inconnus**. Tout nouveau champ de `body2D`
   (ou de `geometry`/profil) doit être déclaré dans [server/src/schemas.ts](server/src/schemas.ts)
   (`Body2DSchema` est en `.passthrough()`), sinon il est **silencieusement perdu à l'enregistrement**.
+  Idem côté projet : `ProjectHardwareSchema` est `.passthrough()` mais `ProjectPreferencesSchema` est
+  **strict** — un nouveau champ de `preferences` (ex. `basePose`) doit y être déclaré explicitement.
 - **`computeLegMounts`** : modifier ce calcul impacte toute la 3D (scène, cinématique, démarche,
   collisions, salle, vignettes).
 - **Offset de montage = repère des angles** : `geometry.mountingOffsetsDeg` décale pose↔géométrie. Il

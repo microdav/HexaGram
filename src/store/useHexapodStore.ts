@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { DEFAULT_GEOMETRY, SERVOS, defaultAnchorsFromGeometry, defaultMountingOffsets, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type MeasureRef, type Shape2D } from "../model/hexapod";
+import { DEFAULT_GEOMETRY, SERVOS, computeLegMounts, defaultAnchorsFromGeometry, defaultMountingOffsets, polygonBounds, segmentWidthsOf, segmentHeightsOf, type Body2D, type HexapodGeometry, type LegAnchor, type Measurement2D, type MeasureRef, type Shape2D } from "../model/hexapod";
 import { bakeRealShapes } from "../model/chassisBake";
 import { findServoType } from "../model/servoTypes";
 import { useProjectStore } from "./useProjectStore";
@@ -46,6 +46,7 @@ let _measSeq = 0;
 // cotes glissent ensemble car elles partagent le même id). Cf. newShapeId.
 function newMeasurementId(): string { return `m${Date.now().toString(36)}${(++_measSeq).toString(36)}`; }
 import { clampAngle } from "../model/servo";
+import { poseForClearance } from "../model/bodyHeight";
 import { defaultPose, servoIndex, type Keyframe, type Pose } from "../model/pose";
 import { DEFAULT_COLLISION_PREFS, type CollisionPrefs } from "../model/collisions";
 import { useToastStore } from "./useToastStore";
@@ -122,6 +123,9 @@ interface HexapodState {
   gravityEnabled: boolean;
   bodyTransparent: boolean;
   mirrorEnabled: boolean;
+  /** Groupe de pattes lié aux déplacements (id projet) : oriente toutes ses pattes
+   *  à l'identique quand on en édite une. null = aucun. Éphémère (non persisté). */
+  linkedGroupId: string | null;
   cameraDirection: [number, number, number];
   compassLocked: boolean;
   /** Bitmask of servo IDs whose arc is directly hovered (one bit per servo, 0-17). */
@@ -130,6 +134,10 @@ interface HexapodState {
   cogDragging: boolean;
   /** True while the user is dragging a foot tip in the 3D view. */
   footDragging: boolean;
+  /** Châssis sélectionné (clic) → affiche la poignée de hauteur + la règle graduée. */
+  chassisSelected: boolean;
+  /** True pendant le drag de la poignée de hauteur du châssis (suspend l'orbite). */
+  bodyHeightDragging: boolean;
   /** Per-axis drag lock for the CoG handle. */
   cogAxisLock: { x: boolean; y: boolean; z: boolean };
   description: string;
@@ -175,11 +183,19 @@ interface HexapodState {
   setGravityEnabled: (enabled: boolean) => void;
   setBodyTransparent: (enabled: boolean) => void;
   setMirrorEnabled: (enabled: boolean) => void;
+  setLinkedGroupId: (id: string | null) => void;
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
   setArcShown: (servoId: number, shown: boolean) => void;
   setCogDragging: (v: boolean) => void;
   setFootDragging: (v: boolean) => void;
+  setChassisSelected: (v: boolean) => void;
+  setBodyHeightDragging: (v: boolean) => void;
+  /**
+   * Place le bas du châssis à `targetClearanceM` (m) du sol en ajustant par IK
+   * les pattes au sol (cf. model/bodyHeight). Borné par les butées servo et le sol.
+   */
+  setBodyClearance: (targetClearanceM: number) => void;
   toggleCogAxisLock: (axis: "x" | "y" | "z") => void;
   setDescription: (d: string) => void;
   setServoCalibrationAll: (calib: Record<number, ServoCalibration>) => void;
@@ -210,11 +226,14 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   gravityEnabled: _prefs.gravityEnabled ?? true,
   bodyTransparent: _prefs.bodyTransparent ?? true,
   mirrorEnabled: _prefs.mirrorEnabled ?? false,
+  linkedGroupId: null,
   cameraDirection: INITIAL_CAM_DIR,
   compassLocked: false,
   arcShownMask: 0,
   cogDragging: false,
   footDragging: false,
+  chassisSelected: false,
+  bodyHeightDragging: false,
   cogAxisLock: { x: false, y: false, z: false },
   description: "",
   servoCalibration: {},
@@ -237,6 +256,43 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
         // Fémur/tibia = rotation Z (locale au plan de la patte) → valeur identique.
         const mirrorDeg = def.joint === "coxa" ? -deg : deg;
         next[mirrorId] = clampAngle(mirrorDeg, mirrorDef.minDeg, mirrorDef.maxDeg);
+      }
+
+      // Groupe lié : propage le mouvement aux autres pattes du groupe.
+      //  - sens "axis" (défaut) : mouvement cohérent selon l'axe robot — la coxa
+      //    (balayage horizontal) est INVERSÉE pour les pattes du côté opposé
+      //    (gauche/droite, signe de z du mount), fémur/tibia identiques (lever
+      //    cohérent). Les pattes balayent/lèvent ensemble dans le repère robot.
+      //  - sens "inverse" : même angle servo copié partout (les pattes opposées
+      //    partent visuellement à l'inverse).
+      if (state.linkedGroupId) {
+        const group = useProjectStore
+          .getState()
+          .activeProject?.hardware.legGroups.find((g) => g.id === state.linkedGroupId);
+        if (group && group.legs.includes(def.legIndex)) {
+          const axisMode = (group.sens ?? "axis") === "axis";
+          if (axisMode && def.joint === "coxa") {
+            const mounts = computeLegMounts(state.geometry);
+            const zOf = (leg: number) => mounts.find((m) => m.index === leg)?.position[2] ?? 0;
+            const editedSide = zOf(def.legIndex) >= 0;
+            for (const leg of group.legs) {
+              if (leg === def.legIndex) continue;
+              const gjId = servoIndex(leg, "coxa");
+              const gjDef = SERVOS[gjId];
+              if (!gjDef) continue;
+              const opposite = (zOf(leg) >= 0) !== editedSide;
+              next[gjId] = clampAngle(opposite ? -deg : deg, gjDef.minDeg, gjDef.maxDeg);
+            }
+          } else {
+            // sens "inverse", ou articulation fémur/tibia → angle identique pour tous.
+            for (const leg of group.legs) {
+              if (leg === def.legIndex) continue;
+              const gjId = servoIndex(leg, def.joint);
+              const gjDef = SERVOS[gjId];
+              if (gjDef) next[gjId] = clampAngle(deg, gjDef.minDeg, gjDef.maxDeg);
+            }
+          }
+        }
       }
 
       return { pose: next };
@@ -427,6 +483,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
 
   setMirrorEnabled: (enabled) => set({ mirrorEnabled: enabled }),
 
+  setLinkedGroupId: (id) => set({ linkedGroupId: id }),
+
   setCameraDirection: (dir) => set({ cameraDirection: dir }),
 
   toggleCompassLocked: () => set((s) => ({ compassLocked: !s.compassLocked })),
@@ -434,6 +492,16 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
   setCogDragging: (v) => set({ cogDragging: v }),
 
   setFootDragging: (v) => set({ footDragging: v }),
+
+  setChassisSelected: (v) => set({ chassisSelected: v }),
+
+  setBodyHeightDragging: (v) => set({ bodyHeightDragging: v }),
+
+  setBodyClearance: (targetClearanceM) =>
+    set((s) => {
+      const next = poseForClearance(s.pose, s.geometry, s.gravityEnabled, targetClearanceM);
+      return next === s.pose ? s : { pose: next };
+    }),
 
   toggleCogAxisLock: (axis) =>
     set((s) => ({ cogAxisLock: { ...s.cogAxisLock, [axis]: !s.cogAxisLock[axis] } })),

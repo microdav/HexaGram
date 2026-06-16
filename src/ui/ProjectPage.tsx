@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useProjectStore, type ProjectHardware } from "../store/useProjectStore";
+import { useProjectStore, type ProjectHardware, type LegGroup } from "../store/useProjectStore";
 import { useProfilesStore } from "../store/useProfilesStore";
+import { useSavedPosesStore } from "../store/useSavedPosesStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useProgramsStore } from "../store/useProgramsStore";
 import { useToastStore } from "../store/useToastStore";
@@ -14,9 +15,9 @@ import { BaseMecaniquePreview } from "./RobotPreviews";
 import { LegLayoutPicker } from "./LegLayoutPicker";
 import { WeightBlock, ProfileSettings, type ProfileSettingsTab } from "./ProfileSettingsModal";
 import { useHexapodStore } from "../store/useHexapodStore";
-import { defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
+import { LEG_NAMES, defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
-type DetailTab = "general" | "hardware" | "robot";
+type DetailTab = "general" | "hardware" | "robot" | "groups";
 
 // Onglet « Paramétrage robot » : reprend la popin de la base mécanique, hors
 // l'onglet « Général » déjà couvert par l'onglet Général du projet (nom,
@@ -426,9 +427,33 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
   const persistTimer = useRef<ReturnType<typeof setTimeout>>();
   const projTimer = useRef<ReturnType<typeof setTimeout>>();
 
+  // ── Pose de base au chargement (préférence projet) ──
+  const updatePreferences = useProjectStore((s) => s.updatePreferences);
+  const basePose = useProjectStore((s) => s.activeProject?.preferences.basePose);
+  const savedPoses = useSavedPosesStore((s) => s.poses);
+  const showToast = useToastStore((s) => s.show);
+  const hasBase = !!(basePose && basePose.length > 0);
+
   useEffect(() => { setName(initialName); }, [initialName]);
   useEffect(() => { setDescription(initialDescription); }, [initialDescription]);
   useEffect(() => { setBaseName(activeProfile?.name ?? ""); }, [activeProfile?.name]);
+  // Charge les poses du projet pour proposer une « pose de base ».
+  useEffect(() => { useSavedPosesStore.getState().list().catch(() => {}); }, [projectId]);
+
+  const handleBaseFromPose = (poseId: string) => {
+    const p = useSavedPosesStore.getState().getById(poseId);
+    if (!p) return;
+    void updatePreferences({ basePose: p.angles.slice() });
+    showToast(`Pose de base : « ${p.name} »`);
+  };
+  const handleBaseFromCurrent = () => {
+    void updatePreferences({ basePose: useHexapodStore.getState().pose.slice() });
+    showToast("Pose de base copiée depuis la pose 3D");
+  };
+  const handleClearBase = () => {
+    void updatePreferences({ basePose: [] });
+    showToast("Pose de base effacée");
+  };
 
   // Enregistrement automatique débouncé du projet (nom + description).
   const scheduleProjectSave = (n: string, d: string) => {
@@ -514,6 +539,37 @@ function GeneralPanel({ projectId, initialName, initialDescription }: {
             <LegLayoutPicker value={legLayout} onChange={handleLegLayout} />
           </div>
           <WeightBlock weightConfig={weightConfig} onChange={handleWeight} servoCount={18} />
+
+          <div className="modal-field">
+            <span>Pose de base au chargement</span>
+            <span className="hint">
+              Posture appliquée à l&apos;ouverture du projet, sans sélectionner de pose (copie figée).
+            </span>
+            <div className="pp-basepose-row">
+              <select
+                className="pp-basepose-select"
+                value=""
+                onChange={(e) => { if (e.target.value) handleBaseFromPose(e.target.value); }}
+                aria-label="Copier une pose enregistrée comme pose de base"
+              >
+                <option value="">Copier une pose enregistrée…</option>
+                {savedPoses.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <button type="button" className="btn btn-sm" onClick={handleBaseFromCurrent}>
+                Depuis la pose 3D actuelle
+              </button>
+              {hasBase && (
+                <button type="button" className="btn btn-sm btn-danger" onClick={handleClearBase}>
+                  Effacer
+                </button>
+              )}
+            </div>
+            <span className="hint">
+              {hasBase ? "✓ Pose de base définie" : "Aucune — pose par défaut au chargement"}
+            </span>
+          </div>
         </div>
         <div className="pp-general-right">
           <BaseMecaniquePreview />
@@ -609,6 +665,108 @@ function HardwarePanel({ projectId, initialHardware }: {
         />
         {selectedCommand && <CommandSpecCard spec={selectedCommand} />}
       </div>
+    </div>
+  );
+}
+
+// ── Onglet Groupes de pattes ────────────────────────────────────────────
+
+function newGroupId(): string {
+  return `group-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function LegGroupsPanel({ projectId, initialGroups }: {
+  projectId: string;
+  initialGroups: LegGroup[];
+}) {
+  const updateHardware = useProjectStore((s) => s.updateHardware);
+  const [groups, setGroups] = useState<LegGroup[]>(initialGroups);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => { setGroups(initialGroups); }, [initialGroups, projectId]);
+
+  // Enregistrement automatique débouncé du matériel (aucun bouton dans l'UI).
+  useEffect(() => {
+    if (JSON.stringify(groups) === JSON.stringify(initialGroups)) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { updateHardware({ legGroups: groups }).catch(() => {}); }, 600);
+    return () => clearTimeout(saveTimer.current);
+  }, [groups, initialGroups, projectId, updateHardware]);
+
+  const addGroup = () =>
+    setGroups((gs) => [...gs, { id: newGroupId(), name: `Groupe ${gs.length + 1}`, legs: [] }]);
+  const removeGroup = (id: string) => setGroups((gs) => gs.filter((g) => g.id !== id));
+  const renameGroup = (id: string, name: string) =>
+    setGroups((gs) => gs.map((g) => (g.id === id ? { ...g, name } : g)));
+  const toggleLeg = (id: string, leg: number) =>
+    setGroups((gs) =>
+      gs.map((g) =>
+        g.id === id
+          ? {
+              ...g,
+              legs: g.legs.includes(leg)
+                ? g.legs.filter((l) => l !== leg)
+                : [...g.legs, leg].sort((a, b) => a - b),
+            }
+          : g
+      )
+    );
+
+  return (
+    <div className="pp-section">
+      <p className="pp-hint">
+        Un groupe relie plusieurs pattes pour les orienter ensemble (au-delà du miroir
+        gauche/droite) et, à terme, piloter la carte par groupe de servomoteurs.
+        Enregistrement automatique.
+      </p>
+
+      {groups.length === 0 ? (
+        <div className="pp-empty">Aucun groupe défini.</div>
+      ) : (
+        <div className="leg-groups-list">
+          {groups.map((g) => (
+            <div key={g.id} className="leg-group-card">
+              <div className="leg-group-head">
+                <input
+                  className="leg-group-name"
+                  type="text"
+                  value={g.name}
+                  maxLength={40}
+                  placeholder="Nom du groupe"
+                  onChange={(e) => renameGroup(g.id, e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => removeGroup(g.id)}
+                  title="Supprimer le groupe"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="leg-group-legs">
+                {[0, 1, 2, 3, 4, 5].map((leg) => {
+                  const on = g.legs.includes(leg);
+                  return (
+                    <button
+                      key={leg}
+                      type="button"
+                      className={`leg-chip${on ? " active" : ""}`}
+                      onClick={() => toggleLeg(g.id, leg)}
+                    >
+                      {LEG_NAMES[leg]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button type="button" className="btn btn-primary pp-new-group-btn" onClick={addGroup}>
+        ＋ Nouveau groupe
+      </button>
     </div>
   );
 }
@@ -751,6 +909,7 @@ export function ProjectPage() {
               <button type="button" className={`pp-tab${tab === 'general' ? ' active' : ''}`} onClick={() => setTab("general")}>Général</button>
               <button type="button" className={`pp-tab${tab === 'hardware' ? ' active' : ''}`} onClick={() => setTab("hardware")}>Matériel</button>
               <button type="button" className={`pp-tab${tab === 'robot' ? ' active' : ''}`} onClick={() => setTab("robot")}>Paramétrage robot</button>
+              <button type="button" className={`pp-tab${tab === 'groups' ? ' active' : ''}`} onClick={() => setTab("groups")}>Groupes de pattes</button>
             </nav>
 
             {tab === "general" && (
@@ -778,6 +937,12 @@ export function ProjectPage() {
                   onClose={() => {}}
                 />
               </div>
+            )}
+            {tab === "groups" && (
+              <LegGroupsPanel
+                projectId={activeProject.id}
+                initialGroups={activeProject.hardware.legGroups}
+              />
             )}
           </>
         )}

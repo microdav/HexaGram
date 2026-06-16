@@ -1,10 +1,12 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { GizmoHelper, GizmoViewcube, Grid, OrbitControls } from "@react-three/drei";
 import type { Group } from "three";
 import { Hexapod } from "./Hexapod";
 import { Compass } from "./Compass";
 import { StepInfoPanel } from "./StepInfoPanel";
+import { PoseInfoPanel } from "./PoseInfoPanel";
+import { HeightRuler } from "../ui/HeightRuler";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useCollisions } from "../store/useCollisions";
 import { useSequencerStore } from "../store/useSequencerStore";
@@ -86,7 +88,7 @@ function GridWithScroll() {
       totalOffset.current.z += velocity.current.z * delta;
       // Wrap to [0, sectionSize) so the mesh stays near origin — grid is periodic
       // at sectionSize intervals so the visual appearance is seamless.
-      const s = 0.25;
+      const s = 0.1;
       const mod = (v: number) => ((v % s) + s) % s;
       scrollRef.current.position.x = mod(totalOffset.current.x);
       scrollRef.current.position.z = mod(totalOffset.current.z);
@@ -98,10 +100,10 @@ function GridWithScroll() {
       <group ref={scrollRef}>
         <Grid
           args={[2, 2]}
-          cellSize={0.05}
-          cellThickness={0.6}
+          cellSize={0.01}
+          cellThickness={0.5}
           cellColor="#2a2f3a"
-          sectionSize={0.25}
+          sectionSize={0.1}
           sectionThickness={1}
           sectionColor="#3a4150"
           fadeDistance={2.5}
@@ -206,8 +208,20 @@ export function Scene() {
   const arcInteracting = useHexapodStore((s) => s.arcShownMask !== 0);
   const cogDragging = useHexapodStore((s) => s.cogDragging);
   const footDragging = useHexapodStore((s) => s.footDragging);
+  const bodyHeightDragging = useHexapodStore((s) => s.bodyHeightDragging);
+  const chassisSelected = useHexapodStore((s) => s.chassisSelected);
 
   const onHome = () => controlsRef.current?.reset();
+
+  // Échap désélectionne le châssis (referme poignée + règle de hauteur).
+  useEffect(() => {
+    if (!chassisSelected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") useHexapodStore.getState().setChassisSelected(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chassisSelected]);
 
   const initCamPos = readSavedCamera()?.position ?? DEFAULT_CAM_POS;
 
@@ -218,6 +232,7 @@ export function Scene() {
         shadows
         camera={{ position: initCamPos, fov: 45, near: 0.01, far: 50 }}
         dpr={[1, 2]}
+        onPointerMissed={() => useHexapodStore.getState().setChassisSelected(false)}
       >
         <color attach="background" args={["#15171c"]} />
 
@@ -239,7 +254,7 @@ export function Scene() {
         <OrbitControls
           ref={controlsRef as never}
           makeDefault
-          enabled={!arcInteracting && !cogDragging && !footDragging}
+          enabled={!arcInteracting && !cogDragging && !footDragging && !bodyHeightDragging}
           enableDamping
           dampingFactor={0.1}
           minDistance={0.15}
@@ -263,6 +278,12 @@ export function Scene() {
       <Compass />
 
       <StepInfoPanel />
+
+      <PoseInfoPanel />
+
+      {/* Règle graduée de hauteur du châssis (visible quand le châssis est
+          sélectionné, comme la poignée 3D). */}
+      {chassisSelected && <HeightRuler />}
 
       <button
         type="button"
