@@ -6574,6 +6574,85 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 /* La page doit pouvoir ancrer le panneau bas en absolu. */
 .electro-page { position: relative; }
 
+/* ── Console électronique transverse (panneau flottant, bouton Outils) ─────── */
+.ecm-panel {
+  position: fixed;
+  z-index: 200;
+  width: 640px;
+  height: 460px;
+  min-width: 360px;
+  min-height: 240px;
+  max-width: 95vw;
+  max-height: 90vh;
+  resize: both;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.ecm-drag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  touch-action: none;
+  background: var(--bg-panel-2);
+  border-radius: 12px 12px 0 0;
+  flex: 0 0 auto;
+}
+.ecm-title { font-size: 15px; font-weight: 600; }
+.ecm-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.ecm-close:hover { background: var(--bg-panel); color: var(--text); }
+.ecm-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+.ecm-status { display: flex; align-items: center; gap: 8px; }
+.ecm-status-text { display: flex; flex-direction: column; gap: 1px; }
+.ecm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ecm-estop { margin-left: auto; }
+.ecm-console-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.ecm-console-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ───────────── Espace d'administration ───────────── */
 .admin-page {
   flex: 1;

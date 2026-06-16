@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { ToolsModal } from './ToolsModal';
+import { ElectronicConsolePanel } from './ElectronicConsolePanel';
 
 /**
  * Bouton « Outils » de la topbar : ouvre un menu déroulant regroupant les
- * outils transverses. Pour l'instant un seul item (« Import/export » → éditeur
- * JSON, qui inclut « Mon robot ») ; d'autres viendront s'ajouter ici.
+ * outils transverses (import/export JSON, console électronique). Accessible
+ * depuis toutes les pages puisque la topbar est globale.
  */
 export function ToolsMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [consoleOpen, setConsoleOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,10 +52,22 @@ export function ToolsMenu() {
           >
             Import/export
           </button>
+          <button
+            type="button"
+            className="tools-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setConsoleOpen(true);
+            }}
+          >
+            Console électronique
+          </button>
         </div>
       )}
 
       <ToolsModal open={editorOpen} onClose={() => setEditorOpen(false)} />
+      <ElectronicConsolePanel open={consoleOpen} onClose={() => setConsoleOpen(false)} />
     </div>
   );
 }

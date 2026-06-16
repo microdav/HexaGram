@@ -27,7 +27,10 @@ export type SerialStatus =
  */
 export type ConnTarget = "controller" | "command";
 
-const MAX_LOG = 200;
+// Plafond de l'historique console (session) : assez large pour conserver une
+// session de calibration complète (commandes + réponses) consultable à tout
+// moment depuis la console électronique transverse.
+const MAX_LOG = 1000;
 
 /** Une entrée de console série : émission (tx), réception (rx) ou info locale. */
 export interface SerialLogEntry {
