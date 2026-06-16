@@ -1,6 +1,5 @@
 import { useProfilesStore } from "./useProfilesStore";
 import { useHexapodStore } from "./useHexapodStore";
-import { confirmTri } from "./useConfirmStore";
 
 /**
  * Vrai si la config robot du profil actif diffère de la dernière version
@@ -16,36 +15,14 @@ export function isProfileDirty(): boolean {
 /**
  * Garde à appeler avant tout changement de contexte susceptible de perdre les
  * réglages du profil (changement de profil, sortie de la page Conception…).
- * Propose « Enregistrer / Abandonner / Annuler » s'il y a des modifications.
+ * La sauvegarde du profil est toujours automatique : on persiste les éventuelles
+ * modifications en cours puis on poursuit, sans invite.
  *
- * @returns `true` si l'appelant peut poursuivre, `false` s'il doit annuler.
+ * @returns `true` — l'appelant peut toujours poursuivre.
  */
 export async function guardProfileEdit(): Promise<boolean> {
-  const { activeProfileId, autoSave } = useProfilesStore.getState();
+  const { activeProfileId } = useProfilesStore.getState();
   if (!activeProfileId || !isProfileDirty()) return true;
-
-  if (autoSave) {
-    await useProfilesStore.getState().update(activeProfileId);
-    return true;
-  }
-
-  const name =
-    useProfilesStore.getState().profiles.find((p) => p.id === activeProfileId)?.name ?? "";
-  const res = await confirmTri({
-    title: "Profil non enregistré",
-    message: `Les réglages du profil « ${name} » ont été modifiés.`,
-    confirmLabel: "Enregistrer",
-    discardLabel: "Abandonner",
-    cancelLabel: "Annuler",
-  });
-
-  if (res === "cancel") return false;
-
-  if (res === "confirm") {
-    await useProfilesStore.getState().update(activeProfileId);
-  } else {
-    // Abandonner : recharge le profil enregistré (restaure aussi la signature).
-    await useProfilesStore.getState().load(activeProfileId);
-  }
+  await useProfilesStore.getState().update(activeProfileId);
   return true;
 }

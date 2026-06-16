@@ -12,11 +12,16 @@ import { useCatalogStore } from "../store/useCatalogStore";
 import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
 import { BaseMecaniquePreview } from "./RobotPreviews";
 import { LegLayoutPicker } from "./LegLayoutPicker";
-import { WeightBlock } from "./ProfileSettingsModal";
+import { WeightBlock, ProfileSettings, type ProfileSettingsTab } from "./ProfileSettingsModal";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
-type DetailTab = "general" | "hardware";
+type DetailTab = "general" | "hardware" | "robot";
+
+// Onglet « Paramétrage robot » : reprend la popin de la base mécanique, hors
+// l'onglet « Général » déjà couvert par l'onglet Général du projet (nom,
+// disposition des pattes, poids).
+const ROBOT_SETTINGS_TABS: ProfileSettingsTab[] = ["servos", "collisions", "sequences"];
 
 const GEAR_LABELS: Record<string, string> = { plastic: "Plastique", metal: "Métal", titanium: "Titane" };
 const BEARING_LABELS: Record<string, string> = { plain: "Lisse", ball: "Billes", "dual-ball": "Billes doubles" };
@@ -528,12 +533,20 @@ function HardwarePanel({ projectId, initialHardware }: {
   const showToast = useToastStore((s) => s.show);
   const [hardware, setHardware] = useState<ProjectHardware>(initialHardware);
   const [showNewServoForm, setShowNewServoForm] = useState(false);
-  const [saving, setSaving] = useState(false);
   const servoCatalog = useCatalogStore((s) => s.servoTypes);
   const controllerCatalog = useCatalogStore((s) => s.servoControllers);
   const commandCatalog = useCatalogStore((s) => s.commandElectronics);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => { setHardware(initialHardware); setShowNewServoForm(false); }, [initialHardware, projectId]);
+
+  // Enregistrement automatique du matériel (débouncé) — aucun bouton dans l'UI.
+  useEffect(() => {
+    if (JSON.stringify(hardware) === JSON.stringify(initialHardware)) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { update(projectId, { hardware }).catch(() => {}); }, 700);
+    return () => clearTimeout(saveTimer.current);
+  }, [hardware, initialHardware, projectId, update]);
 
   const allTypes = useMemo(
     () => [...servoCatalog, ...hardware.customServoTypes],
@@ -543,8 +556,6 @@ function HardwarePanel({ projectId, initialHardware }: {
   const selectedController = controllerCatalog.find((c) => c.id === hardware.servoControllerId);
   const selectedCommand = commandCatalog.find((c) => c.id === hardware.commandElectronicsId);
 
-  const dirty = useMemo(() => JSON.stringify(hardware) !== JSON.stringify(initialHardware), [hardware, initialHardware]);
-
   const handleNewServoSave = (spec: ServoSpec) => {
     const exists = hardware.customServoTypes.some((s) => s.id === spec.id);
     const customServoTypes = exists
@@ -553,16 +564,6 @@ function HardwarePanel({ projectId, initialHardware }: {
     setHardware((h) => ({ ...h, customServoTypes, servoTypeId: spec.id }));
     setShowNewServoForm(false);
     showToast(`Servo « ${spec.model} » ajouté au projet`);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await update(projectId, { hardware });
-      showToast("Matériel mis à jour");
-    } finally {
-      setSaving(false);
-    }
   };
 
   return (
@@ -607,17 +608,6 @@ function HardwarePanel({ projectId, initialHardware }: {
           placeholder="aucune"
         />
         {selectedCommand && <CommandSpecCard spec={selectedCommand} />}
-      </div>
-
-      <div className="pp-panel-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!dirty || saving}
-          onClick={handleSave}
-        >
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
       </div>
     </div>
   );
@@ -690,6 +680,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 
 export function ProjectPage() {
   const activeProject = useProjectStore((s) => s.activeProject);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const removeProject = useProjectStore((s) => s.remove);
   const refreshProfiles = useProfilesStore((s) => s.list);
   const refreshSequences = useSavedSequencesStore((s) => s.list);
@@ -759,6 +750,7 @@ export function ProjectPage() {
             <nav className="pp-tabs">
               <button type="button" className={`pp-tab${tab === 'general' ? ' active' : ''}`} onClick={() => setTab("general")}>Général</button>
               <button type="button" className={`pp-tab${tab === 'hardware' ? ' active' : ''}`} onClick={() => setTab("hardware")}>Matériel</button>
+              <button type="button" className={`pp-tab${tab === 'robot' ? ' active' : ''}`} onClick={() => setTab("robot")}>Paramétrage robot</button>
             </nav>
 
             {tab === "general" && (
@@ -773,6 +765,19 @@ export function ProjectPage() {
                 projectId={activeProject.id}
                 initialHardware={activeProject.hardware}
               />
+            )}
+            {tab === "robot" && (
+              <div className="pp-section">
+                {/* Remontée à neuf à chaque changement de base mécanique pour
+                    réinitialiser les champs (calibration, collisions) depuis le store. */}
+                <ProfileSettings
+                  key={activeProfileId ?? "none"}
+                  active
+                  embedded
+                  visibleTabs={ROBOT_SETTINGS_TABS}
+                  onClose={() => {}}
+                />
+              </div>
             )}
           </>
         )}

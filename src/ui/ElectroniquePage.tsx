@@ -6,14 +6,12 @@ import { SERVOS, LEG_NAMES } from "../model/hexapod";
 import { sliderEndLabels } from "../model/servoDirection";
 import { useHexapodStore } from "../store/useHexapodStore";
 import {
-  COMMON_BAUD_RATES,
   defaultBinding,
   protocolForController,
   GENERIC_ASCII_PROTOCOL,
   type ProjectElectronics,
   type ServoBinding,
 } from "../model/electronics";
-import type { ConnTarget } from "../store/useSerialStore";
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 import { BoardSvg, Ssc32uBoard } from "./BoardSvg";
@@ -50,11 +48,8 @@ export function ElectroniquePage() {
   const log = useSerialStore((s) => s.log);
   const testAngles = useSerialStore((s) => s.testAngles);
   const identifying = useSerialStore((s) => s.identifying);
-  const connect = useSerialStore((s) => s.connect);
-  const disconnect = useSerialStore((s) => s.disconnect);
   const sendServoAngle = useSerialStore((s) => s.sendServoAngle);
   const centerAll = useSerialStore((s) => s.centerAll);
-  const releaseAll = useSerialStore((s) => s.releaseAll);
   const identify = useSerialStore((s) => s.identify);
   const testVersion = useSerialStore((s) => s.testVersion);
   const clearLog = useSerialStore((s) => s.clearLog);
@@ -192,7 +187,6 @@ export function ElectroniquePage() {
   if (!activeProject) return null;
 
   const connected = status === "connected";
-  const busy = status === "connecting";
 
   // Construit une copie complète des liaisons avec une modification ponctuelle.
   function buildBindings(servoId: number, partial: Partial<ServoBinding>): Record<number, ServoBinding> {
@@ -217,11 +211,6 @@ export function ElectroniquePage() {
     const cur = b?.centerOffsetDeg ?? 0;
     await patchBinding(servoId, { centerOffsetDeg: +(cur + delta).toFixed(1) });
     if (connected && b?.channel != null) void sendServoAngle(servoId, atAngle);
-  }
-
-  function onChangeBaud(b: number) {
-    setBaudRate(b);
-    void updateElectronics({ serial: { baudRate: b } });
   }
 
   function autoMap() {
@@ -296,60 +285,10 @@ export function ElectroniquePage() {
           </div>
 
           <div className="electro-conn-actions">
-            {!connected && (hasController || hasCommand) && (
-              <label className="electro-baud">
-                Cible USB
-                <select
-                  value={hasCommand && !hasController ? "command" : target}
-                  disabled={busy}
-                  onChange={(e) => setTarget(e.target.value as ConnTarget)}
-                >
-                  {hasController && (
-                    <option value="controller">
-                      {controller ? `${controller.model} (direct)` : "Contrôleur (direct)"}
-                    </option>
-                  )}
-                  {hasCommand && (
-                    <option value="command">{board ? board.model : "Carte de commande"}</option>
-                  )}
-                </select>
-              </label>
-            )}
-
-            <label className="electro-baud">
-              Vitesse
-              <select
-                value={baudRate}
-                disabled={connected || busy}
-                onChange={(e) => onChangeBaud(Number(e.target.value))}
-              >
-                {COMMON_BAUD_RATES.map((b) => (
-                  <option key={b} value={b}>
-                    {b} bauds{isSsc && b === 9600 ? " (défaut SSC-32U)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {connected ? (
-              <>
-                <button type="button" className="btn btn-danger" onClick={() => void releaseAll()}>
-                  ⏻ Arrêt d'urgence (couple off)
-                </button>
-                <button type="button" className="btn" onClick={() => void disconnect()}>
-                  Déconnecter
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={status === "unsupported" || busy}
-                onClick={() => void connect()}
-              >
-                {busy ? "Connexion…" : "Connecter la carte (USB)"}
-              </button>
-            )}
+            <span className="electro-conn-hint">
+              Connexion, vitesse et arrêt d&apos;urgence dans le bandeau du haut
+              (« Liaison robot »).
+            </span>
           </div>
         </section>
       </div>

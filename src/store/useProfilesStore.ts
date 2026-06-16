@@ -31,8 +31,6 @@ interface ProfilesState {
   savedSignature: string | null;
   /** Richesse du tracé 2D au dernier chargement/enregistrement (garde-fou anti-perte). */
   savedBody2DStrength: number;
-  /** Enregistrement automatique du profil (défaut faux, non persisté). */
-  autoSave: boolean;
   list: () => Promise<void>;
   /**
    * Garantit qu'une « base mécanique » unique est chargée pour le projet actif :
@@ -47,7 +45,6 @@ interface ProfilesState {
   load: (id: string) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  setAutoSave: (v: boolean) => void;
   clear: () => void;
 }
 
@@ -61,7 +58,6 @@ export const useProfilesStore = create<ProfilesState>((set, get) => ({
   loading: false,
   savedSignature: null,
   savedBody2DStrength: 0,
-  autoSave: false,
 
   list: async () => {
     const projectId = activeProjectId();
@@ -154,8 +150,6 @@ export const useProfilesStore = create<ProfilesState>((set, get) => ({
       savedSignature: s.activeProfileId === id ? null : s.savedSignature,
     }));
   },
-
-  setAutoSave: (v: boolean) => set({ autoSave: v }),
 
   clear: () => set({ profiles: [], activeProfileId: null, savedSignature: null, savedBody2DStrength: 0 }),
 }));

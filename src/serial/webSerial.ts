@@ -121,6 +121,31 @@ export class SerialLink {
     return this.openPort(port, baudRate);
   }
 
+  /**
+   * Rouvre un port DÉJÀ autorisé SANS geste utilisateur — pour la reconnexion
+   * automatique après un rechargement de page (`navigator.serial.getPorts()`
+   * renvoie les ports déjà autorisés ; `open()` ne requiert pas de geste). Ne
+   * redemande JAMAIS de port (pas de `requestPort` ici) : renvoie `null` si aucun
+   * port autorisé n'est disponible, plutôt que d'échouer faute de geste.
+   */
+  async reopenAuthorized(baudRate: number): Promise<string | null> {
+    const serial = getSerial();
+    if (!serial) return null;
+    let port = this.lastPort;
+    if (!port) {
+      const ports = await serial.getPorts();
+      port = ports[0] ?? null;
+    }
+    if (!port) return null;
+    // Le port peut être resté « ouvert » côté objet (lastPort) : on le referme.
+    try {
+      await port.close();
+    } catch {
+      /* pas ouvert / déjà fermé */
+    }
+    return this.openPort(port, baudRate);
+  }
+
   /** Ouvre un port donné et arme la liaison (chemin commun connect/reconnect). */
   private async openPort(port: SerialPortLike, baudRate: number): Promise<string> {
     await port.open({ baudRate });

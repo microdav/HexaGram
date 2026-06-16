@@ -23,10 +23,16 @@ import {
   STABILITY_LABELS,
   type GaitType,
 } from "../model/gaitGenerator";
-import { Modal } from "./Modal";
 import { LegLayoutPicker } from "./LegLayoutPicker";
 
-type Tab = "general" | "servos" | "collisions" | "sequences";
+export type ProfileSettingsTab = "general" | "servos" | "collisions" | "sequences";
+
+const TAB_DEFS: { id: ProfileSettingsTab; label: string }[] = [
+  { id: "general", label: "Général" },
+  { id: "servos", label: "Servo-Moteurs" },
+  { id: "collisions", label: "Collisions" },
+  { id: "sequences", label: "Séquences" },
+];
 
 const JOINTS = ["coxa", "femur", "tibia"] as const;
 const JOINT_LABELS: Record<string, string> = { coxa: "Coxa", femur: "Fémur", tibia: "Tibia" };
@@ -238,13 +244,24 @@ export function WeightBlock({ weightConfig, onChange, servoCount }: WeightBlockP
 
 // ── Modal principale ─────────────────────────────────────────────────────────
 
-interface Props {
-  open: boolean;
+interface ProfileSettingsProps {
+  /** Pilote la (ré)initialisation des champs depuis le store (équiv. à l'ouverture de la modale). */
+  active: boolean;
+  /** Fermeture (modale). No-op en mode intégré dans une page. */
   onClose: () => void;
+  /** Monté hors modale (intégré dans une page) → pas de titre/Annuler, flux vertical naturel. */
+  embedded?: boolean;
+  /** Onglets visibles (défaut : tous). */
+  visibleTabs?: ProfileSettingsTab[];
 }
 
-export function ProfileSettingsModal({ open, onClose }: Props) {
-  const [tab, setTab] = useState<Tab>("general");
+export function ProfileSettings({
+  active,
+  onClose,
+  embedded = false,
+  visibleTabs = ["general", "servos", "collisions", "sequences"],
+}: ProfileSettingsProps) {
+  const [tab, setTab] = useState<ProfileSettingsTab>(visibleTabs[0] ?? "general");
   const [localName, setLocalName] = useState("");
   const [localDesc, setLocalDesc] = useState("");
   const [localLegLayout, setLocalLegLayout] = useState<LegLayout>("star");
@@ -300,8 +317,8 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
 
   useEffect(() => {
-    if (!open) return;
-    setTab("general");
+    if (!active) return;
+    setTab(visibleTabs[0] ?? "general");
     setLocalName(activeProfile?.name ?? "");
     setLocalDesc(storeDescription);
     setLocalLegLayout(storeGeometry.legLayout ?? "star");
@@ -315,25 +332,40 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     setGenLiftFraction(0.5);
     setGenUseSoft(true);
     setGenBasePoseId("");
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (open && tab === "sequences") {
+    if (active && tab === "sequences") {
       listSequences();
       // Charge les poses pour proposer une « pose de base » au générateur.
       useSavedPosesStore.getState().list().catch(() => {});
     }
-  }, [open, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCalibChange = (
     servoId: number,
     field: keyof ServoCalibration,
     value: number | boolean
   ) => {
-    setCalibration((prev) => ({
-      ...prev,
-      [servoId]: { ...(prev[servoId] ?? DEFAULT_SERVO_CALIB), [field]: value },
-    }));
+    setCalibration((prev) => {
+      const next = {
+        ...prev,
+        [servoId]: { ...(prev[servoId] ?? DEFAULT_SERVO_CALIB), [field]: value },
+      };
+      // Mode intégré (onglet Projet) : pas de bouton « Enregistrer » → on commit
+      // dans le store à chaque édition, ce qui déclenche l'auto-save du profil.
+      if (embedded) setServoCalibrationAll(next);
+      return next;
+    });
+  };
+
+  // Idem pour les collisions : commit immédiat dans le store en mode intégré.
+  const updateCollisionPrefs = (patch: Partial<CollisionPrefs>) => {
+    setLocalCollisionPrefs((p) => {
+      const next = { ...p, ...patch };
+      if (embedded) setCollisionPrefs(next);
+      return next;
+    });
   };
 
   const toggleLeg = (leg: number) =>
@@ -442,39 +474,21 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} className="modal-wide">
-      <h3 className="modal-title">Paramètres de la base mécanique</h3>
+    <div className={`profile-settings${embedded ? " profile-settings-embedded" : ""}`}>
+      {!embedded && <h3 className="modal-title">Paramètres de la base mécanique</h3>}
 
       <div className="settings-layout">
         <nav className="settings-tabs">
-          <button
-            type="button"
-            className={`settings-tab${tab === "general" ? " active" : ""}`}
-            onClick={() => setTab("general")}
-          >
-            Général
-          </button>
-          <button
-            type="button"
-            className={`settings-tab${tab === "servos" ? " active" : ""}`}
-            onClick={() => setTab("servos")}
-          >
-            Servo-Moteurs
-          </button>
-          <button
-            type="button"
-            className={`settings-tab${tab === "collisions" ? " active" : ""}`}
-            onClick={() => setTab("collisions")}
-          >
-            Collisions
-          </button>
-          <button
-            type="button"
-            className={`settings-tab${tab === "sequences" ? " active" : ""}`}
-            onClick={() => setTab("sequences")}
-          >
-            Séquences
-          </button>
+          {TAB_DEFS.filter((t) => visibleTabs.includes(t.id)).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`settings-tab${tab === t.id ? " active" : ""}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </nav>
 
         <div className="settings-content">
@@ -574,7 +588,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                 <input
                   type="checkbox"
                   checked={localCollisionPrefs.enabled}
-                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, enabled: e.target.checked }))}
+                  onChange={(e) => updateCollisionPrefs({ enabled: e.target.checked })}
                 />
                 <span>Activer l&apos;affichage des collisions</span>
                 <span className="hint">
@@ -587,7 +601,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                 <input
                   type="checkbox"
                   checked={localCollisionPrefs.includeBody}
-                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, includeBody: e.target.checked }))}
+                  onChange={(e) => updateCollisionPrefs({ includeBody: e.target.checked })}
                 />
                 <span>Corps et pattes</span>
                 <span className="hint">
@@ -600,7 +614,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
                 <input
                   type="checkbox"
                   checked={localCollisionPrefs.showArrow}
-                  onChange={(e) => setLocalCollisionPrefs((p) => ({ ...p, showArrow: e.target.checked }))}
+                  onChange={(e) => updateCollisionPrefs({ showArrow: e.target.checked })}
                 />
                 <span>Flèche de marquage</span>
                 <span className="hint">
@@ -815,17 +829,21 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
         </div>
       </div>
 
-      <div className="modal-actions settings-modal-actions">
-        <button type="button" className="btn" onClick={onClose}>Annuler</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={saving}
-          onClick={handleSave}
-        >
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
-      </div>
-    </Modal>
+      {/* Mode intégré (onglet Projet) : aucun bouton — la sauvegarde du profil est
+          automatique (commit dans le store à chaque édition + auto-save App.tsx). */}
+      {!embedded && (
+        <div className="modal-actions settings-modal-actions">
+          <button type="button" className="btn" onClick={onClose}>Annuler</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={saving}
+            onClick={handleSave}
+          >
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

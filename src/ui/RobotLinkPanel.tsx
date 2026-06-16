@@ -37,9 +37,6 @@ export function RobotLinkContent() {
   const target = useSerialStore((s) => s.target);
   const errorMsg = useSerialStore((s) => s.errorMsg);
   const errorKind = useSerialStore((s) => s.errorKind);
-  const connect = useSerialStore((s) => s.connect);
-  const reconnect = useSerialStore((s) => s.reconnect);
-  const disconnect = useSerialStore((s) => s.disconnect);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const sendPose = useSerialStore((s) => s.sendPose);
   const importPoseFromRobot = useSerialStore((s) => s.importPoseFromRobot);
@@ -81,7 +78,6 @@ export function RobotLinkContent() {
   }, [electronics]);
 
   const connected = status === "connected";
-  const busy = status === "connecting";
   const unsupported = status === "unsupported";
 
   return (
@@ -116,39 +112,10 @@ export function RobotLinkContent() {
         </div>
       )}
 
-      {connected ? (
-        <button type="button" className="btn robotlink-btn" onClick={() => void disconnect()}>
-          Déconnecter
-        </button>
-      ) : status === "error" ? (
-        <>
-          <button
-            type="button"
-            className="btn btn-primary robotlink-btn"
-            disabled={unsupported || busy}
-            onClick={() => void reconnect()}
-          >
-            {busy ? "Reconnexion…" : "↻ Reconnecter"}
-          </button>
-          <button
-            type="button"
-            className="btn robotlink-btn"
-            disabled={unsupported || busy}
-            onClick={() => void connect()}
-            title="Choisir un autre port que le précédent"
-          >
-            Choisir un autre port…
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          className="btn btn-primary robotlink-btn"
-          disabled={unsupported || busy}
-          onClick={() => void connect()}
-        >
-          {busy ? "Connexion…" : "Connecter le robot (USB)"}
-        </button>
+      {!connected && (
+        <div className="robotlink-note">
+          La connexion USB se fait depuis le bandeau du haut (« Liaison robot »).
+        </div>
       )}
 
       {connected && (

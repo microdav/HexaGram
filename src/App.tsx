@@ -3,7 +3,6 @@ import { Scene } from "./three/Scene";
 import { MirrorPanel } from "./ui/MirrorPanel";
 import { UserButton } from "./ui/UserButton";
 import { AuthModal } from "./ui/AuthModal";
-import { ProfilePanel } from "./ui/ProfilePanel";
 import { Toast } from "./ui/Toast";
 import { HexaLogo } from "./ui/HexaLogo";
 import { InstallBanner } from "./ui/InstallBanner";
@@ -12,6 +11,7 @@ import { TabletServoEditor } from "./ui/TabletServoEditor";
 import { SequencerPanel } from "./ui/SequencerPanel";
 import { PoseConflictModal } from "./ui/PoseConflictModal";
 import { ToolsMenu } from "./ui/ToolsMenu";
+import { RobotLinkBar } from "./ui/RobotLinkBar";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
@@ -26,6 +26,7 @@ import { useToolboxStore } from "./store/useToolboxStore";
 import { useSequencerStore } from "./store/useSequencerStore";
 import { useHexapodStore } from "./store/useHexapodStore";
 import { useProjectStore } from "./store/useProjectStore";
+import { useSerialStore } from "./store/useSerialStore";
 import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
@@ -63,6 +64,7 @@ export default function App() {
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const profiles = useProfilesStore((s) => s.profiles);
+  const serialStatus = useSerialStore((s) => s.status);
   const programs = useProgramsStore((s) => s.programs);
   const selectedProgramId = useProgramsStore((s) => s.selectedProgramId);
   const listPrograms = useProgramsStore((s) => s.list);
@@ -88,6 +90,10 @@ export default function App() {
     // Hydrate les référentiels matériels depuis la base (remplace les défauts
     // intégrés injectés dans main.tsx). Public : fonctionne aussi en mode démo.
     useCatalogStore.getState().hydrate();
+    // Reconnexion automatique et SILENCIEUSE après un rechargement de page : si la
+    // carte précédemment autorisée est encore branchée, on rouvre le port (sans
+    // envoyer de pose ni réactiver le Mode Live — le robot ne bouge pas).
+    void useSerialStore.getState().autoReconnect();
     bootstrap().then(() => {
       if (!useAuthStore.getState().user) {
         useSequencerStore.getState().setTransitionSpeed(0.1);
@@ -131,16 +137,19 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  // Enregistrement automatique du profil : quand l'option est active, toute
-  // modification de la config robot est persistée après stabilisation (1,5 s).
+  // Enregistrement automatique du profil : toute modification de la config robot
+  // est systématiquement persistée après stabilisation (1,5 s). Pas d'option à
+  // activer — la sauvegarde est toujours active (aucun bouton « Enregistrer »).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const unsub = useHexapodStore.subscribe(() => {
-      const { autoSave, activeProfileId } = useProfilesStore.getState();
-      if (!autoSave || !activeProfileId || !isProfileDirty()) return;
+      const { activeProfileId } = useProfilesStore.getState();
+      if (!activeProfileId || !isProfileDirty()) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        useProfilesStore.getState().update(activeProfileId);
+        // guardEmptyBody2D : l'auto-save étant universel, on ne laisse jamais un
+        // tracé de châssis vide transitoire écraser un châssis enregistré non vide.
+        useProfilesStore.getState().update(activeProfileId, { guardEmptyBody2D: true });
       }, 1500);
     });
     return () => { unsub(); clearTimeout(timer); };
@@ -172,8 +181,9 @@ export default function App() {
 
   // À la connexion (ou au chargement avec session active) : charger la liste des
   // projets. Si l'URL cible explicitement un projet (lien profond), on l'ouvre ;
-  // sinon on reste sur la page Projets SANS ouvrir automatiquement un projet
-  // (pas de redirection vers la Conception 3D).
+  // sinon on reste sur la page Projets en pré-sélectionnant le projet le plus
+  // récent (liste triée updated_at DESC côté serveur) — pas de redirection vers
+  // la Conception 3D.
   useEffect(() => {
     if (!user) {
       clearProjects();
@@ -197,7 +207,9 @@ export default function App() {
           // Lien profond vers un projet : on l'ouvre et on honore l'onglet de l'URL.
           await loadProject(target.id);
         } else {
-          // URL de base / connexion : page Projets, sans projet actif.
+          // URL de base / connexion : page Projets avec le projet le plus récent
+          // pré-sélectionné (list[0], triée updated_at DESC côté serveur).
+          await loadProject(list[0].id);
           setActiveTab('projet');
         }
       } finally {
@@ -280,6 +292,11 @@ export default function App() {
         <h1>HexaGram</h1>
         <span className="subtitle">hexapode 18 DOF</span>
         <div className="topbar-right">
+          {/* Liaison robot : point de connexion central + arrêt d'urgence + console.
+              Partout sauf l'onglet Projet — mais réaffiché sur Projet quand connecté. */}
+          {serialStatus !== 'unsupported' && (serialStatus === 'connected' || activeTab !== 'projet') && (
+            <RobotLinkBar />
+          )}
           {!user && <span className="demo-badge">Mode démo</span>}
           {user?.isAdmin && (
             <button
@@ -368,7 +385,6 @@ export default function App() {
               className={`sidebar sidebar-left${leftOpen ? "" : " collapsed"}`}
               data-dock-panel="left"
             >
-              <ProfilePanel />
               <ToolboxSlot panel="left" />
             </aside>
             <button

@@ -5,11 +5,6 @@ import { protocolForController, GENERIC_ASCII_PROTOCOL } from "../model/electron
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-}
-
 const STATUS_LABEL: Record<string, string> = {
   unsupported: "Web Serial non supporté",
   disconnected: "Déconnecté",
@@ -47,8 +42,14 @@ function initialPos() {
  * persistent toute la session tant que l'onglet n'est pas rechargé, quelle que
  * soit la page affichée — on retrouve donc l'historique à chaque réouverture.
  */
-export function ElectronicConsolePanel({ open, onClose }: Props) {
+export function ElectronicConsolePanel() {
   const activeProject = useProjectStore((s) => s.activeProject);
+
+  const open = useSerialStore((s) => s.globalConsoleOpen);
+  const setOpen = useSerialStore((s) => s.setGlobalConsoleOpen);
+  const pinned = useSerialStore((s) => s.consolePinned);
+  const setPinned = useSerialStore((s) => s.setConsolePinned);
+  const onClose = () => setOpen(false);
 
   const status = useSerialStore((s) => s.status);
   const portLabel = useSerialStore((s) => s.portLabel);
@@ -110,7 +111,8 @@ export function ElectronicConsolePanel({ open, onClose }: Props) {
   // Déplacement par l'en-tête (drag pointer, listeners au document comme ailleurs).
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
   const startDrag = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest(".ecm-close")) return; // pas depuis ✕
+    if (pinned) return; // épinglée : pas de déplacement (ancrée sous le bandeau)
+    if ((e.target as HTMLElement).closest(".ecm-close, .ecm-pin")) return; // pas depuis ✕ / 📌
     e.preventDefault();
     dragRef.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
     document.body.style.userSelect = "none";
@@ -146,15 +148,24 @@ export function ElectronicConsolePanel({ open, onClose }: Props) {
 
   return (
     <div
-      className="ecm-panel"
+      className={`ecm-panel${pinned ? " ecm-panel--pinned" : ""}`}
       // eslint-disable-next-line react/forbid-component-props
-      style={{ left: pos.x, top: pos.y }}
+      style={pinned ? undefined : { left: pos.x, top: pos.y }}
       role="dialog"
       aria-label="Console électronique"
     >
-      {/* En-tête = poignée de déplacement */}
+      {/* En-tête = poignée de déplacement (sauf en mode épinglé) */}
       <div className="ecm-drag" onPointerDown={startDrag}>
         <span className="ecm-title">🔌 Console électronique</span>
+        <button
+          type="button"
+          className={`ecm-pin${pinned ? " active" : ""}`}
+          onClick={() => setPinned(!pinned)}
+          title={pinned ? "Détacher (fenêtre flottante)" : "Épingler sous le bandeau (déroulé)"}
+          aria-pressed={pinned ? "true" : "false"}
+        >
+          📌
+        </button>
         <button type="button" className="ecm-close" onClick={onClose} title="Fermer">
           ✕
         </button>

@@ -83,6 +83,10 @@ interface SerialState {
   /** Panneau console bas : ouvert / hauteur (px), persistés localement. */
   consoleOpen: boolean;
   consoleHeight: number;
+  /** Console globale (ouverte depuis le bandeau du haut) : visible ? Éphémère. */
+  globalConsoleOpen: boolean;
+  /** Console globale épinglée au bandeau (déroulé sous la barre) plutôt que flottante. Persisté. */
+  consolePinned: boolean;
   /** Miroir live : la pose 3D (useHexapodStore.pose) est streamée au robot en
    *  temps réel tant que ce mode est actif ET la carte connectée. Persisté. */
   liveMirror: boolean;
@@ -100,6 +104,8 @@ interface SerialState {
   setTarget: (t: ConnTarget) => void;
   setConsoleOpen: (v: boolean) => void;
   setConsoleHeight: (h: number) => void;
+  setGlobalConsoleOpen: (v: boolean) => void;
+  setConsolePinned: (v: boolean) => void;
   /** Active/désactive le miroir live (envoie la pose courante à l'activation si connecté). */
   setLiveMirror: (v: boolean) => void;
   /** Bascule « envoyer en fin de mouvement » du miroir live. */
@@ -149,6 +155,19 @@ interface SerialState {
   waitUntilIdle: (capMs: number) => Promise<void>;
   /** Arrêt d'urgence : coupe le couple de tous les canaux liés. */
   releaseAll: () => Promise<void>;
+  /**
+   * Arrêt (non urgent) : fige tous les servos câblés à leur position courante
+   * (STOP par canal), SANS couper le couple, et coupe le Mode Live pour que plus
+   * rien ne relance le mouvement. L'arrêt d'urgence (releaseAll) reste le couple-off.
+   */
+  stopAll: () => Promise<void>;
+  /**
+   * Reconnexion automatique et SILENCIEUSE après un rechargement de page : rouvre
+   * le port déjà autorisé si présent, SANS envoyer de pose et en désactivant le
+   * Mode Live (le robot ne doit jamais bouger tout seul au chargement). No-op si
+   * aucun port autorisé n'est disponible.
+   */
+  autoReconnect: () => Promise<void>;
   /**
    * Interroge la carte : un mouvement est-il en cours ? (`Q` → `+`/`.` sur
    * SSC-32U). Renvoie `true`/`false`, ou `null` si non supporté / pas de réponse.
@@ -237,6 +256,22 @@ function readConsole(): { open: boolean; height: number } {
 function writeConsole(open: boolean, height: number): void {
   try {
     localStorage.setItem(CONSOLE_KEY, JSON.stringify({ open, height }));
+  } catch {
+    /* ignore */
+  }
+}
+
+const CONSOLE_PIN_KEY = "hexagram.serial.consolePinned";
+function readConsolePinned(): boolean {
+  try {
+    return localStorage.getItem(CONSOLE_PIN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeConsolePinned(v: boolean): void {
+  try {
+    localStorage.setItem(CONSOLE_PIN_KEY, v ? "1" : "0");
   } catch {
     /* ignore */
   }
@@ -448,6 +483,8 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   rxByteCount: 0,
   consoleOpen: _console.open,
   consoleHeight: _console.height,
+  globalConsoleOpen: false,
+  consolePinned: readConsolePinned(),
   liveMirror: readLiveMirror(),
   mirrorOnRelease: readMirrorOnRelease(),
   lastMirrorAt: null,
@@ -480,6 +517,13 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   setConsoleHeight: (h) => {
     writeConsole(get().consoleOpen, h);
     set({ consoleHeight: h });
+  },
+
+  setGlobalConsoleOpen: (v) => set({ globalConsoleOpen: v }),
+
+  setConsolePinned: (v) => {
+    writeConsolePinned(v);
+    set({ consolePinned: v });
   },
 
   setLiveMirror: (v) => {
@@ -562,6 +606,28 @@ export const useSerialStore = create<SerialState>((set, get) => ({
         errorKind: cancelled ? null : "port-lost",
       });
       if (!cancelled) useToastStore.getState().show(`Reconnexion échouée : ${msg}`);
+    }
+  },
+
+  autoReconnect: async () => {
+    const st = get().status;
+    if (st === "unsupported" || st === "connected" || st === "connecting") return;
+    try {
+      const label = await link.reopenAuthorized(get().baudRate);
+      if (!label) return; // aucun port autorisé → on reste déconnecté, sans bruit
+      // Sécurité (reconnexion silencieuse après reload) : on n'envoie AUCUNE pose
+      // et on désactive le Mode Live, pour que le robot ne bouge jamais tout seul.
+      if (get().liveMirror) {
+        writeLiveMirror(false);
+        set({ liveMirror: false });
+      }
+      softStartArmed = true; // si l'utilisateur envoie ensuite une pose, ce sera en douceur
+      set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
+      link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
+      pushLog(set, "info", `Reconnexion auto à ${label} @ ${get().baudRate} bauds (silencieuse, Mode Live désactivé)`);
+      useToastStore.getState().show(`Carte reconnectée (${label})`);
+    } catch {
+      /* échec silencieux : on reste déconnecté, l'utilisateur connectera manuellement */
     }
   },
 
@@ -738,6 +804,31 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     }
     pushLog(set, "info", "Relâche tout (couple off)");
     useToastStore.getState().show("Couple coupé sur tous les servos");
+  },
+
+  stopAll: async () => {
+    // Coupe d'abord le Mode Live (et le watchdog) pour que plus aucune trame ne
+    // relance le mouvement après l'arrêt.
+    if (get().liveMirror) get().setLiveMirror(false);
+    if (get().status !== "connected") return;
+    const { protocol, electronics } = hardwareContext();
+    if (!electronics || !protocol.stop) {
+      pushLog(set, "info", "Arrêt : STOP non géré par ce protocole (couple maintenu) — utilisez l'arrêt d'urgence");
+      useToastStore.getState().show("Arrêt non supporté par ce protocole");
+      return;
+    }
+    for (let id = 0; id < 18; id++) {
+      const ch = electronics.bindings[id]?.channel;
+      if (ch == null) continue;
+      try {
+        await link.writeString(protocol.stop(ch));
+        await sleep(8);
+      } catch {
+        /* on continue d'arrêter les autres canaux malgré une erreur */
+      }
+    }
+    pushLog(set, "info", "Arrêt — servos figés à leur position (couple maintenu)");
+    useToastStore.getState().show("Arrêt — servos figés");
   },
 
   identify: async (servoId) => {
