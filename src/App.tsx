@@ -12,6 +12,7 @@ import { SequencerPanel } from "./ui/SequencerPanel";
 import { PoseConflictModal } from "./ui/PoseConflictModal";
 import { ToolsMenu } from "./ui/ToolsMenu";
 import { RobotLinkBar } from "./ui/RobotLinkBar";
+import { LinkedScreenBadge } from "./ui/LinkedScreenBadge";
 import { ControlRequestModal } from "./ui/ControlRequestModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
@@ -312,6 +313,9 @@ export default function App() {
         <h1>HexaGram</h1>
         <span className="subtitle">hexapode 18 DOF</span>
         <div className="topbar-right">
+          {/* Écran lié : indépendant de Web Serial — la tablette (sans Web Serial)
+              doit pouvoir activer le mode et prendre le contrôle. Masqué hors session. */}
+          <LinkedScreenBadge />
           {/* Liaison robot : point de connexion central + arrêt d'urgence + console.
               Partout sauf l'onglet Projet — mais réaffiché sur Projet quand connecté. */}
           {serialStatus !== 'unsupported' && (serialStatus === 'connected' || activeTab !== 'projet') && (
