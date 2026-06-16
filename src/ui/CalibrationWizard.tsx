@@ -93,6 +93,10 @@ export function CalibrationWizard({ onClose }: { onClose: () => void }) {
 
   // Passe à un servo donné : remet l'assistant en phase « sens », au repos.
   function goToServo(newLeg: number, newJoint: number) {
+    // Avant de quitter le servo courant, on le ramène à son centre mécanique
+    // (0° = 1500 µs + offset) : on ne laisse jamais une patte sur un repère
+    // perpendiculaire ou contre une butée en passant à l'étape suivante.
+    if (connected && wired) void sendServoAngle(servoId, 0);
     setLegIndex(Math.max(0, Math.min(5, newLeg)));
     setJointIdx(Math.max(0, Math.min(2, newJoint)));
     setPhase("sens");

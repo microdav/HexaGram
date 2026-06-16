@@ -3,7 +3,6 @@ import { useProjectStore } from "../store/useProjectStore";
 import { useSerialStore } from "../store/useSerialStore";
 import { useToolboxStore } from "../store/useToolboxStore";
 import { SERVOS, LEG_NAMES } from "../model/hexapod";
-import { JOINT_REFERENCE_DEG } from "../model/pose";
 import { sliderEndLabels } from "../model/servoDirection";
 import { useHexapodStore } from "../store/useHexapodStore";
 import {
@@ -507,8 +506,9 @@ export function ElectroniquePage() {
                 </button>
                 <span className="electro-hint">
                   Les flèches sous chaque slider indiquent le mouvement <strong>attendu</strong>{" "}
-                  (modèle) : si une patte part à l'inverse, cochez « Inverser ». « Neutre » amène à
-                  la position de repos ; réglez ensuite le « Zéro » pour l'alignement mécanique.
+                  (modèle) : si une patte part à l'inverse, cochez « Inverser ». « Centrer » amène le
+                  servo à son centre mécanique (même position pour tous) ; réglez ensuite le « Zéro »
+                  pour l'alignement (bouton « −90° » pour le quart de tour du tibia).
                   Enregistrement automatique.
                 </span>
               </section>
@@ -554,10 +554,10 @@ export function ElectroniquePage() {
                       type="button"
                       className="btn btn-sm"
                       disabled={!connected || binding.channel == null}
-                      onClick={() => void sendServoAngle(s.id, JOINT_REFERENCE_DEG[s.joint])}
-                      title="Amener à la position neutre (coxa/fémur : aligné ; tibia : perpendiculaire)"
+                      onClick={() => void sendServoAngle(s.id, 0)}
+                      title="Amener au centre mécanique du servo (1500 µs + offset) — même référence pour tous les servos"
                     >
-                      Neutre
+                      Centrer
                     </button>
                     <button
                       type="button"
