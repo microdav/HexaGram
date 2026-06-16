@@ -101,12 +101,12 @@ function GridWithScroll() {
         <Grid
           args={[2, 2]}
           cellSize={0.01}
-          cellThickness={0.5}
-          cellColor="#2a2f3a"
+          cellThickness={0.8}
+          cellColor="#39414f"
           sectionSize={0.1}
-          sectionThickness={1}
-          sectionColor="#3a4150"
-          fadeDistance={2.5}
+          sectionThickness={1.4}
+          sectionColor="#5b6679"
+          fadeDistance={1.6}
           fadeStrength={1}
           infiniteGrid
         />
