@@ -21,6 +21,20 @@ export type SerialStatus =
   | "error";
 
 /**
+ * Nature d'une erreur de liaison, pour remonter un message distinct (cf. P1) :
+ *  - "port-lost"     : port USB perdu (débranchement / réinitialisation carte).
+ *  - "write-failed"  : échec d'écriture alors que le port semble encore ouvert.
+ *  - "connect-failed": échec à l'ouverture du port.
+ *  - "not-connected" : commande émise sans liaison active.
+ */
+export type SerialErrorKind =
+  | "port-lost"
+  | "write-failed"
+  | "connect-failed"
+  | "not-connected"
+  | null;
+
+/**
  * Carte sur laquelle l'USB est physiquement branché :
  *  - "controller" : directement sur le contrôleur de servos (ex. SSC-32U) —
  *    mode initialisation/calibration (protocole du contrôleur, en direct).
@@ -49,6 +63,10 @@ interface SerialState {
   /** Carte ciblée par le câble USB (cf. ConnTarget). */
   target: ConnTarget;
   errorMsg: string | null;
+  /** Nature de la dernière erreur (pilote le message et le bouton « Reconnecter »). */
+  errorKind: SerialErrorKind;
+  /** Watchdog couple-off : couper le couple après une inactivité prolongée en mode Live. Persisté. */
+  watchdogEnabled: boolean;
   /** Console série : commandes émises (tx), messages reçus (rx), infos. Ordre chronologique. */
   log: SerialLogEntry[];
   /** Total d'octets bruts reçus depuis la connexion (diagnostic RX). */
@@ -77,8 +95,12 @@ interface SerialState {
   setLiveMirror: (v: boolean) => void;
   /** Bascule « envoyer en fin de mouvement » du miroir live. */
   setMirrorOnRelease: (v: boolean) => void;
+  /** Active/désactive le watchdog couple-off (réarmé/désarmé immédiatement). */
+  setWatchdogEnabled: (v: boolean) => void;
   clearLog: () => void;
   connect: () => Promise<void>;
+  /** Rouvre la liaison après une perte, sans re-sélection manuelle du port. */
+  reconnect: () => Promise<void>;
   disconnect: () => Promise<void>;
 
   /** Envoie un angle logique (deg) au servo via son canal. Met à jour testAngles. */
@@ -188,6 +210,23 @@ function writeMirrorOnRelease(v: boolean): void {
   }
 }
 
+const WATCHDOG_KEY = "hexagram.serial.watchdog";
+function readWatchdog(): boolean {
+  // Défaut activé : seul "0" explicite désactive (sécurité par défaut).
+  try {
+    return localStorage.getItem(WATCHDOG_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeWatchdog(v: boolean): void {
+  try {
+    localStorage.setItem(WATCHDOG_KEY, v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Ajoute une entrée tx/info à la console. Les lignes vides sont ignorées. */
@@ -228,6 +267,21 @@ function nowMs(): number {
   return Date.now();
 }
 
+/**
+ * Marque une erreur d'écriture sur le store et renvoie le message. Distingue
+ * « write échoué » (port encore ouvert) de « port perdu » (liaison déjà morte,
+ * p.ex. débranchement détecté entre-temps) en s'appuyant sur l'état du lien.
+ */
+function markWriteError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : "Écriture échouée";
+  useSerialStore.setState({
+    status: "error",
+    errorKind: link.connected ? "write-failed" : "port-lost",
+    errorMsg: msg,
+  });
+  return msg;
+}
+
 /** Contexte matériel courant pour formater/convertir les commandes. */
 function hardwareContext() {
   const project = useProjectStore.getState().activeProject;
@@ -264,6 +318,8 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   baudRate: readBaud() ?? 115200,
   target: readTarget(),
   errorMsg: null,
+  errorKind: null,
+  watchdogEnabled: readWatchdog(),
   log: [],
   rxByteCount: 0,
   consoleOpen: _console.open,
@@ -306,9 +362,11 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     writeLiveMirror(v);
     set({ liveMirror: v });
     // À l'activation, on pousse immédiatement la pose 3D courante (sinon il faut
-    // bouger un servo pour amorcer le miroir).
+    // bouger un servo pour amorcer le miroir) — ce qui arme aussi le watchdog.
     if (v && get().status === "connected") {
       void get().sendPoseLive(useHexapodStore.getState().pose);
+    } else {
+      stopWatchdog();
     }
   },
 
@@ -317,14 +375,21 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     set({ mirrorOnRelease: v });
   },
 
+  setWatchdogEnabled: (v) => {
+    writeWatchdog(v);
+    set({ watchdogEnabled: v });
+    if (v) armWatchdog();
+    else stopWatchdog();
+  },
+
   clearLog: () => set({ log: [], rxByteCount: 0 }),
 
   connect: async () => {
     if (get().status === "unsupported") return;
-    set({ status: "connecting", errorMsg: null });
+    set({ status: "connecting", errorMsg: null, errorKind: null });
     try {
       const label = await link.connect(get().baudRate);
-      set({ status: "connected", portLabel: label, rxByteCount: 0 });
+      set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
       pushLog(set, "info", `Connecté à ${label} @ ${get().baudRate} bauds`);
       // Démarre l'écoute des réponses de la carte (← rx). On journalise les
       // octets bruts pour ne jamais perdre une réponse (même non imprimable).
@@ -337,14 +402,39 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       set({
         status: cancelled ? "disconnected" : "error",
         errorMsg: cancelled ? null : msg,
+        errorKind: cancelled ? null : "connect-failed",
       });
       if (!cancelled) useToastStore.getState().show(`Erreur : ${msg}`);
     }
   },
 
+  reconnect: async () => {
+    if (get().status === "unsupported") return;
+    set({ status: "connecting", errorMsg: null, errorKind: null });
+    try {
+      const label = await link.reconnect(get().baudRate);
+      set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
+      link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
+      pushLog(set, "info", `Reconnecté à ${label} @ ${get().baudRate} bauds`);
+      useToastStore.getState().show(`Carte reconnectée (${label})`);
+      // Reprend le miroir live s'il était actif (réengage le couple en douceur).
+      if (get().liveMirror) void get().sendPoseLive(useHexapodStore.getState().pose);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Reconnexion échouée";
+      const cancelled = /No port selected|cancel/i.test(msg);
+      set({
+        status: cancelled ? "disconnected" : "error",
+        errorMsg: cancelled ? null : msg,
+        errorKind: cancelled ? null : "port-lost",
+      });
+      if (!cancelled) useToastStore.getState().show(`Reconnexion échouée : ${msg}`);
+    }
+  },
+
   disconnect: async () => {
+    stopWatchdog();
     await link.disconnect();
-    set({ status: "disconnected", portLabel: null, errorMsg: null });
+    set({ status: "disconnected", portLabel: null, errorMsg: null, errorKind: null });
     pushLog(set, "info", "Déconnecté");
     useToastStore.getState().show("Carte déconnectée");
   },
@@ -364,9 +454,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       await link.writeString(cmd);
       pushLog(set, "tx", cmd);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Écriture échouée";
-      set({ status: "error", errorMsg: msg });
-      pushLog(set, "info", `Erreur écriture : ${msg}`);
+      pushLog(set, "info", `Erreur écriture : ${markWriteError(e)}`);
     }
   },
 
@@ -406,9 +494,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
         count++;
         await sleep(6);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Écriture échouée";
-        set({ status: "error", errorMsg: msg });
-        pushLog(set, "info", `Erreur écriture : ${msg}`);
+        pushLog(set, "info", `Erreur écriture : ${markWriteError(e)}`);
         break;
       }
     }
@@ -433,11 +519,18 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     const cmd = protocol.moveGroup(channels, 0);
     try {
       await link.writeString(cmd);
-      set((s) => ({ testAngles: { ...s.testAngles, ...nextTest }, lastMirrorAt: nowMs() }));
+      // Auto-rétablissement : un envoi qui repasse après une erreur transitoire
+      // (le lien étant toujours ouvert) ramène l'UI en « connecté ».
+      set((s) => ({
+        testAngles: { ...s.testAngles, ...nextTest },
+        lastMirrorAt: nowMs(),
+        ...(s.status === "error" && link.connected
+          ? { status: "connected" as SerialStatus, errorKind: null, errorMsg: null }
+          : {}),
+      }));
+      armWatchdog(); // une trame est partie → on réarme le watchdog couple-off
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Écriture échouée";
-      set({ status: "error", errorMsg: msg });
-      pushLog(set, "info", `Erreur écriture (miroir live) : ${msg}`);
+      pushLog(set, "info", `Erreur écriture (miroir live) : ${markWriteError(e)}`);
     }
   },
 
@@ -485,21 +578,20 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       pushLog(set, "tx", cmd);
       pushLog(set, "info", "VER envoyé — réponse attendue ci-dessous (si la carte répond)");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Écriture échouée";
-      set({ status: "error", errorMsg: msg });
-      pushLog(set, "info", `Erreur écriture : ${msg}`);
+      pushLog(set, "info", `Erreur écriture : ${markWriteError(e)}`);
     }
   },
 
   sendRaw: async (cmd) => {
-    if (get().status !== "connected") return;
+    if (get().status !== "connected") {
+      pushLog(set, "info", "Non connecté — commande ignorée");
+      return;
+    }
     try {
       await link.writeString(cmd);
       pushLog(set, "tx", cmd);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Écriture échouée";
-      set({ status: "error", errorMsg: msg });
-      pushLog(set, "info", `Erreur écriture : ${msg}`);
+      pushLog(set, "info", `Erreur écriture : ${markWriteError(e)}`);
     }
   },
 }));
@@ -566,3 +658,48 @@ if (typeof window !== "undefined") {
     }
   });
 }
+
+// ── Watchdog couple-off (P1) ─────────────────────────────────────────────────
+// En mode Live, si plus AUCUNE trame n'est envoyée pendant WATCHDOG_MS (l'opérateur
+// s'éloigne, l'UI est figée…), on coupe le couple pour ne pas laisser les servos
+// forcer/chauffer sur leur dernière position. Réarmé à chaque envoi live réussi
+// (cf. sendPoseLive), désarmé hors mode Live / hors connexion. Le couple se
+// réengage tout seul au prochain mouvement 3D mirroré.
+const WATCHDOG_MS = 90_000;
+let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopWatchdog(): void {
+  if (watchdogTimer != null) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+  }
+}
+
+function armWatchdog(): void {
+  stopWatchdog();
+  const s = useSerialStore.getState();
+  if (!s.watchdogEnabled || !s.liveMirror || s.status !== "connected") return;
+  watchdogTimer = setTimeout(() => {
+    watchdogTimer = null;
+    const cur = useSerialStore.getState();
+    if (cur.watchdogEnabled && cur.liveMirror && cur.status === "connected") {
+      pushLog((fn) => useSerialStore.setState(fn), "info", "Watchdog : inactivité — coupure du couple");
+      void cur.releaseAll();
+      useToastStore.getState().show("Couple coupé (inactivité)");
+    }
+  }, WATCHDOG_MS);
+}
+
+// ── Perte involontaire de la liaison (P1) ────────────────────────────────────
+// Déclenché par SerialLink (débranchement USB, flux interrompu). On bascule en
+// erreur « port perdu », on désarme le watchdog et on invite à reconnecter. Le
+// couple ne peut PAS être coupé ici (le lien est mort) : le SSC-32U garde sa
+// dernière position tant que l'alimentation servo (VS) reste présente.
+function onLinkLost(reason: string): void {
+  stopWatchdog();
+  useSerialStore.setState({ status: "error", errorKind: "port-lost", errorMsg: reason });
+  pushLog((fn) => useSerialStore.setState(fn), "info", `Liaison perdue : ${reason}. Cliquez « Reconnecter ».`);
+  useToastStore.getState().show("Liaison robot perdue");
+}
+
+link.setOnLost(onLinkLost);

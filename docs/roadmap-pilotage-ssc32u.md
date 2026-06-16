@@ -17,26 +17,36 @@ tard »). La numérotation `#n` rappelle le regroupement d'origine.
 - Sous-onglet **« Séquence → carte »** (Électronique) : construit un script SSC-32U (groupes + `T`)
   envoyé via `sendRaw` ([src/model/sequenceScript.ts](../src/model/sequenceScript.ts)). ⚠️ À relire
   avant P3 pour bâtir dessus plutôt que dupliquer.
+- **P1 — Robustesse de la liaison** (cf. ci-dessous, ✅ fait) : détection de perte de port + bouton
+  « Reconnecter » sans recharger, erreurs typées (`errorKind`), watchdog couple-off (90 s d'inactivité
+  en mode Live).
 
 ---
 
-## P1 — Robustesse de la liaison _(#4)_
+## P1 — Robustesse de la liaison _(#4)_ — ✅ FAIT
 
 Objectif : une liaison qui ne « lâche » jamais silencieusement, et qui protège le robot.
 
-- **Perte de port / déconnexion USB** : détecter la perte (write qui échoue, `link` fermé), repasser
-  proprement en `disconnected`/`error`, message clair, et proposer une **reconnexion** (mémoriser le
-  dernier port si l'API le permet).
-- **Watchdog couple-off** : si plus aucune trame n'est envoyée pendant N secondes en mode Live (ou sur
-  erreur), couper le couple (`releaseAll`) pour ne pas laisser les servos forcer/chauffer.
-- **États d'erreur** : remonter distinctement « port perdu », « write échoué », « non connecté » dans
-  la boîte Liaison robot et la console.
-- Fichiers : [useSerialStore.ts](../src/store/useSerialStore.ts), [src/serial/webSerial.ts](../src/serial/webSerial.ts),
-  [RobotLinkPanel.tsx](../src/ui/RobotLinkPanel.tsx).
-- Critère d'acceptation : débrancher l'USB en plein mode Live → l'UI passe en erreur, couple coupé,
-  reconnexion possible sans recharger la page.
+Livré :
 
-## P2 — Mieux exploiter le SSC-32U _(#2)_
+- **Perte de port / déconnexion USB** : `SerialLink` détecte la perte via l'événement
+  `navigator.serial` `"disconnect"` **et** la fin/erreur de la boucle de lecture (hors déconnexion
+  volontaire), expose un callback `setOnLost`. Le dernier port est mémorisé (`lastPort`) et
+  `reconnect()` le rouvre sans re-sélection (sinon port déjà autorisé, sinon `requestPort`).
+- **États d'erreur typés** : `errorKind` = `port-lost` / `write-failed` / `connect-failed` /
+  `not-connected` → message distinct dans la boîte Liaison robot + console. Boutons **« ↻ Reconnecter »**
+  et **« Choisir un autre port… »** en état erreur. Auto-rétablissement du miroir live après un raté
+  transitoire (lien encore ouvert).
+- **Watchdog couple-off** : en mode Live, sans trame envoyée pendant `WATCHDOG_MS` (90 s), `releaseAll`
+  coupe le couple (toast + log). Toggle persisté dans la boîte Liaison robot (défaut activé). Sur perte
+  physique le couple ne peut pas être coupé (lien mort) — le SSC-32U garde sa position tant que VS est
+  alimenté ; c'est signalé honnêtement.
+- Fichiers touchés : [webSerial.ts](../src/serial/webSerial.ts), [useSerialStore.ts](../src/store/useSerialStore.ts),
+  [RobotLinkPanel.tsx](../src/ui/RobotLinkPanel.tsx).
+- Validé au banc : débranchement en plein mode Live → UI en erreur « port perdu », reconnexion sans
+  recharger, watchdog OK.
+
+## P2 — Mieux exploiter le SSC-32U _(#2)_ — ⬅ prochaine étape
 
 Objectif : mouvements plus doux et lecture de l'état réel de la carte.
 

@@ -36,7 +36,9 @@ export function RobotLinkContent() {
   const portLabel = useSerialStore((s) => s.portLabel);
   const target = useSerialStore((s) => s.target);
   const errorMsg = useSerialStore((s) => s.errorMsg);
+  const errorKind = useSerialStore((s) => s.errorKind);
   const connect = useSerialStore((s) => s.connect);
+  const reconnect = useSerialStore((s) => s.reconnect);
   const disconnect = useSerialStore((s) => s.disconnect);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const sendPose = useSerialStore((s) => s.sendPose);
@@ -44,6 +46,8 @@ export function RobotLinkContent() {
   const setLiveMirror = useSerialStore((s) => s.setLiveMirror);
   const mirrorOnRelease = useSerialStore((s) => s.mirrorOnRelease);
   const setMirrorOnRelease = useSerialStore((s) => s.setMirrorOnRelease);
+  const watchdogEnabled = useSerialStore((s) => s.watchdogEnabled);
+  const setWatchdogEnabled = useSerialStore((s) => s.setWatchdogEnabled);
 
   const pose = useHexapodStore((s) => s.pose);
 
@@ -100,12 +104,41 @@ export function RobotLinkContent() {
           Navigateur sans Web Serial. Utilisez Chrome ou Edge sur ordinateur.
         </div>
       )}
-      {errorMsg && <div className="robotlink-note warn">{errorMsg}</div>}
+      {errorMsg && (
+        <div className="robotlink-note warn">
+          {errorKind === "port-lost"
+            ? "Port USB perdu — la carte a été débranchée ou réinitialisée. "
+            : errorKind === "write-failed"
+              ? "Échec d'écriture sur le port. "
+              : ""}
+          {errorMsg}
+        </div>
+      )}
 
       {connected ? (
         <button type="button" className="btn robotlink-btn" onClick={() => void disconnect()}>
           Déconnecter
         </button>
+      ) : status === "error" ? (
+        <>
+          <button
+            type="button"
+            className="btn btn-primary robotlink-btn"
+            disabled={unsupported || busy}
+            onClick={() => void reconnect()}
+          >
+            {busy ? "Reconnexion…" : "↻ Reconnecter"}
+          </button>
+          <button
+            type="button"
+            className="btn robotlink-btn"
+            disabled={unsupported || busy}
+            onClick={() => void connect()}
+            title="Choisir un autre port que le précédent"
+          >
+            Choisir un autre port…
+          </button>
+        </>
       ) : (
         <button
           type="button"
@@ -176,6 +209,17 @@ export function RobotLinkContent() {
                 onChange={(e) => setMirrorOnRelease(e.target.checked)}
               />
               <span>Envoyer en fin de mouvement (au relâchement)</span>
+            </label>
+          )}
+
+          {liveMirror && (
+            <label className="robotlink-live robotlink-live-sub">
+              <input
+                type="checkbox"
+                checked={watchdogEnabled}
+                onChange={(e) => setWatchdogEnabled(e.target.checked)}
+              />
+              <span>Watchdog couple-off (coupe après 90 s d'inactivité)</span>
             </label>
           )}
 
