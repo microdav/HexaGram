@@ -23,9 +23,10 @@ tard »). La numérotation `#n` rappelle le regroupement d'origine.
 - **P2 — Mieux exploiter le SSC-32U** (cf. ci-dessous, ✅ fait) : transition douce par défaut
   (`transitionMs` partagé), import pose via `QP` (`pulseUsToAngle` + `SerialLink.requestBytes`),
   requête `Q`, `STOP`, et console debug (Q/QP/STOP + commande brute).
-- **P3 — Locomotion réelle depuis la salle** (cf. ci-dessous, ✅ fait) : toggle « 🤖 Robot » du Run
-  envoie les keyframes au robot (`sendPoseTimed` groupé + `T`), synchronisées par `Q` (`waitUntilIdle`,
-  poll silencieux), miroir live suspendu pendant le Run ; « Séquence → carte » consolidé (synchro `Q`).
+- **P3 — Locomotion réelle depuis la salle** (cf. ci-dessous, ⚠️ implémenté mais **NON opérationnel au
+  banc — à corriger**) : toggle « 🤖 Robot » du Run envoie les keyframes au robot (`sendPoseTimed`
+  groupé + `T`), synchronisées par `Q` (`waitUntilIdle`, poll silencieux), miroir live suspendu pendant
+  le Run ; « Séquence → carte » consolidé (synchro `Q`).
 
 ---
 
@@ -76,11 +77,17 @@ Livré :
 - Note : le **baud du SSC-32U se règle par bouton** sur la carte (pas en logiciel, cf. guide officiel
   SSC-32U) ; juste s'assurer que `baudRate` correspond côté app.
 
-## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_ — ✅ FAIT
+## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_ — ⚠️ À CORRIGER
 
 Objectif : faire **se déplacer le vrai robot**, pas seulement le mirroir frame-à-frame.
 
-Livré :
+> **État : implémenté mais NON opérationnel au banc.** Le mécanisme (envoi keyframe + `T`, gate `Q`,
+> suspension du miroir) est en place et compile, mais la marche réelle ne fonctionne pas encore
+> correctement. À reprendre/déboguer (symptôme précis à recueillir au banc : tenue de pas, synchro `Q`,
+> timing `T`, ou poses de démarche). Le correctif du rendu tibia (offset de montage perdu) a été fait
+> entre-temps — re-tester d'abord avec une démarche régénérée depuis une **pose de base** correcte.
+
+Implémenté (à valider/corriger) :
 
 - **Lecture pas-à-pas → robot avec `T` par transition** : le toggle **« 🤖 Robot »** du Run
   ([ProgramRoomPanel](../src/ui/ProgramRoomPanel.tsx)) envoie chaque **keyframe** au robot via
