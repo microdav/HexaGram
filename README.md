@@ -5,9 +5,10 @@ Application web 3D pour visualiser, manipuler et programmer un hexapode robotiqu
 de pilotage : visualisation paramétrique du squelette mécanique, édition de séquences
 de mouvements, et communication sans-fil avec la carte de contrôle du robot.
 
-> Statut : POC visuelle étendue, avec persistance serveur et comptes utilisateur.
-> La géométrie et la cinématique correspondent au robot physique réel ; la couche de
-> communication avec le matériel n'est pas encore implémentée.
+> Statut : outil étendu — conception (Robot 2D / base mécanique), manipulation 3D, séquences,
+> et **pilotage du robot réel** par USB (Web Serial). La géométrie et la cinématique
+> correspondent au robot physique ; la calibration par servo, l'envoi de poses et un **mode
+> Live** (miroir 3D → robot) sont opérationnels. En ligne : <https://hexagram.davidlardy.com>.
 
 ![Interface HexaGram — POC](docs/screenshots/main-view.png)
 
@@ -164,12 +165,22 @@ par défaut.
   - Afficher ou masquer la flèche de marquage (défaut : activée)
 - Préférences persistées dans le profil robot.
 
+#### Électronique & pilotage du robot réel
+
+- **Onglet Électronique** : matériel du projet (type de servo, contrôleur SSC-32U, carte de
+  commande) + **calibration par servo** (canal, sens `invert`, zéro `centerOffsetDeg`, butées
+  `minDeg`/`maxDeg`), assistant guidé (sens → zéro → butées) et cartes patte.
+- **Liaison série Web Serial** (Chrome/Edge desktop) : connexion USB au contrôleur, envoi de pose
+  (`sendPose`), pose de référence, **couple off** (arrêt d'urgence), console série transverse.
+- **Repère servo + offset de montage** : la pose 3D est en repère servo (0 = centre) ; le rendu
+  applique un offset de montage (tibia perpendiculaire au centre) → la 3D correspond au robot réel.
+- **Mode Live** (boîte Liaison robot) : miroir temps réel de la pose 3D vers le robot (throttle,
+  envoi groupé), avec option « envoyer en fin de mouvement » (anti-saccades). Envoi **clampé aux
+  butées** calibrées (jamais de force au-delà de la course réglée).
+
 ### Ce qui n'est pas encore fait
 
-- **Limites servo réelles** : actuellement valeurs génériques, à remplacer par les
-  plages mécaniques mesurées sur le robot.
-- **Communication avec le robot** : abstraction transport + Web Serial / BLE / WiFi,
-  protocole Arduino.
+- **Liaison sans-fil** (BLE / WiFi) pour le pilotage depuis une tablette (aujourd'hui : USB Web Serial).
 - **Bibliothèque de poses/séquences** prédéfinies.
 - **Packaging** en application Windows (Tauri) ou PWA tablette.
 
@@ -184,7 +195,7 @@ par défaut.
 | 3D | Three.js via [`@react-three/fiber`](https://github.com/pmndrs/react-three-fiber) et [`@react-three/drei`](https://github.com/pmndrs/drei) |
 | State | [Zustand](https://github.com/pmndrs/zustand) |
 | Backend | Node.js + Express + SQLite (JWT, profils robot) |
-| Déploiement | VM Freebox Ultra — Caddy static file server, port 6503, LAN only |
+| Déploiement | VM Freebox Ultra — Caddy (static + reverse-proxy API), HTTPS <https://hexagram.davidlardy.com> |
 | Packaging desktop futur | Tauri (binaire Windows léger) |
 | Packaging tablette futur | PWA installable |
 | Comm robot future | Web Serial API (Chrome/Edge desktop), Web Bluetooth ou WebSocket (tablette) |
@@ -235,22 +246,15 @@ src/
 
 ## Lancement local
 
-Prérequis : Node.js ≥ 18.
+Prérequis : Node.js ≥ 22 (le backend utilise `node:sqlite`).
 
 ```bash
-# Frontend
 npm install
-npm run dev
+cd server && npm install && cd ..
+npm run dev:all   # API (server/) + UI (vite) en parallèle
 ```
 
-```bash
-# Backend (dans /server)
-cd server
-npm install
-npm run dev
-```
-
-Puis ouvrir `http://localhost:5173/`.
+Puis ouvrir `http://localhost:5173/`. (Pour l'UI seule : `npm run dev` ; l'API seule : `cd server && npm run dev`.)
 
 Pour accéder depuis une tablette du même réseau : Vite affiche une URL réseau
 (`http://<ip>:5173/`) au démarrage.
@@ -268,8 +272,8 @@ npm run preview    # serveur statique pour tester la build
 pwsh -File deploy/deploy.ps1
 ```
 
-Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy — disponible sur
-`http://192.168.1.141:6503`.
+Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy + redémarrage du service
+`hexagram-api` — disponible sur <https://hexagram.davidlardy.com> (LAN + public via SNI).
 
 ---
 
@@ -281,9 +285,11 @@ Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy — disponible s
 | 1 | POC visuel : modèle 3D, sliders, gravité, capture de poses | ✅ |
 | 1b | Profils robot, comptes utilisateur, CoG drag, persistance | ✅ |
 | 1c | Détection de collisions 3D (patte-patte et patte-corps) | ✅ |
-| 2 | Séquenceur : timeline, interpolation, lecture animée, persistance | 🔄 |
+| 2 | Séquenceur : timeline, interpolation, lecture animée, persistance | ✅ |
+| 2b | Robot 2D / base mécanique (éditeur de châssis → géométrie 3D) | ✅ |
 | 3 | Cinématique inverse (manipulation directe en 3D) | ✅ |
-| 4 | Communication robot (Web Serial / BLE / WiFi) | 🔜 |
+| 4 | Pilotage robot réel : calibration par servo, Web Serial, mode Live | ✅ |
+| 4b | Liaison sans-fil tablette (BLE / WiFi) | 🔜 |
 | 5 | Packaging Tauri (Windows) + PWA (tablette) | 🔜 |
 
 ---

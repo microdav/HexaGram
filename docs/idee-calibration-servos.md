@@ -1,7 +1,8 @@
 # Calibration des servos (par servo)
 
 Statut : **implémenté** (onglet Électronique → « Liaison & calibration »).
-Intégration profonde 3D/séquenceur : **à faire** (voir fin de page).
+Intégration 3D : **faite** — la pose 3D est en *repère servo* (cf. section « Repères ») et l'envoi
+est clampé aux butées.
 
 ## Modèle de données
 
@@ -29,21 +30,31 @@ tangage/horizontal) — il correspond au robot réel, pas besoin de l'exposer.
 `effDeg = (invert ? -logicalDeg : logicalDeg) + centerOffsetDeg`, puis mappe ±90° sur la
 plage µs du type de servo (HS-475HB ≈ 500/1500/2500), bornée à la plage du contrôleur.
 
-## Repères de calibration (par articulation)
+## Repères — pose en « repère servo » + offset de montage
 
-`JOINT_REFERENCE_DEG` ([src/model/pose.ts](../src/model/pose.ts)) = angle modèle où la
-position physique de repos est identifiable :
+Depuis la bascule de convention, **les angles de pose sont en repère servo : 0 = centre du
+servo** pour toutes les articulations (`JOINT_REFERENCE_DEG = {coxa:0, fémur:0, tibia:0}`,
+[src/model/pose.ts](../src/model/pose.ts)). « 0 en Conception » correspond donc au **centre
+physique** du servo sur le robot.
 
-| Articulation | Repère | Angle modèle |
+L'écart structurel entre cette pose et la géométrie 3D est porté par
+**`geometry.mountingOffsetsDeg`** (18 valeurs, `mountingOffsetOf` dans
+[src/model/hexapod.ts](../src/model/hexapod.ts)) : le rendu fait `géométrique = pose + offset`.
+
+| Articulation | Offset de montage | À pose 0, la 3D rend… |
 |---|---|---|
-| coxa | dans l'axe | 0° |
-| fémur | horizontal | 0° |
-| tibia | **perpendiculaire au fémur** | **−90°** |
+| coxa | 0° | patte dans son axe |
+| fémur | 0° | fémur horizontal |
+| tibia | **−90°** | tibia **perpendiculaire** au fémur |
 
-⚠️ Sur le robot réel, le palonnier du **tibia est monté à un quart de tour** : au centre du
-servo il pend à la verticale. Le modèle considère tibia 0° = aligné (tendu), inatteignable.
-On comble l'écart avec un `centerOffsetDeg` ≈ 90° (boutons ±90° « ¼ tour »). Le tibia ne
-peut **pas** s'aligner à plat — son repos est la perpendiculaire.
+⚠️ Le palonnier du **tibia est monté à un quart de tour** : au centre du servo il est
+perpendiculaire. C'est désormais modélisé par l'offset de montage **−90°** (et non plus par un
+`centerOffsetDeg` ≈ 90° côté électronique). Du coup, à pose 0, la 3D montre le tibia
+perpendiculaire **et** le robot va au centre servo — les deux coïncident.
+
+> Deux « offsets » à ne pas confondre : **montage** (`mountingOffsetsDeg`, géométrie/rendu, hors
+> envoi) et **calibration** (`centerOffsetDeg`/`invert`, appliqués à l'envoi). Cf.
+> [CLAUDE.md](../CLAUDE.md) « Angles & montage servo ».
 
 ## Assistant guidé — [src/ui/CalibrationWizard.tsx](../src/ui/CalibrationWizard.tsx)
 
@@ -58,7 +69,7 @@ Couple coupé à la fermeture.
 
 ## Cartes patte (réglage direct)
 
-- En-tête : canal · **Neutre** (→ repère) · Identifier · **Inverser**.
+- En-tête : canal · **Centrer** (→ 0 = centre servo, tibia perpendiculaire) · Identifier · **Inverser**.
 - Slider de test (plage complète ±90°) avec **libellés de direction** à chaque extrémité.
   Ils montrent le mouvement **attendu (modèle)** — coxa toujours **avant/arrière** (pivot
   vertical, jamais gauche/droite), fémur/tibia **bas/haut** — et sont **indépendants de
@@ -69,21 +80,23 @@ Couple coupé à la fermeture.
 
 ## Envoi au robot
 
-- Store série `useSerialStore.sendPose(pose, timeMs)` envoie une pose complète aux servos
-  câblés (calibration appliquée).
+- `useSerialStore.sendPose(pose, timeMs)` / `sendPoseLive(pose)` envoient une pose complète aux
+  servos câblés. Chaîne appliquée : **clamp aux butées** `minDeg/maxDeg` (`clampToServoLimits`,
+  repli ±90°) → `angleToPulseUs` (sens + zéro). Le robot ne force donc jamais au-delà de la course
+  réglée. NB : le jog de calibration `sendServoAngle` n'est **pas** clampé (sinon impossible de
+  repousser une butée dans l'assistant).
 - Boîte **« Liaison robot »** ([src/ui/RobotLinkPanel.tsx](../src/ui/RobotLinkPanel.tsx)) dans
   l'espace Conception 3D : connecter/déconnecter, **envoyer la position actuelle**, **pose de
-  référence**, transition (T), couple off.
+  référence**, transition (T), couple off, et **Mode Live** (miroir 3D→robot).
 
-## Reste à faire — intégration multi-couches
+## Reproduction live 3D → robot — fait
 
-Aujourd'hui `minDeg`/`maxDeg` et `centerOffsetDeg` ne servent qu'à l'envoi série (assistant,
-cartes, `sendPose`). Pas encore répercutés dans :
+Voir **[idee-reproduction-3d-robot.md](./idee-reproduction-3d-robot.md)** : « Mode Live » streame
+en temps réel `useHexapodStore.pose` vers le robot connecté (throttle ~25 Hz, envoi groupé), avec
+sous-option « envoyer en fin de mouvement (au relâchement) » pour éviter les saccades.
 
-1. `buildServos` / `kinematics` / `ServoArc` — bornes réelles + zéro dans la 3D.
-2. Séquenceur / salle d'exécution — garde-fous contre les poses irréalisables.
+## Intégration 3D — fait
 
-## Prochaine étape — reproduction live 3D → robot
-
-Voir **[idee-reproduction-3d-robot.md](./idee-reproduction-3d-robot.md)** : refléter en
-temps réel la pose 3D (`useHexapodStore.pose`) vers le robot connecté.
+Le **zéro** est intégré à la 3D via l'offset de montage (la pose 3D est en repère servo, cf.
+« Repères »), et les **butées** `minDeg/maxDeg` sont clampées à l'envoi (`sendPose`/`sendPoseLive`),
+ce qui protège aussi séquenceur et salle d'exécution (qui passent par ces chemins).
