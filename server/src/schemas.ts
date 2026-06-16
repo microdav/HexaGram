@@ -356,6 +356,12 @@ export const ProjectPreferencesSchema = z.object({
   roomStartPos: z.object({ x: z.number(), z: z.number() }).optional(),
   /** Pose de base (18 angles servo) appliquée à l'ouverture du projet, sans sélection de pose. */
   basePose: z.array(z.number()).optional(),
+  /** Mode « écran lié » : appareils autorisés à prendre le contrôle sans demande. */
+  linkedScreen: z
+    .object({
+      autoGrant: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+    })
+    .optional(),
 });
 
 export const CreateProjectSchema = z.object({

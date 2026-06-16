@@ -59,6 +59,14 @@ export interface ProjectPreferences {
   roomStartPos?: { x: number; z: number };
   /** Pose de base (18 angles servo) appliquée à l'ouverture du projet, sans sélection de pose. */
   basePose?: number[];
+  /** Mode « écran lié » : appareils auto-autorisés à prendre le contrôle sans demande. */
+  linkedScreen?: { autoGrant?: LinkedDeviceRef[] };
+}
+
+/** Référence d'un appareil (PC) connu du mode « écran lié ». */
+export interface LinkedDeviceRef {
+  id: string;
+  name: string;
 }
 
 export interface ProjectCounts {

@@ -10,6 +10,8 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3001",
         changeOrigin: true,
+        // Proxifie aussi l'upgrade WebSocket (/api/ws — mode « écran lié »).
+        ws: true,
       },
     },
   },

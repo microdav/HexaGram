@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSequencerStore, type SequencerStep } from '../store/useSequencerStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
+import { useHexapodStore } from '../store/useHexapodStore';
 import { defaultPose } from '../model/pose';
 import { PoseThumbnail } from './PoseThumbnail';
 
@@ -41,6 +42,11 @@ export function SequenceAddStepModal({ open, onClose }: Props) {
 
   const close = () => onClose();
 
+  const addCurrent = () => {
+    useSequencerStore.getState().addStep(useHexapodStore.getState().pose, undefined, null);
+    close();
+  };
+
   const addNeutral = () => {
     useSequencerStore.getState().addStep(defaultPose(), undefined, null);
     close();
@@ -80,6 +86,11 @@ export function SequenceAddStepModal({ open, onClose }: Props) {
           <>
             <div className="seq-modal-title">Ajouter une étape</div>
             <div className="seq-addstep-choices">
+              <button type="button" className="seq-addstep-choice" onClick={addCurrent}>
+                <span className="seq-addstep-choice-icon">◉</span>
+                <span className="seq-addstep-choice-title">État courant</span>
+                <span className="seq-addstep-choice-desc">Capture la pose actuelle du robot 3D.</span>
+              </button>
               <button type="button" className="seq-addstep-choice" onClick={addNeutral}>
                 <span className="seq-addstep-choice-icon">⊕</span>
                 <span className="seq-addstep-choice-title">Étape neutre</span>

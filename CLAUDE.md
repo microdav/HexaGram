@@ -47,12 +47,20 @@ conclure « c'est fait ».
   Au chargement, `autoReconnect` rouvre **silencieusement** le port déjà autorisé (`getPorts()`, sans
   geste), sans envoi de pose et **Mode Live forcé OFF**. Les pages (Électronique, boîte « Liaison robot »
   de Conception) ne portent plus les contrôles de connexion (centralisés dans le bandeau).
+- **Écran lié** ([docs/ecran-lie.md](docs/ecran-lie.md)) : pilotage temps réel du robot entre plusieurs PC
+  d'un **même compte** via WebSocket `/api/ws` (hub serveur [server/src/realtime.ts](server/src/realtime.ts),
+  store client [src/store/useLinkStore.ts](src/store/useLinkStore.ts)). On ne synchronise que la **pose 3D** :
+  le PC distant pilote, le PC branché USB la **rejoue** et la relaie au robot via le **Mode Live existant**
+  (le robot ne bouge donc que si l'hôte a Live ON). **Verrou unique** ; l'**hôte USB est gardien** : prise
+  de contrôle **sur demande** (popup [src/ui/ControlRequestModal.tsx](src/ui/ControlRequestModal.tsx)) ou
+  **auto-accordée** pour un PC nommé (onglet projet « Écran lié », `preferences.linkedScreen.autoGrant`).
+  Badge bandeau [src/ui/LinkedScreenBadge.tsx](src/ui/LinkedScreenBadge.tsx). Mode **OFF par défaut**.
 - **Routage** : pas de react-router. Onglets pilotés par `useToolboxStore.uiPrefs.activeTab` + sync URL
   dans [src/hooks/useUrlState.ts](src/hooks/useUrlState.ts). Onglets :
   `projet · robot2d · conception · programmation · electronique · admin`.
 - **Page Projet** ([src/ui/ProjectPage.tsx](src/ui/ProjectPage.tsx)) : projet le plus récent sélectionné
-  par défaut (App.tsx). Onglets internes **Général · Matériel · Paramétrage robot · Groupes de pattes**, tous
-  en **enregistrement automatique** (plus aucun bouton « Enregistrer », `ProfilePanel` supprimé ;
+  par défaut (App.tsx). Onglets internes **Général · Matériel · Paramétrage robot · Groupes de pattes · Écran
+  lié**, tous en **enregistrement automatique** (plus aucun bouton « Enregistrer », `ProfilePanel` supprimé ;
   `guardProfileEdit` sauve en silence). « Paramétrage robot » réutilise `ProfileSettings`
   (servos/collisions/séquences). « Général » porte la **pose de base au chargement**
   (`preferences.basePose`, appliquée à l'ouverture du projet sans sélectionner de pose).
@@ -83,7 +91,8 @@ Sous-système central documenté en détail : **[docs/robot-2d-base-mecanique.md
   (ou de `geometry`/profil) doit être déclaré dans [server/src/schemas.ts](server/src/schemas.ts)
   (`Body2DSchema` est en `.passthrough()`), sinon il est **silencieusement perdu à l'enregistrement**.
   Idem côté projet : `ProjectHardwareSchema` est `.passthrough()` mais `ProjectPreferencesSchema` est
-  **strict** — un nouveau champ de `preferences` (ex. `basePose`) doit y être déclaré explicitement.
+  **strict** — un nouveau champ de `preferences` (ex. `basePose`, `linkedScreen`) doit y être déclaré
+  explicitement.
 - **`computeLegMounts`** : modifier ce calcul impacte toute la 3D (scène, cinématique, démarche,
   collisions, salle, vignettes).
 - **Offset de montage = repère des angles** : `geometry.mountingOffsetsDeg` décale pose↔géométrie. Il

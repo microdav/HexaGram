@@ -9,6 +9,7 @@ import {
 import { findServoController } from "../model/servoControllers";
 import { findCommandElectronics } from "../model/commandElectronics";
 import { ElectronicConsolePanel } from "./ElectronicConsolePanel";
+import { LinkedScreenBadge } from "./LinkedScreenBadge";
 
 const STATUS_LABEL: Record<string, string> = {
   unsupported: "Web Serial non supporté",
@@ -133,6 +134,9 @@ export function RobotLinkBar() {
           </button>
         </>
       )}
+
+      {/* Écran lié : pilotage partagé entre appareils du compte */}
+      <LinkedScreenBadge />
 
       {/* Console électronique (depuis le bandeau) */}
       <button

@@ -177,6 +177,9 @@ par défaut.
 - **Mode Live** (boîte Liaison robot) : miroir temps réel de la pose 3D vers le robot (throttle,
   envoi groupé), avec option « envoyer en fin de mouvement » (anti-saccades). Envoi **clampé aux
   butées** calibrées (jamais de force au-delà de la course réglée).
+- **Écran lié** ([docs/ecran-lie.md](docs/ecran-lie.md)) : pilotage partagé entre plusieurs PC d'un
+  même compte via WebSocket — un PC distant manipule le robot, le PC branché USB reproduit et relaie
+  au robot (Mode Live). Prise de contrôle sur demande à l'hôte, ou auto-accordée pour un PC nommé.
 
 ### Ce qui n'est pas encore fait
 

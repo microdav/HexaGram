@@ -2513,7 +2513,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .seq-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Modal d'ajout d'étape (3 choix) ─────────────────────── */
-.seq-addstep-modal { min-width: 480px; max-width: 540px; }
+.seq-addstep-modal { min-width: 560px; max-width: 680px; }
 .seq-addstep-choices {
   display: flex;
   gap: 12px;
@@ -5261,6 +5261,74 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 }
 .rlb-pop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .electro-conn-hint { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+
+/* ───────────── Écran lié (bandeau + popover) ───────────── */
+.lsb { position: relative; display: flex; align-items: center; }
+.lsb-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lsb-status:hover { background: var(--bg-panel); }
+.lsb-status.active { border-color: var(--accent); }
+.lsb-status-label { font-weight: 600; }
+.lsb-status--pilot .lsb-status-label { color: var(--accent); }
+.lsb-status--follower .lsb-status-label { color: #7c9ef8; }
+.lsb-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+.lsb-dot--off, .lsb-dot--offline { background: #6b7280; }
+.lsb-dot--connecting { background: #fbbf24; animation: electro-pulse 1s infinite; }
+.lsb-dot--follower { background: #7c9ef8; }
+.lsb-dot--pilot { background: #34d399; }
+.lsb-count {
+  font-size: 10px; font-weight: 700; color: var(--text-dim);
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0 5px; line-height: 16px;
+}
+.lsb-popover { min-width: 280px; }
+.lsb-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lsb-toggle input { accent-color: var(--accent); cursor: pointer; }
+.lsb-hint { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin: 0; }
+.lsb-state {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text);
+  border-top: 1px solid var(--border); padding-top: 8px;
+}
+.lsb-action { width: 100%; justify-content: center; }
+.lsb-devices { display: flex; flex-direction: column; gap: 4px; }
+.lsb-devices-title { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.lsb-devices-empty { font-size: 12px; color: var(--text-dim); font-style: italic; }
+.lsb-device { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.lsb-device-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lsb-device-tags { display: flex; gap: 4px; flex: 0 0 auto; }
+.lsb-tag { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; }
+.lsb-tag--pilot { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.lsb-tag--usb { background: rgba(124, 158, 248, 0.15); color: #7c9ef8; }
+
+/* ───────────── Paramètres projet : onglet Écran lié ───────────── */
+.lss-list { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+.lss-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-panel-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px;
+}
+.lss-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: #6b7280; }
+.lss-dot.online { background: #34d399; }
+.lss-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lss-self { color: var(--text-dim); font-size: 11px; }
+.lss-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; flex: 0 0 auto; }
+.lss-toggle input { accent-color: var(--accent); cursor: pointer; }
 
 /* ───────────── Modal Outils (import/export JSON) ───────────── */
 .tools-modal {

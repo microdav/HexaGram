@@ -1,5 +1,7 @@
+import http from "http";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import { attachRealtime } from "./realtime";
 import authRouter from "./auth";
 import profilesRouter from "./profiles";
 import sequencesRouter from "./sequences";
@@ -43,6 +45,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: err.message ?? "Erreur interne" });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+// Liaison « écran lié » : WebSocket partageant le même serveur HTTP (chemin /api/ws,
+// proxifié par Caddy via `handle /api/*` en prod, par Vite via `ws: true` en dev).
+attachRealtime(server);
+
+server.listen(PORT, () => {
   console.log(`[hexagram-api] Écoute sur http://localhost:${PORT}`);
 });

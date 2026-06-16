@@ -15,9 +15,10 @@ import { BaseMecaniquePreview } from "./RobotPreviews";
 import { LegLayoutPicker } from "./LegLayoutPicker";
 import { WeightBlock, ProfileSettings, type ProfileSettingsTab } from "./ProfileSettingsModal";
 import { useHexapodStore } from "../store/useHexapodStore";
+import { LinkedScreenSettings } from "./LinkedScreenSettings";
 import { LEG_NAMES, defaultAnchorsFromGeometry, type Body2D, type LegLayout } from "../model/hexapod";
 
-type DetailTab = "general" | "hardware" | "robot" | "groups";
+type DetailTab = "general" | "hardware" | "robot" | "groups" | "linked";
 
 // Onglet « Paramétrage robot » : reprend la popin de la base mécanique, hors
 // l'onglet « Général » déjà couvert par l'onglet Général du projet (nom,
@@ -910,6 +911,7 @@ export function ProjectPage() {
               <button type="button" className={`pp-tab${tab === 'hardware' ? ' active' : ''}`} onClick={() => setTab("hardware")}>Matériel</button>
               <button type="button" className={`pp-tab${tab === 'robot' ? ' active' : ''}`} onClick={() => setTab("robot")}>Paramétrage robot</button>
               <button type="button" className={`pp-tab${tab === 'groups' ? ' active' : ''}`} onClick={() => setTab("groups")}>Groupes de pattes</button>
+              <button type="button" className={`pp-tab${tab === 'linked' ? ' active' : ''}`} onClick={() => setTab("linked")}>Écran lié</button>
             </nav>
 
             {tab === "general" && (
@@ -942,6 +944,12 @@ export function ProjectPage() {
               <LegGroupsPanel
                 projectId={activeProject.id}
                 initialGroups={activeProject.hardware.legGroups}
+              />
+            )}
+            {tab === "linked" && (
+              <LinkedScreenSettings
+                projectId={activeProject.id}
+                initialAutoGrant={activeProject.preferences.linkedScreen?.autoGrant ?? []}
               />
             )}
           </>

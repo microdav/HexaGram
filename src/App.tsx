@@ -12,6 +12,7 @@ import { SequencerPanel } from "./ui/SequencerPanel";
 import { PoseConflictModal } from "./ui/PoseConflictModal";
 import { ToolsMenu } from "./ui/ToolsMenu";
 import { RobotLinkBar } from "./ui/RobotLinkBar";
+import { ControlRequestModal } from "./ui/ControlRequestModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { PoseThumbnailRenderer } from "./three/PoseThumbnailRenderer";
 import { ProgramPage } from "./ui/ProgramPage";
@@ -27,6 +28,7 @@ import { useSequencerStore } from "./store/useSequencerStore";
 import { useHexapodStore } from "./store/useHexapodStore";
 import { useProjectStore } from "./store/useProjectStore";
 import { useSerialStore } from "./store/useSerialStore";
+import { useLinkStore } from "./store/useLinkStore";
 import { useSavedSequencesStore } from "./store/useSavedSequencesStore";
 import { useProgramsStore } from "./store/useProgramsStore";
 import { usePhotoSpaceStore } from "./store/usePhotoSpaceStore";
@@ -274,6 +276,18 @@ export default function App() {
     }
   }, [user, activeTab, setActiveTab]);
 
+  // Mode « écran lié » : ouvre la liaison WebSocket à la connexion (si le mode
+  // est activé, OFF par défaut), la ferme à la déconnexion. La (re)connexion
+  // automatique est gérée par le store ; le pilotage du robot reste conditionné
+  // au Mode Live de l'hôte USB.
+  useEffect(() => {
+    if (user) {
+      if (useLinkStore.getState().enabled) useLinkStore.getState().connect();
+    } else {
+      useLinkStore.getState().disconnect();
+    }
+  }, [user]);
+
   // Sync de l'état → URL (replaceState : pas d'entrées d'historique).
   // URL : /{userLogin}/{projectSlug}/{tab}/{profileSlug?|electroSubTab?}/{programSlug?}
   // En mode démo l'URL est juste "/".
@@ -377,6 +391,7 @@ export default function App() {
       <Toast />
       <ConfirmDialog />
       <PoseConflictModal />
+      <ControlRequestModal />
 
       {activeTab === 'projet' && user && <ProjectPage />}
 
