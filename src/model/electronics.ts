@@ -126,6 +126,25 @@ export function angleToPulseUs(
 }
 
 /**
+ * Conversion inverse : largeur d'impulsion (µs) → angle logique (deg, repère
+ * servo), en défaisant calibration (offset/inversion). Réciproque exacte de
+ * `angleToPulseUs` (au clamp et à l'arrondi près). Sert à « importer la pose du
+ * robot » via le retour `QP` du SSC-32U et à vérifier la calibration.
+ */
+export function pulseUsToAngle(
+  pulseUs: number,
+  binding: Pick<ServoBinding, "centerOffsetDeg" | "invert">,
+  servo: ServoSpec | null
+): number {
+  const pulse = servo?.pulseUs ?? DEFAULT_PULSE;
+  const halfSpan = (pulse.max - pulse.min) / 2;
+  if (halfSpan <= 0) return 0;
+  const effDeg = ((pulseUs - pulse.center) / halfSpan) * 90;
+  const logical = effDeg - binding.centerOffsetDeg;
+  return binding.invert ? -logical : logical;
+}
+
+/**
  * Borne un angle de commande (deg, repère servo) aux **butées calibrées** du servo
  * (`minDeg`/`maxDeg`), avec repli sur la plage du modèle (±90°) si non définies.
  * À appliquer AVANT l'envoi d'une pose (Conception 3D / miroir live / séquence)
@@ -175,6 +194,18 @@ export interface SerialProtocol {
   moveGroup(channels: { ch: number; us: number }[], timeMs?: number): string;
   /** Relâchement d'un canal (impulsion nulle = couple coupé sur SSC-32U / firmwares compatibles). */
   release(channel: number): string;
+  /**
+   * Requête « mouvement en cours ? » — la carte répond `+` (en cours) ou `.`
+   * (terminé). Optionnel : seuls certains contrôleurs (SSC-32U) le gèrent.
+   */
+  queryMove?(): string;
+  /**
+   * Requête de largeur d'impulsion d'un canal — la carte répond 1 octet = µs/10.
+   * Optionnel (SSC-32U). Permet de relire la position commandée d'un servo.
+   */
+  queryPulse?(channel: number): string;
+  /** Arrêt d'un canal à sa position courante (sans couper le couple). Optionnel. */
+  stop?(channel: number): string;
 }
 
 /** Lynxmotion SSC-32U — commandes ASCII `#<ch> P<us> T<ms>\r`. */
@@ -186,6 +217,9 @@ export const SSC32U_PROTOCOL: SerialProtocol = {
   moveGroup: (channels, t = 0) =>
     channels.map((c) => `#${c.ch} P${c.us}`).join(" ") + (t > 0 ? ` T${t}` : "") + "\r",
   release: (ch) => `#${ch} P0\r`,
+  queryMove: () => "Q\r",
+  queryPulse: (ch) => `QP ${ch}\r`,
+  stop: (ch) => `STOP${ch}\r`,
 };
 
 /**

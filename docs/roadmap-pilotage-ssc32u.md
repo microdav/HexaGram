@@ -20,6 +20,9 @@ tard »). La numérotation `#n` rappelle le regroupement d'origine.
 - **P1 — Robustesse de la liaison** (cf. ci-dessous, ✅ fait) : détection de perte de port + bouton
   « Reconnecter » sans recharger, erreurs typées (`errorKind`), watchdog couple-off (90 s d'inactivité
   en mode Live).
+- **P2 — Mieux exploiter le SSC-32U** (cf. ci-dessous, ✅ fait) : transition douce par défaut
+  (`transitionMs` partagé), import pose via `QP` (`pulseUsToAngle` + `SerialLink.requestBytes`),
+  requête `Q`, `STOP`, et console debug (Q/QP/STOP + commande brute).
 
 ---
 
@@ -46,24 +49,31 @@ Livré :
 - Validé au banc : débranchement en plein mode Live → UI en erreur « port perdu », reconnexion sans
   recharger, watchdog OK.
 
-## P2 — Mieux exploiter le SSC-32U _(#2)_ — ⬅ prochaine étape
+## P2 — Mieux exploiter le SSC-32U _(#2)_ — ✅ FAIT
 
 Objectif : mouvements plus doux et lecture de l'état réel de la carte.
 
-- **Transition douce par défaut** : appliquer un `T` (ou une **vitesse `S` par canal**) sur les envois
-  hors live, pour supprimer les à-coups (aujourd'hui `sendPoseLive` est `T=0`). Exposer un réglage.
-- **Retour de position `QP <ch>`** : lire la largeur d'impulsion réelle d'un servo (1 octet = µs/10) →
-  « **importer la pose du robot** », vérifier la calibration, repartir d'une manip physique.
-  Conversion inverse `pulseUs → deg` à ajouter à [electronics.ts](../src/model/electronics.ts).
-- **Requête mouvement `Q`** : `+` tant qu'un mouvement est en cours, `.` sinon (prérequis de P3).
-- **`STOP<ch>`** + `Q`/`QP` accessibles depuis la console pour le debug.
-- Fichiers : [electronics.ts](../src/model/electronics.ts) (protocole : ajouter `query`/`speed`,
-  parseur `QP`), [useSerialStore.ts](../src/store/useSerialStore.ts) (lecture des réponses RX déjà
-  journalisée — la corréler à une requête).
+Livré :
+
+- **Transition douce par défaut** : réglage `transitionMs` persisté et partagé (défaut 500 ms),
+  appliqué via `T` aux envois hors live (`sendPose`, centrage `centerServo`/`centerAll`). Le miroir
+  live reste `T=0`. Sélecteur « Transition » dans la boîte Liaison robot. Le jog de calibration reste
+  instantané (`sendServoAngle` à `timeMs=0` par défaut).
+- **Retour de position `QP`** : `pulseUsToAngle` (inverse exact de `angleToPulseUs`) dans
+  [electronics.ts](../src/model/electronics.ts) ; `SerialLink.requestBytes(cmd, n, timeout)` corrèle la
+  réponse RX à la requête (sans casser la journalisation). Bouton **« ⤓ Importer la pose du robot »** →
+  applique la pose lue à la 3D. ⚠️ `QP` renvoie la position **commandée** (pas un retour de
+  potentiomètre) : couple coupé → `0 µs` (message d'aide dédié).
+- **Requête mouvement `Q`** : `queryMoving()` → `true`/`false`/`null` (`+`/`.`), socle de la synchro P3.
+- **`STOP` + console debug** : méthodes protocole `queryMove`/`queryPulse`/`stop` (SSC-32U) ; barre debug
+  dans la console transverse (champ canal + boutons Q/QP/STOP + commande brute, terminateur auto).
+- Robustesse RX : la boucle de lecture résiste aux **erreurs de lecture non fatales** (framing/parité en
+  binaire à bas débit) en ré-acquérant un reader au lieu de déclarer une perte (corrige un faux
+  décrochage observé sur le 1er `QP` à 9600 bauds). Affichage hex des octets binaires en console.
 - Note : le **baud du SSC-32U se règle par bouton** sur la carte (pas en logiciel, cf. guide officiel
   SSC-32U) ; juste s'assurer que `baudRate` correspond côté app.
 
-## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_
+## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_ — ⬅ prochaine étape
 
 Objectif : faire **se déplacer le vrai robot**, pas seulement le mirroir frame-à-frame.
 

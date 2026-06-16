@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { SerialLink, isWebSerialSupported } from "../serial/webSerial";
 import {
   angleToPulseUs,
+  pulseUsToAngle,
   clampToServoLimits,
   protocolForController,
   resolveHardwareSpecs,
@@ -67,6 +68,8 @@ interface SerialState {
   errorKind: SerialErrorKind;
   /** Watchdog couple-off : couper le couple après une inactivité prolongée en mode Live. Persisté. */
   watchdogEnabled: boolean;
+  /** Durée de transition par défaut (ms) des envois HORS live (pose, centrage). Persisté. */
+  transitionMs: number;
   /** Console série : commandes émises (tx), messages reçus (rx), infos. Ordre chronologique. */
   log: SerialLogEntry[];
   /** Total d'octets bruts reçus depuis la connexion (diagnostic RX). */
@@ -97,14 +100,20 @@ interface SerialState {
   setMirrorOnRelease: (v: boolean) => void;
   /** Active/désactive le watchdog couple-off (réarmé/désarmé immédiatement). */
   setWatchdogEnabled: (v: boolean) => void;
+  /** Règle la durée de transition par défaut (ms) des envois hors live. */
+  setTransitionMs: (ms: number) => void;
   clearLog: () => void;
   connect: () => Promise<void>;
   /** Rouvre la liaison après une perte, sans re-sélection manuelle du port. */
   reconnect: () => Promise<void>;
   disconnect: () => Promise<void>;
 
-  /** Envoie un angle logique (deg) au servo via son canal. Met à jour testAngles. */
-  sendServoAngle: (servoId: number, deg: number) => Promise<void>;
+  /**
+   * Envoie un angle logique (deg) au servo via son canal. Met à jour testAngles.
+   * `timeMs` > 0 demande une transition douce (T sur SSC-32U) — 0 = instantané
+   * (jog de calibration). Le centrage l'utilise pour un recentrage en douceur.
+   */
+  sendServoAngle: (servoId: number, deg: number, timeMs?: number) => Promise<void>;
   /** Place un servo à son zéro logique (position mécanique de référence). */
   centerServo: (servoId: number) => Promise<void>;
   /** Tous les servos liés à leur zéro logique. */
@@ -121,6 +130,24 @@ interface SerialState {
   sendPoseLive: (pose: number[]) => Promise<void>;
   /** Arrêt d'urgence : coupe le couple de tous les canaux liés. */
   releaseAll: () => Promise<void>;
+  /**
+   * Interroge la carte : un mouvement est-il en cours ? (`Q` → `+`/`.` sur
+   * SSC-32U). Renvoie `true`/`false`, ou `null` si non supporté / pas de réponse.
+   * Socle de la synchronisation pas-à-pas de la locomotion (P3).
+   */
+  queryMoving: () => Promise<boolean | null>;
+  /**
+   * Lit la largeur d'impulsion d'un canal (`QP`) et la convertit en angle logique
+   * (deg, repère servo). Renvoie `null` si non supporté / pas de réponse. Debug console.
+   */
+  queryPulseChannel: (channel: number) => Promise<number | null>;
+  /** Arrête un canal à sa position courante (`STOP` SSC-32U), sans couper le couple. */
+  sendStop: (channel: number) => Promise<void>;
+  /**
+   * Lit la position commandée de tous les servos câblés (`QP`) et l'applique à la
+   * pose 3D — « importer la pose du robot ». Utile pour vérifier la calibration.
+   */
+  importPoseFromRobot: () => Promise<void>;
   /** Fait osciller un servo pour l'identifier physiquement. */
   identify: (servoId: number) => Promise<void>;
   /** Interroge la version firmware (SSC-32U : commande `VER`). Test de présence. */
@@ -227,6 +254,24 @@ function writeWatchdog(v: boolean): void {
   }
 }
 
+const TRANSITION_KEY = "hexagram.serial.transitionMs";
+const DEFAULT_TRANSITION_MS = 500;
+function readTransition(): number {
+  try {
+    const v = Number(localStorage.getItem(TRANSITION_KEY));
+    return Number.isFinite(v) && v >= 0 ? v : DEFAULT_TRANSITION_MS;
+  } catch {
+    return DEFAULT_TRANSITION_MS;
+  }
+}
+function writeTransition(ms: number): void {
+  try {
+    localStorage.setItem(TRANSITION_KEY, String(ms));
+  } catch {
+    /* ignore */
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Ajoute une entrée tx/info à la console. Les lignes vides sont ignorées. */
@@ -251,9 +296,16 @@ function pushRx(
   bytes: Uint8Array,
   text: string
 ) {
-  const printable = text.replace(/\r/g, "").replace(/\n+$/g, "");
+  // Affichage fidèle : on ne montre le texte décodé que si TOUS les octets sont
+  // imprimables (ASCII visible + CR/LF/TAB). Sinon → représentation hex, sans
+  // quoi une réponse binaire (ex. l'octet d'un QP, y compris 0x00) donnerait une
+  // ligne vide ou un caractère de remplacement trompeur.
+  const allPrintable = bytes.every(
+    (b) => (b >= 0x20 && b <= 0x7e) || b === 0x09 || b === 0x0a || b === 0x0d
+  );
+  const printable = text.trim();
   const display =
-    printable.length > 0
+    allPrintable && printable.length > 0
       ? printable
       : "[" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ") + "]";
   set((s) => ({
@@ -310,6 +362,16 @@ function bindingFor(servoId: number): ServoBinding {
   return electronics?.bindings?.[servoId] ?? defaultBinding(servoId);
 }
 
+/** Liaison dont le canal physique vaut `channel` (pour interpréter une réponse QP). */
+function bindingForChannel(channel: number): ServoBinding | null {
+  const { electronics } = hardwareContext();
+  if (!electronics) return null;
+  for (let id = 0; id < 18; id++) {
+    if (electronics.bindings[id]?.channel === channel) return electronics.bindings[id];
+  }
+  return null;
+}
+
 const _console = readConsole();
 
 export const useSerialStore = create<SerialState>((set, get) => ({
@@ -320,6 +382,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   errorMsg: null,
   errorKind: null,
   watchdogEnabled: readWatchdog(),
+  transitionMs: readTransition(),
   log: [],
   rxByteCount: 0,
   consoleOpen: _console.open,
@@ -382,6 +445,12 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     else stopWatchdog();
   },
 
+  setTransitionMs: (ms) => {
+    const clean = Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : DEFAULT_TRANSITION_MS;
+    writeTransition(clean);
+    set({ transitionMs: clean });
+  },
+
   clearLog: () => set({ log: [], rxByteCount: 0 }),
 
   connect: async () => {
@@ -439,7 +508,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     useToastStore.getState().show("Carte déconnectée");
   },
 
-  sendServoAngle: async (servoId, deg) => {
+  sendServoAngle: async (servoId, deg, timeMs = 0) => {
     set((s) => ({ testAngles: { ...s.testAngles, [servoId]: deg } }));
     if (get().status !== "connected") return;
     const { protocol, servo, controller } = hardwareContext();
@@ -449,7 +518,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       return;
     }
     const us = angleToPulseUs(deg, binding, servo, controller);
-    const cmd = protocol.move(binding.channel, us);
+    const cmd = protocol.move(binding.channel, us, timeMs);
     try {
       await link.writeString(cmd);
       pushLog(set, "tx", cmd);
@@ -459,24 +528,29 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   },
 
   centerServo: async (servoId) => {
-    await get().sendServoAngle(servoId, 0);
+    // Recentrage en douceur (transition par défaut) plutôt qu'un saut brutal.
+    await get().sendServoAngle(servoId, 0, get().transitionMs);
   },
 
   centerAll: async () => {
     if (get().status !== "connected") return;
     const { electronics } = hardwareContext();
     if (!electronics) return;
+    const timeMs = get().transitionMs;
     for (let id = 0; id < 18; id++) {
       if (electronics.bindings[id]?.channel != null) {
-        await get().sendServoAngle(id, 0);
+        await get().sendServoAngle(id, 0, timeMs);
         await sleep(8);
       }
     }
     useToastStore.getState().show("Tous les servos centrés");
   },
 
-  sendPose: async (pose, timeMs = 0) => {
+  sendPose: async (pose, timeMs) => {
     if (get().status !== "connected") return;
+    // Transition douce par défaut (réglage partagé) : supprime les à-coups des
+    // envois ponctuels. Un appelant peut forcer une durée précise (0 = instantané).
+    const t = timeMs ?? get().transitionMs;
     const { protocol, servo, controller, electronics } = hardwareContext();
     if (!electronics) return;
     let count = 0;
@@ -486,7 +560,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       const raw = Number.isFinite(pose[id]) ? pose[id] : 0;
       const deg = clampToServoLimits(raw, binding, id); // sécurité : ne pas forcer au-delà des butées
       const us = angleToPulseUs(deg, binding, servo, controller);
-      const cmd = protocol.move(binding.channel, us, timeMs);
+      const cmd = protocol.move(binding.channel, us, t);
       try {
         await link.writeString(cmd);
         pushLog(set, "tx", cmd);
@@ -592,6 +666,111 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       pushLog(set, "tx", cmd);
     } catch (e) {
       pushLog(set, "info", `Erreur écriture : ${markWriteError(e)}`);
+    }
+  },
+
+  queryMoving: async () => {
+    if (get().status !== "connected") return null;
+    const { protocol } = hardwareContext();
+    if (!protocol.queryMove) {
+      pushLog(set, "info", "Requête « mouvement ? » non gérée par ce protocole");
+      return null;
+    }
+    const cmd = protocol.queryMove();
+    pushLog(set, "tx", cmd);
+    try {
+      const bytes = await link.requestBytes(cmd, 1, 400);
+      const ch = String.fromCharCode(bytes[0]);
+      const moving = ch === "+";
+      pushLog(
+        set,
+        "info",
+        `Q → ${ch === "+" ? "mouvement en cours (+)" : ch === "." ? "terminé (.)" : `réponse « ${ch} »`}`
+      );
+      return ch === "+" || ch === "." ? moving : null;
+    } catch (e) {
+      pushLog(set, "info", `Q : ${e instanceof Error ? e.message : "échec"}`);
+      return null;
+    }
+  },
+
+  queryPulseChannel: async (channel) => {
+    if (get().status !== "connected") return null;
+    const { protocol, servo } = hardwareContext();
+    if (!protocol.queryPulse) {
+      pushLog(set, "info", "Requête QP non gérée par ce protocole");
+      return null;
+    }
+    const cmd = protocol.queryPulse(channel);
+    pushLog(set, "tx", cmd);
+    try {
+      const bytes = await link.requestBytes(cmd, 1, 400);
+      const us = bytes[0] * 10; // SSC-32U : 1 octet = µs/10
+      // Conversion en angle logique : on retrouve la calibration du servo dont
+      // ce canal dépend (sinon binding par défaut).
+      const binding = bindingForChannel(channel) ?? { centerOffsetDeg: 0, invert: false };
+      const deg = pulseUsToAngle(us, binding, servo);
+      pushLog(set, "info", `QP ch${channel} → ${us} µs (≈ ${deg.toFixed(1)}°)`);
+      return deg;
+    } catch (e) {
+      pushLog(set, "info", `QP ch${channel} : ${e instanceof Error ? e.message : "échec"}`);
+      return null;
+    }
+  },
+
+  sendStop: async (channel) => {
+    const { protocol } = hardwareContext();
+    if (!protocol.stop) {
+      pushLog(set, "info", "Commande STOP non gérée par ce protocole");
+      return;
+    }
+    await get().sendRaw(protocol.stop(channel));
+  },
+
+  importPoseFromRobot: async () => {
+    if (get().status !== "connected") return;
+    const { protocol, servo, electronics } = hardwareContext();
+    if (!electronics) return;
+    if (!protocol.queryPulse) {
+      pushLog(set, "info", "Import impossible : ce protocole ne renvoie pas la position (QP)");
+      useToastStore.getState().show("Import non supporté par ce protocole");
+      return;
+    }
+    const pose = useHexapodStore.getState().pose.slice();
+    let count = 0;
+    let zero = 0; // réponses à 0 µs (couple coupé : pas d'impulsion émise)
+    for (let id = 0; id < 18; id++) {
+      const binding = electronics.bindings[id] ?? defaultBinding(id);
+      if (binding.channel == null) continue;
+      const cmd = protocol.queryPulse(binding.channel);
+      pushLog(set, "tx", cmd);
+      try {
+        const bytes = await link.requestBytes(cmd, 1, 400);
+        const us = bytes[0] * 10;
+        if (us < 400) {
+          // Canal non piloté (couple coupé) ou réponse implausible : on ignore.
+          zero++;
+          pushLog(set, "info", `QP ch${binding.channel} → ${us} µs ignoré (servo ${id})`);
+          continue;
+        }
+        const deg = pulseUsToAngle(us, binding, servo);
+        pose[id] = Math.round(deg * 10) / 10;
+        pushLog(set, "info", `QP ch${binding.channel} → ${us} µs → servo ${id} ≈ ${pose[id].toFixed(1)}°`);
+        count++;
+      } catch (e) {
+        pushLog(set, "info", `QP ch${binding.channel} : ${e instanceof Error ? e.message : "échec"}`);
+      }
+      await sleep(6);
+    }
+    if (count > 0) {
+      useHexapodStore.getState().applyPose(pose);
+      useToastStore.getState().show(`Pose importée du robot (${count} servo${count > 1 ? "s" : ""})`);
+    } else if (zero > 0) {
+      // Toutes les lectures à 0 µs : le SSC-32U n'émet plus d'impulsion → couple coupé.
+      pushLog(set, "info", "Toutes les positions sont à 0 µs — le couple est coupé ? (QP ne lit que la position commandée)");
+      useToastStore.getState().show("Positions à 0 — couple coupé ? Envoyez une pose d'abord.");
+    } else {
+      useToastStore.getState().show("Aucune position lue depuis le robot");
     }
   },
 }));

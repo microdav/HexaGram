@@ -60,6 +60,10 @@ export function ElectronicConsolePanel({ open, onClose }: Props) {
   const disconnect = useSerialStore((s) => s.disconnect);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const clearLog = useSerialStore((s) => s.clearLog);
+  const queryMoving = useSerialStore((s) => s.queryMoving);
+  const queryPulseChannel = useSerialStore((s) => s.queryPulseChannel);
+  const sendStop = useSerialStore((s) => s.sendStop);
+  const sendRaw = useSerialStore((s) => s.sendRaw);
 
   const hardware = activeProject?.hardware;
 
@@ -92,6 +96,13 @@ export function ElectronicConsolePanel({ open, onClose }: Props) {
   const connected = status === "connected";
   const busy = status === "connecting";
   const unsupported = status === "unsupported";
+
+  // Terminateur de ligne selon le protocole (SSC-32U = \r, firmwares custom = \n).
+  const term = protocol.id === "ssc32u" ? "\r" : "\n";
+
+  // Barre debug : canal ciblé (Q/QP/STOP) + commande brute libre.
+  const [dbgChannel, setDbgChannel] = useState(0);
+  const [dbgCmd, setDbgCmd] = useState("");
 
   // Position du panneau (conservée entre ouvertures : le composant reste monté).
   const [pos, setPos] = useState(initialPos);
@@ -196,6 +207,65 @@ export function ElectronicConsolePanel({ open, onClose }: Props) {
             ⏻ Arrêt d'urgence (couple off)
           </button>
         </div>
+
+        {/* ── Debug : requêtes carte (Q/QP/STOP) + commande brute ─────── */}
+        {connected && (
+          <div className="ecm-debug">
+            <span className="ecm-debug-label">Canal</span>
+            <input
+              className="ecm-debug-ch"
+              type="number"
+              min={0}
+              max={31}
+              value={dbgChannel}
+              aria-label="Canal ciblé"
+              title="Canal ciblé par Q / QP / STOP"
+              onChange={(e) => setDbgChannel(Math.max(0, Math.min(31, Number(e.target.value) || 0)))}
+            />
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void queryMoving()}
+              title="Q : un mouvement est-il en cours ? (+ / .)"
+            >
+              Q
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void queryPulseChannel(dbgChannel)}
+              title="QP : lire la largeur d'impulsion (position) du canal"
+            >
+              QP
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void sendStop(dbgChannel)}
+              title="STOP : arrêter le canal à sa position courante"
+            >
+              STOP
+            </button>
+            <form
+              className="ecm-debug-cmd"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const c = dbgCmd.trim();
+                if (c) {
+                  void sendRaw(c + term);
+                  setDbgCmd("");
+                }
+              }}
+            >
+              <input
+                type="text"
+                value={dbgCmd}
+                placeholder="commande brute (ex. #0 P1500 T500)"
+                onChange={(e) => setDbgCmd(e.target.value)}
+              />
+            </form>
+          </div>
+        )}
 
         {/* ── Historique des échanges (session) ───────────────────────── */}
         <div className="ecm-console-bar">

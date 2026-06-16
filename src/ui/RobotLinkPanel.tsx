@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { useSerialStore } from "../store/useSerialStore";
 import { useHexapodStore } from "../store/useHexapodStore";
@@ -42,6 +42,9 @@ export function RobotLinkContent() {
   const disconnect = useSerialStore((s) => s.disconnect);
   const releaseAll = useSerialStore((s) => s.releaseAll);
   const sendPose = useSerialStore((s) => s.sendPose);
+  const importPoseFromRobot = useSerialStore((s) => s.importPoseFromRobot);
+  const transitionMs = useSerialStore((s) => s.transitionMs);
+  const setTransitionMs = useSerialStore((s) => s.setTransitionMs);
   const liveMirror = useSerialStore((s) => s.liveMirror);
   const setLiveMirror = useSerialStore((s) => s.setLiveMirror);
   const mirrorOnRelease = useSerialStore((s) => s.mirrorOnRelease);
@@ -50,8 +53,6 @@ export function RobotLinkContent() {
   const setWatchdogEnabled = useSerialStore((s) => s.setWatchdogEnabled);
 
   const pose = useHexapodStore((s) => s.pose);
-
-  const [durationMs, setDurationMs] = useState(500);
 
   const hardware = activeProject?.hardware;
   const electronics = hardware?.electronics ?? null;
@@ -157,8 +158,8 @@ export function RobotLinkContent() {
           <label className="robotlink-row">
             <span>Transition</span>
             <select
-              value={durationMs}
-              onChange={(e) => setDurationMs(Number(e.target.value))}
+              value={transitionMs}
+              onChange={(e) => setTransitionMs(Number(e.target.value))}
             >
               {DURATIONS.map((d) => (
                 <option key={d.ms} value={d.ms}>
@@ -172,7 +173,7 @@ export function RobotLinkContent() {
             type="button"
             className="btn btn-primary robotlink-btn"
             disabled={boundCount === 0}
-            onClick={() => void sendPose(pose, durationMs)}
+            onClick={() => void sendPose(pose)}
             title="Envoie les angles de la pose 3D courante au robot"
           >
             ⇪ Envoyer la position actuelle
@@ -182,10 +183,20 @@ export function RobotLinkContent() {
             type="button"
             className="btn robotlink-btn"
             disabled={boundCount === 0}
-            onClick={() => void sendPose(referencePose(), durationMs)}
+            onClick={() => void sendPose(referencePose())}
             title="Pose de référence atteignable : coxa dans l'axe, fémur horizontal, tibia perpendiculaire — pour comparer au modèle"
           >
             ⊹ Pose de référence
+          </button>
+
+          <button
+            type="button"
+            className="btn robotlink-btn"
+            disabled={boundCount === 0}
+            onClick={() => void importPoseFromRobot()}
+            title="Lit la position commandée de chaque servo (QP) et l'applique à la pose 3D — pour vérifier la calibration"
+          >
+            ⤓ Importer la pose du robot
           </button>
 
           <div className="robotlink-sep" />

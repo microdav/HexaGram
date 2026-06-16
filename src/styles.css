@@ -6641,6 +6641,10 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .ecm-status-text { display: flex; flex-direction: column; gap: 1px; }
 .ecm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ecm-estop { margin-left: auto; }
+.ecm-debug { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ecm-debug-label { font-size: 12px; color: var(--text-dim); }
+.ecm-debug-ch { width: 60px; }
+.ecm-debug-cmd { flex: 1 1 160px; min-width: 120px; }
 .ecm-console-bar {
   display: flex;
   align-items: center;

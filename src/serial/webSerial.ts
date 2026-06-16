@@ -69,6 +69,14 @@ export class SerialLink {
   private closing = false;
   /** Garde-fou : onLost ne se déclenche qu'une fois par connexion. */
   private lostFired = false;
+  /** Requête en attente d'une réponse RX (corrélation requête → octets, cf. requestBytes). */
+  private pending: {
+    count: number;
+    buf: number[];
+    resolve: (b: Uint8Array) => void;
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   label: string | null = null;
 
   get connected(): boolean {
@@ -145,6 +153,52 @@ export class SerialLink {
   }
 
   /**
+   * Écrit une commande puis attend `count` octets en réponse — corrélation
+   * requête → réponse pour les commandes de lecture (Q, QP…). Les octets restent
+   * journalisés par startReader (la console reflète tout). Rejette après
+   * `timeoutMs` sans réponse, ou si une autre requête est déjà en cours.
+   */
+  async requestBytes(cmd: string, count: number, timeoutMs = 500): Promise<Uint8Array> {
+    if (!this.writer) throw new Error("Liaison série fermée");
+    if (this.pending) throw new Error("Une requête est déjà en cours");
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending?.timer === timer) this.pending = null;
+        reject(new Error("Pas de réponse (délai dépassé)"));
+      }, timeoutMs);
+      this.pending = { count, buf: [], resolve, reject, timer };
+      this.writer!.write(this.encoder.encode(cmd)).catch((e) => {
+        if (this.pending?.timer === timer) {
+          clearTimeout(timer);
+          this.pending = null;
+        }
+        reject(e instanceof Error ? e : new Error(String(e)));
+      });
+    });
+  }
+
+  /** Distribue les octets reçus à une requête en attente (cf. requestBytes). */
+  private feedPending(value: Uint8Array): void {
+    const p = this.pending;
+    if (!p) return;
+    for (const b of value) p.buf.push(b);
+    if (p.buf.length >= p.count) {
+      this.pending = null;
+      clearTimeout(p.timer);
+      p.resolve(new Uint8Array(p.buf.slice(0, p.count)));
+    }
+  }
+
+  /** Rejette une requête en attente (déconnexion / perte de liaison). */
+  private rejectPending(reason: string): void {
+    const p = this.pending;
+    if (!p) return;
+    this.pending = null;
+    clearTimeout(p.timer);
+    p.reject(new Error(reason));
+  }
+
+  /**
    * Démarre la boucle de lecture du port. `onBytes` reçoit chaque fragment
    * brut (Uint8Array) tel que renvoyé par la carte — le décodage texte / hex
    * est laissé à l'appelant pour un diagnostic fidèle. Tourne en tâche de fond
@@ -153,22 +207,37 @@ export class SerialLink {
    */
   startReader(onBytes: (bytes: Uint8Array) => void): void {
     if (!this.port?.readable || this.reader) return;
-    const reader = this.port.readable.getReader();
-    this.reader = reader;
-    (async () => {
-      let lost = false;
+    void this.readLoop(onBytes);
+  }
+
+  /**
+   * Boucle de lecture résiliente (motif canonique Web Serial). Une erreur de
+   * lecture NON fatale (framing/parité/overrun — fréquente sur les octets
+   * binaires à bas débit, ex. réponse `QP` à 9600 bauds) erronne le flux courant
+   * mais laisse `port.readable` valide : on ré-acquiert alors un reader et on
+   * continue, AU LIEU de déclarer la liaison perdue. Seul `port.readable` qui
+   * devient null (débranchement réel) — ou l'événement `disconnect` — signale une
+   * perte. Un garde-fou borne les redémarrages stériles (anti-boucle).
+   */
+  private async readLoop(onBytes: (bytes: Uint8Array) => void): Promise<void> {
+    let emptyRestarts = 0;
+    while (this.port?.readable && !this.closing) {
+      const reader = this.port.readable.getReader();
+      this.reader = reader;
+      let gotData = false;
       try {
         for (;;) {
           const { value, done } = await reader.read();
-          if (done) {
-            lost = !this.closing;
-            break;
+          if (done) break;
+          if (value && value.length) {
+            gotData = true;
+            onBytes(value);
+            this.feedPending(value);
           }
-          if (value && value.length) onBytes(value);
         }
       } catch {
-        // Lecture interrompue : déconnexion volontaire (closing) ou perte réelle.
-        lost = !this.closing;
+        // Erreur de lecture potentiellement récupérable : la boucle ré-acquiert
+        // un reader si le port reste lisible (vérifié par la condition du while).
       } finally {
         try {
           reader.releaseLock();
@@ -176,9 +245,14 @@ export class SerialLink {
           /* reader déjà libéré */
         }
         if (this.reader === reader) this.reader = null;
-        if (lost) this.handleLost("Liaison série interrompue");
       }
-    })();
+      if (this.closing) break;
+      // Flux terminé/erroné mais port encore lisible → erreur récupérable : on
+      // réessaie. Garde-fou : trop de redémarrages sans aucune donnée = perte.
+      emptyRestarts = gotData ? 0 : emptyRestarts + 1;
+      if (emptyRestarts > 20) break;
+    }
+    if (!this.closing) this.handleLost("Liaison série interrompue");
   }
 
   decode(bytes: Uint8Array): string {
@@ -188,6 +262,7 @@ export class SerialLink {
   /** Déconnexion VOLONTAIRE : ferme tout proprement, sans signaler de perte. */
   async disconnect(): Promise<void> {
     this.closing = true;
+    this.rejectPending("Liaison fermée");
     this.removeDisconnectListener();
     // Annule la lecture en premier pour débloquer la boucle read().
     try {
@@ -246,6 +321,7 @@ export class SerialLink {
   private handleLost(reason: string): void {
     if (this.closing || this.lostFired) return;
     this.lostFired = true;
+    this.rejectPending(reason);
     try {
       this.writer?.releaseLock();
     } catch {
