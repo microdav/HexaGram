@@ -167,7 +167,9 @@ export function attachRealtime(server: Server): void {
           if (room.controlHolderId !== conn.deviceId) return;
           const pose = msg.pose;
           if (!Array.isArray(pose)) return;
-          const out: Json = { type: "pose", pose, fromDeviceId: conn.deviceId };
+          // `release` = relâchement du pointeur côté pilote → l'hôte transmet au
+          // robot en mode « au relâchement » (cf. useLinkStore / useSerialStore).
+          const out: Json = { type: "pose", pose, fromDeviceId: conn.deviceId, release: msg.release === true };
           for (const d of room.devices.values()) {
             if (d.deviceId !== conn.deviceId) send(d.ws, out);
           }

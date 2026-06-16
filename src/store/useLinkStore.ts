@@ -176,6 +176,16 @@ function handleMessage(data: string): void {
       } finally {
         applyingRemote = false;
       }
+      // Hôte USB → relais au robot. En mode continu, la souscription du miroir
+      // live de useSerialStore a déjà envoyé la pose. En mode « au relâchement »,
+      // aucun pointerup local ne survient (le mouvement vient du pilote distant) :
+      // on envoie explicitement la pose finale marquée `release`.
+      if (msg.release === true) {
+        const serial = useSerialStore.getState();
+        if (serial.mirrorOnRelease && serial.liveMirror && serial.status === "connected" && !serial.robotRunActive) {
+          void serial.sendPoseLive(pose as number[]);
+        }
+      }
       break;
     }
     case "control:requested": {
@@ -343,6 +353,12 @@ export const useLinkStore = create<LinkState>((set, get) => {
 let broadcastTimer: ReturnType<typeof setTimeout> | null = null;
 let broadcastPending = false;
 let lastBroadcastPose = useHexapodStore.getState().pose;
+/** Pilote : minuterie « fin de geste ». Après stabilisation de la pose, on émet
+ *  une trame `release` que l'hôte transmet au robot en mode « au relâchement ».
+ *  Couvre le glisser de servo, la sélection d'une pose et la sélection d'une
+ *  étape du séquenceur, sans dépendre d'un événement pointeur. */
+let releaseTimer: ReturnType<typeof setTimeout> | null = null;
+const RELEASE_SETTLE_MS = 150;
 
 function canBroadcast(): boolean {
   const s = useLinkStore.getState();
@@ -373,11 +389,25 @@ function requestBroadcast(): void {
   flushBroadcast();
 }
 
+// Émet la pose finale (drapeau `release`) une fois le geste stabilisé : l'hôte la
+// transmet alors au robot en mode « au relâchement » (où, le mouvement venant du
+// pilote, aucun pointerup local ne déclenche le miroir live).
+function scheduleRelease(): void {
+  if (releaseTimer) clearTimeout(releaseTimer);
+  releaseTimer = setTimeout(() => {
+    releaseTimer = null;
+    if (!canBroadcast()) return;
+    sendRaw({ type: "pose", pose: useHexapodStore.getState().pose, release: true });
+  }, RELEASE_SETTLE_MS);
+}
+
 useHexapodStore.subscribe((state) => {
   if (state.pose === lastBroadcastPose) return;
   lastBroadcastPose = state.pose;
   if (applyingRemote) return; // ne pas réémettre une pose reçue d'un autre appareil
-  requestBroadcast();
+  if (!canBroadcast()) return;
+  requestBroadcast(); // miroir 3D fluide (throttlé)
+  scheduleRelease(); // trame finale → robot après stabilisation (drag, sélection pose/étape)
 });
 
 // ── Présence USB : informe la room quand la liaison série change ───────────
