@@ -70,6 +70,12 @@ interface SerialState {
   watchdogEnabled: boolean;
   /** Durée de transition par défaut (ms) des envois HORS live (pose, centrage). Persisté. */
   transitionMs: number;
+  /**
+   * Vrai pendant un Run « envoyé au robot » (locomotion pas-à-pas depuis la
+   * salle) : suspend le miroir live pour ne pas envoyer en double les poses que
+   * la boucle pas-à-pas pilote déjà. Éphémère (non persisté).
+   */
+  robotRunActive: boolean;
   /** Console série : commandes émises (tx), messages reçus (rx), infos. Ordre chronologique. */
   log: SerialLogEntry[];
   /** Total d'octets bruts reçus depuis la connexion (diagnostic RX). */
@@ -102,6 +108,8 @@ interface SerialState {
   setWatchdogEnabled: (v: boolean) => void;
   /** Règle la durée de transition par défaut (ms) des envois hors live. */
   setTransitionMs: (ms: number) => void;
+  /** Active/désactive la suspension du miroir live pendant un Run robot. */
+  setRobotRunActive: (v: boolean) => void;
   clearLog: () => void;
   connect: () => Promise<void>;
   /** Rouvre la liaison après une perte, sans re-sélection manuelle du port. */
@@ -128,6 +136,17 @@ interface SerialState {
    * live haute fréquence — pas de toast, pas de log par trame (sinon inondation).
    */
   sendPoseLive: (pose: number[]) => Promise<void>;
+  /**
+   * Envoi GROUPÉ d'une pose avec transition `T` (un seul write, un seul log
+   * concis), pour la locomotion pas-à-pas : le contrôleur interpole lui-même sur
+   * `timeMs`. Renvoie `true` si la trame est partie. Clampé aux butées.
+   */
+  sendPoseTimed: (pose: number[], timeMs: number) => Promise<boolean>;
+  /**
+   * Attend la fin du mouvement courant via `Q` (synchro pas-à-pas), au plus
+   * `capMs`. Sans support `Q`, retourne immédiatement (la cadence `T` suffit).
+   */
+  waitUntilIdle: (capMs: number) => Promise<void>;
   /** Arrêt d'urgence : coupe le couple de tous les canaux liés. */
   releaseAll: () => Promise<void>;
   /**
@@ -162,6 +181,14 @@ interface SerialState {
 
 // Instance unique de liaison série pour toute l'app.
 const link = new SerialLink();
+
+// Période de scrutation (ms) de la requête `Q` dans waitUntilIdle (synchro pas-à-pas).
+const QUERY_POLL_MS = 50;
+
+// Quand vrai, les octets RX ne sont PAS journalisés (mais toujours comptés et
+// distribués aux requêtes) : évite d'inonder la console pendant le polling `Q`
+// haute fréquence de la synchronisation pas-à-pas.
+let rxSilent = false;
 
 const BAUD_KEY = "hexagram.serial.baud";
 function readBaud(): number | null {
@@ -300,6 +327,11 @@ function pushRx(
   // imprimables (ASCII visible + CR/LF/TAB). Sinon → représentation hex, sans
   // quoi une réponse binaire (ex. l'octet d'un QP, y compris 0x00) donnerait une
   // ligne vide ou un caractère de remplacement trompeur.
+  if (rxSilent) {
+    // Polling Q en cours : on ne garde que le compteur d'octets, pas le détail.
+    set((s) => ({ rxByteCount: s.rxByteCount + bytes.length }));
+    return;
+  }
   const allPrintable = bytes.every(
     (b) => (b >= 0x20 && b <= 0x7e) || b === 0x09 || b === 0x0a || b === 0x0d
   );
@@ -332,6 +364,23 @@ function markWriteError(e: unknown): string {
     errorMsg: msg,
   });
   return msg;
+}
+
+/**
+ * Interroge `Q` SANS journaliser (poll silencieux pour la synchro pas-à-pas) :
+ * renvoie `true` (mouvement en cours), `false` (terminé), ou `null` (non géré /
+ * pas de réponse exploitable). La version publique `queryMoving` journalise.
+ */
+async function rawQueryMoving(): Promise<boolean | null> {
+  const { protocol } = hardwareContext();
+  if (!protocol.queryMove) return null;
+  try {
+    const bytes = await link.requestBytes(protocol.queryMove(), 1, 300);
+    const ch = String.fromCharCode(bytes[0]);
+    return ch === "+" ? true : ch === "." ? false : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Contexte matériel courant pour formater/convertir les commandes. */
@@ -383,6 +432,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   errorKind: null,
   watchdogEnabled: readWatchdog(),
   transitionMs: readTransition(),
+  robotRunActive: false,
   log: [],
   rxByteCount: 0,
   consoleOpen: _console.open,
@@ -450,6 +500,8 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     writeTransition(clean);
     set({ transitionMs: clean });
   },
+
+  setRobotRunActive: (v) => set({ robotRunActive: v }),
 
   clearLog: () => set({ log: [], rxByteCount: 0 }),
 
@@ -608,6 +660,52 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     }
   },
 
+  sendPoseTimed: async (pose, timeMs) => {
+    if (get().status !== "connected") return false;
+    const { protocol, servo, controller, electronics } = hardwareContext();
+    if (!electronics) return false;
+    const channels: { ch: number; us: number }[] = [];
+    const nextTest: Record<number, number> = {};
+    for (let id = 0; id < 18; id++) {
+      const binding = electronics.bindings[id] ?? defaultBinding(id);
+      if (binding.channel == null) continue;
+      const raw = Number.isFinite(pose[id]) ? pose[id] : 0;
+      const deg = clampToServoLimits(raw, binding, id); // sécurité butées
+      channels.push({ ch: binding.channel, us: angleToPulseUs(deg, binding, servo, controller) });
+      nextTest[id] = deg;
+    }
+    if (channels.length === 0) return false;
+    const cmd = protocol.moveGroup(channels, Math.max(0, Math.round(timeMs)));
+    try {
+      await link.writeString(cmd);
+      pushLog(set, "tx", cmd);
+      set((s) => ({ testAngles: { ...s.testAngles, ...nextTest } }));
+      return true;
+    } catch (e) {
+      pushLog(set, "info", `Erreur écriture (pas-à-pas) : ${markWriteError(e)}`);
+      return false;
+    }
+  },
+
+  waitUntilIdle: async (capMs) => {
+    const { protocol } = hardwareContext();
+    // Sans support `Q`, pas de synchro possible : la cadence `T` fait foi.
+    if (!protocol.queryMove) return;
+    const deadline = nowMs() + Math.max(0, capMs);
+    rxSilent = true; // ne pas inonder la console avec les +/. du polling
+    try {
+      for (;;) {
+        if (get().status !== "connected") return;
+        const moving = await rawQueryMoving();
+        if (moving !== true) return; // '.' (fini) ou null (pas de réponse) → on avance
+        if (nowMs() >= deadline) return; // plafond de sécurité : ne jamais bloquer
+        await sleep(QUERY_POLL_MS);
+      }
+    } finally {
+      rxSilent = false;
+    }
+  },
+
   releaseAll: async () => {
     if (get().status !== "connected") return;
     const { protocol, electronics } = hardwareContext();
@@ -676,22 +774,18 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       pushLog(set, "info", "Requête « mouvement ? » non gérée par ce protocole");
       return null;
     }
-    const cmd = protocol.queryMove();
-    pushLog(set, "tx", cmd);
-    try {
-      const bytes = await link.requestBytes(cmd, 1, 400);
-      const ch = String.fromCharCode(bytes[0]);
-      const moving = ch === "+";
-      pushLog(
-        set,
-        "info",
-        `Q → ${ch === "+" ? "mouvement en cours (+)" : ch === "." ? "terminé (.)" : `réponse « ${ch} »`}`
-      );
-      return ch === "+" || ch === "." ? moving : null;
-    } catch (e) {
-      pushLog(set, "info", `Q : ${e instanceof Error ? e.message : "échec"}`);
-      return null;
-    }
+    pushLog(set, "tx", protocol.queryMove());
+    const moving = await rawQueryMoving();
+    pushLog(
+      set,
+      "info",
+      moving === true
+        ? "Q → mouvement en cours (+)"
+        : moving === false
+          ? "Q → terminé (.)"
+          : "Q → pas de réponse exploitable"
+    );
+    return moving;
   },
 
   queryPulseChannel: async (channel) => {
@@ -791,7 +885,7 @@ let mirrorDirty = false;
 
 function flushMirror(): void {
   const s = useSerialStore.getState();
-  if (!s.liveMirror || s.status !== "connected") {
+  if (!s.liveMirror || s.status !== "connected" || s.robotRunActive) {
     mirrorPending = false;
     return;
   }
@@ -807,7 +901,7 @@ function flushMirror(): void {
 
 function requestMirror(): void {
   const s = useSerialStore.getState();
-  if (!s.liveMirror || s.status !== "connected") return;
+  if (!s.liveMirror || s.status !== "connected" || s.robotRunActive) return;
   if (mirrorTimer != null) {
     mirrorPending = true; // une trame est en vol → on enverra la dernière au prochain tick
     return;
@@ -831,7 +925,7 @@ useHexapodStore.subscribe((state) => {
 if (typeof window !== "undefined") {
   window.addEventListener("pointerup", () => {
     const s = useSerialStore.getState();
-    if (s.liveMirror && s.mirrorOnRelease && s.status === "connected" && mirrorDirty) {
+    if (s.liveMirror && s.mirrorOnRelease && s.status === "connected" && !s.robotRunActive && mirrorDirty) {
       mirrorDirty = false;
       void s.sendPoseLive(useHexapodStore.getState().pose);
     }

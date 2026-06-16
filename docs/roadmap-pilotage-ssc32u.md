@@ -23,6 +23,9 @@ tard »). La numérotation `#n` rappelle le regroupement d'origine.
 - **P2 — Mieux exploiter le SSC-32U** (cf. ci-dessous, ✅ fait) : transition douce par défaut
   (`transitionMs` partagé), import pose via `QP` (`pulseUsToAngle` + `SerialLink.requestBytes`),
   requête `Q`, `STOP`, et console debug (Q/QP/STOP + commande brute).
+- **P3 — Locomotion réelle depuis la salle** (cf. ci-dessous, ✅ fait) : toggle « 🤖 Robot » du Run
+  envoie les keyframes au robot (`sendPoseTimed` groupé + `T`), synchronisées par `Q` (`waitUntilIdle`,
+  poll silencieux), miroir live suspendu pendant le Run ; « Séquence → carte » consolidé (synchro `Q`).
 
 ---
 
@@ -73,23 +76,27 @@ Livré :
 - Note : le **baud du SSC-32U se règle par bouton** sur la carte (pas en logiciel, cf. guide officiel
   SSC-32U) ; juste s'assurer que `baudRate` correspond côté app.
 
-## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_ — ⬅ prochaine étape
+## P3 — Locomotion réelle depuis la salle d'exécution _(#1)_ — ✅ FAIT
 
 Objectif : faire **se déplacer le vrai robot**, pas seulement le mirroir frame-à-frame.
 
-- **Lecture pas-à-pas → robot avec `T` par transition** : le SSC-32U interpole lui-même (plus fluide,
-  ménage les servos) au lieu de streamer 25 Hz. Brancher sur la lecture de séquence/programme et le
-  « Run » de la salle d'exécution.
-- **Synchronisation par `Q`** (dépend de P2) : enchaîner un pas seulement quand le précédent est
-  terminé, plutôt qu'un timer aveugle.
-- Réutiliser/consolider le **« Séquence → carte »** existant et le `T`/`stepDelay` du séquenceur.
-- Fichiers : salle d'exécution ([src/three/RoomScene.tsx](../src/three/RoomScene.tsx),
-  [src/three/Room.tsx](../src/three/Room.tsx)), [useSequencerStore](../src/store/useSequencerStore.ts),
-  [sequenceScript.ts](../src/model/sequenceScript.ts), [useSerialStore.ts](../src/store/useSerialStore.ts).
-- Critère d'acceptation : lancer une démarche tripod depuis la salle → le robot marche, pas
-  synchronisés, sans à-coups ni forçage.
+Livré :
 
-## P4 — Sécurité & fidélité _(#3)_
+- **Lecture pas-à-pas → robot avec `T` par transition** : le toggle **« 🤖 Robot »** du Run
+  ([ProgramRoomPanel](../src/ui/ProgramRoomPanel.tsx)) envoie chaque **keyframe** au robot via
+  `sendPoseTimed` (groupé, un seul write + `T` = durée du segment ; le SSC-32U interpole). La 3D, elle,
+  reste fluide (images denses). Soft-start à l'init.
+- **Synchronisation par `Q`** : `waitUntilIdle` (poll silencieux `Q`, repli temporisé si non géré,
+  plafond anti-blocage) gate chaque keyframe ; miroir live suspendu pendant le Run (`robotRunActive`).
+- **Consolidation « Séquence → carte »** : case « Synchroniser sur Q » (défaut en SSC-32U) → enchaîne sur
+  la fin réelle des mouvements au lieu d'un délai aveugle.
+- Fichiers : [useProgramRunStore.ts](../src/store/useProgramRunStore.ts) (boucle `_scheduleNext` async +
+  robot), [useSerialStore.ts](../src/store/useSerialStore.ts) (`sendPoseTimed`/`waitUntilIdle`),
+  [ProgramRoomPanel.tsx](../src/ui/ProgramRoomPanel.tsx), [ElectroSequencePanel.tsx](../src/ui/ElectroSequencePanel.tsx).
+- ⚠️ Suite identifiée au banc : la **qualité des poses de démarche** dépend d'une **pose de base** ; la
+  génération doit pouvoir partir d'une pose de base choisie (cf. travaux hors-roadmap en cours).
+
+## P4 — Sécurité & fidélité _(#3)_ — ⬅ prochaine étape
 
 Objectif : que la 3D ne « mente » pas sur ce que le robot peut faire.
 

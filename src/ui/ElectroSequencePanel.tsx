@@ -34,6 +34,7 @@ export function ElectroSequencePanel() {
   const stepDelay = useSequencerStore((s) => s.stepDelay);
   const status = useSerialStore((s) => s.status);
   const sendRaw = useSerialStore((s) => s.sendRaw);
+  const waitUntilIdle = useSerialStore((s) => s.waitUntilIdle);
   const showToast = useToastStore((s) => s.show);
 
   const connected = status === "connected";
@@ -53,6 +54,8 @@ export function ElectroSequencePanel() {
   const [loop, setLoop] = useState(false);
   const [comments, setComments] = useState(true);
   const [moveTimeMs, setMoveTimeMs] = useState(1500);
+  // Synchro Q : enchaîner sur la fin réelle du mouvement plutôt qu'un délai aveugle.
+  const [syncQ, setSyncQ] = useState(true);
 
   // ── Script généré (éditable) ────────────────────────────────────────────────
   const [text, setText] = useState("");
@@ -152,6 +155,8 @@ export function ElectroSequencePanel() {
   const definedCount = defined.length;
   const interpCount = Math.max(0, built.frameCount - definedCount);
   const terminator = hw.protocol.id === "ssc32u" ? "\r" : "\n";
+  // Synchro Q possible seulement si le protocole sait répondre « mouvement ? ».
+  const canSync = !!hw.protocol.queryMove;
 
   const regenerate = () => {
     setText(seqId ? built.text : "");
@@ -182,7 +187,12 @@ export function ElectroSequencePanel() {
         await sendRaw(line + terminator);
         const m = /\bT(\d+)/.exec(line);
         const wait = m ? Number(m[1]) : moveTimeMs;
-        if (wait > 0) await sleep(wait);
+        if (syncQ && canSync) {
+          // Attendre la fin réelle du mouvement (Q), plafonné pour ne jamais bloquer.
+          await waitUntilIdle(wait + 800);
+        } else if (wait > 0) {
+          await sleep(wait);
+        }
       }
       if (!abortRef.current) showToast("Séquence transmise à la carte");
     } finally {
@@ -233,6 +243,22 @@ export function ElectroSequencePanel() {
             onChange={(e) => setComments(e.target.checked)}
           />
           Commentaires
+        </label>
+        <label
+          className="electro-seq-opt"
+          title={
+            canSync
+              ? "Enchaîne chaque pas sur la fin réelle du mouvement (requête Q), au lieu d'un délai aveugle"
+              : "Ce protocole ne renvoie pas l'état de mouvement (Q) : envoi temporisé"
+          }
+        >
+          <input
+            type="checkbox"
+            checked={syncQ && canSync}
+            disabled={!canSync}
+            onChange={(e) => setSyncQ(e.target.checked)}
+          />
+          Synchroniser sur Q
         </label>
         <label className="electro-baud electro-seq-time">
           Durée T (ms)

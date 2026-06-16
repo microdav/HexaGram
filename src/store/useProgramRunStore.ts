@@ -10,6 +10,7 @@ import {
 import { useHexapodStore } from "./useHexapodStore";
 import { useSequencerStore } from "./useSequencerStore";
 import { useSavedSequencesStore } from "./useSavedSequencesStore";
+import { useSerialStore } from "./useSerialStore";
 import { computeLegMounts } from "../model/hexapod";
 
 export const ROOM_PANEL_MIN_W = 280;
@@ -28,6 +29,41 @@ function frameIntervalMs(): number {
   const { transitionSpeed, stepDelay, playbackSpeed } = useSequencerStore.getState();
   const speed = playbackSpeed > 0 ? playbackSpeed : 1;
   return ((transitionSpeed + stepDelay) * 1000) / speed;
+}
+
+/** Locomotion réelle (P3) active : envoi au robot demandé ET carte connectée. */
+function robotActive(): boolean {
+  return (
+    useProgramRunStore.getState().robotStepping &&
+    useSerialStore.getState().status === "connected"
+  );
+}
+
+/**
+ * Prochaine keyframe en ordre de lecture (en tenant compte du bouclage), avec la
+ * durée `T` du segment = nb d'images denses × intervalle (respecte la vitesse).
+ * Sert à commander le robot pas-à-pas pendant que la 3D interpole en fluide.
+ */
+function nextPlaybackKeyframe(idx: number): { pose: Pose; timeMs: number } | null {
+  const s = useProgramRunStore.getState();
+  const frames = s.frames;
+  for (let j = idx + 1; j < frames.length; j++) {
+    if (frames[j].isKeyframe) {
+      return { pose: frames[j].pose, timeMs: Math.max(1, Math.round((j - idx) * frameIntervalMs())) };
+    }
+  }
+  // Fin de la liste : appliquer le bouclage (pas d'images denses → transition douce).
+  const softT = Math.max(400, Math.round(frameIntervalMs()));
+  switch (s.loop.type) {
+    case "init":
+      return frames.length > 0 ? { pose: frames[0].pose, timeMs: softT } : null;
+    case "step": {
+      const t = s.loopTargetFrame >= 0 ? s.loopTargetFrame : 0;
+      return frames[t] ? { pose: frames[t].pose, timeMs: softT } : null;
+    }
+    default:
+      return null; // "none" : pas de pas suivant
+  }
 }
 
 interface ProgramRunState {
@@ -51,6 +87,12 @@ interface ProgramRunState {
   startZ: number;
   isDraggingRobot: boolean;
   /**
+   * Locomotion réelle : si vrai ET la carte connectée, le Run envoie les
+   * keyframes au robot (transition `T`, synchro `Q`) en plus d'animer la 3D.
+   * Persisté (préférence d'atelier).
+   */
+  robotStepping: boolean;
+  /**
    * Pose affichée au repos (hors lecture) dans la salle et l'écran conception :
    * 1re keyframe du programme (Init). Non persistée — recalculée par le panneau.
    */
@@ -66,6 +108,7 @@ interface ProgramRunState {
   setStartPos: (x: number, z: number) => void;
   setDraggingRobot: (v: boolean) => void;
   setRestPose: (p: Pose | null) => void;
+  setRobotStepping: (v: boolean) => void;
 }
 
 export const CAM_HEIGHT_MIN = 0.6;
@@ -77,7 +120,7 @@ const START_MAX_Z = 4 - START_MARGIN;
 /** Azimuts des 4 coins (deg) : avant-droite, avant-gauche, arrière-gauche, arrière-droite. */
 export const CAM_CORNERS = { avD: 45, avG: 135, arG: 225, arD: 315 };
 
-function _scheduleNext(nextIdx: number) {
+async function _scheduleNext(nextIdx: number) {
   const s = useProgramRunStore.getState();
   if (!s.isRunning || s.frames.length === 0) return;
 
@@ -101,7 +144,20 @@ function _scheduleNext(nextIdx: number) {
 
   useProgramRunStore.setState({ currentFrameIndex: idx });
   useHexapodStore.getState().applyPose(s.frames[idx].pose);
-  _timer = setTimeout(() => _scheduleNext(idx + 1), frameIntervalMs());
+
+  // Locomotion réelle (P3) : à chaque keyframe, on s'assure que le robot a fini le
+  // pas précédent (gate `Q`), puis on lui envoie la keyframe suivante sur la durée
+  // du segment (le contrôleur interpole). La 3D, elle, reste fluide (images denses).
+  if (s.frames[idx].isKeyframe && robotActive()) {
+    const serial = useSerialStore.getState();
+    await serial.waitUntilIdle(Math.max(1500, frameIntervalMs() * 2));
+    if (!useProgramRunStore.getState().isRunning) return;
+    const seg = nextPlaybackKeyframe(idx);
+    if (seg) await serial.sendPoseTimed(seg.pose, seg.timeMs);
+    if (!useProgramRunStore.getState().isRunning) return;
+  }
+
+  _timer = setTimeout(() => void _scheduleNext(idx + 1), frameIntervalMs());
 }
 
 interface ProgramRunInternal extends ProgramRunState {
@@ -128,9 +184,13 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
       startZ: 0,
       isDraggingRobot: false,
       restPose: null,
+      robotStepping: false,
 
       run: async (program) => {
         _clearTimer();
+        // Repartir d'un état propre côté série : le miroir live n'est suspendu
+        // que si ce Run pilote effectivement le robot (cf. plus bas).
+        useSerialStore.getState().setRobotRunActive(false);
         set({ isPreparing: true, error: null, isRunning: false, currentFrameIndex: -1 });
         try {
           const { stepDelay } = useSequencerStore.getState();
@@ -179,8 +239,24 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
             currentFrameIndex: 0,
           });
           useHexapodStore.getState().applyPose(frames[0].pose);
-          _timer = setTimeout(() => _scheduleNext(1), frameIntervalMs());
+
+          if (robotActive()) {
+            // Locomotion réelle : soft-start (amener le robot à la pose initiale
+            // en douceur, attendre son arrivée) puis entrer dans la boucle
+            // pas-à-pas dès la keyframe 0. Le miroir live est suspendu pour ne pas
+            // doubler les envois pilotés par la boucle.
+            const serial = useSerialStore.getState();
+            serial.setRobotRunActive(true);
+            const t0 = Math.max(600, Math.round(frameIntervalMs()));
+            await serial.sendPoseTimed(frames[0].pose, t0);
+            await serial.waitUntilIdle(t0 * 2 + 800);
+            if (!get().isRunning) return; // arrêt pendant le soft-start
+            void _scheduleNext(0);
+          } else {
+            _timer = setTimeout(() => void _scheduleNext(1), frameIntervalMs());
+          }
         } catch (e: unknown) {
+          useSerialStore.getState().setRobotRunActive(false);
           set({
             isPreparing: false,
             isRunning: false,
@@ -191,6 +267,7 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
 
       stop: () => {
         _clearTimer();
+        useSerialStore.getState().setRobotRunActive(false); // réactive le miroir live
         const { frames } = get();
         set({ isRunning: false, isPreparing: false, currentFrameIndex: -1 });
         // Réapplique la pose de départ (init / 1re image) pour un état propre.
@@ -212,6 +289,7 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
         }),
       setDraggingRobot: (v) => set({ isDraggingRobot: v }),
       setRestPose: (p) => set({ restPose: p }),
+      setRobotStepping: (v) => set({ robotStepping: v }),
     }),
     {
       name: "hexagram-program-run",
@@ -222,6 +300,7 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
         camHeight: s.camHeight,
         startX: s.startX,
         startZ: s.startZ,
+        robotStepping: s.robotStepping,
       }),
     },
   ),

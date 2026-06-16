@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RoomScene } from "../three/RoomScene";
 import { PoseThumbnail } from "./PoseThumbnail";
 import { useProgramRunStore, CAM_CORNERS } from "../store/useProgramRunStore";
 import { useSequencerStore } from "../store/useSequencerStore";
 import { useSavedSequencesStore } from "../store/useSavedSequencesStore";
 import { useProjectStore } from "../store/useProjectStore";
+import { useSerialStore } from "../store/useSerialStore";
 import { resolveProgramKeyframes, type ProgramKeyframe } from "../model/programPlayback";
 import { SpeedWheel } from "./SpeedWheel";
 import type { Program } from "../model/program";
@@ -43,6 +44,20 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
 
   const playbackSpeed = useSequencerStore((s) => s.playbackSpeed);
   const setPlaybackSpeed = useSequencerStore((s) => s.setPlaybackSpeed);
+
+  // Locomotion réelle : envoi au robot pas-à-pas (T + synchro Q) pendant le Run.
+  const robotStepping = useProgramRunStore((s) => s.robotStepping);
+  const setRobotStepping = useProgramRunStore((s) => s.setRobotStepping);
+  const serialStatus = useSerialStore((s) => s.status);
+  const connected = serialStatus === "connected";
+  const electronics = useProjectStore((s) => s.activeProject?.hardware?.electronics) ?? null;
+  const boundCount = useMemo(() => {
+    if (!electronics) return 0;
+    let n = 0;
+    for (let id = 0; id < 18; id++) if (electronics.bindings[id]?.channel != null) n++;
+    return n;
+  }, [electronics]);
+  const robotReady = connected && boundCount > 0;
 
   const canRun = !!program && (!!program.initPose || program.steps.length > 0);
 
@@ -199,6 +214,24 @@ export function ProgramRoomPanel({ program }: ProgramRoomPanelProps) {
             title="Vitesse d'exécution"
           />
         </label>
+        <button
+          type="button"
+          className={`btn btn-sm ${robotStepping ? "btn-primary" : ""}`}
+          aria-pressed={robotStepping ? "true" : "false"}
+          disabled={isRunning}
+          onClick={() => setRobotStepping(!robotStepping)}
+          title={
+            !connected
+              ? "Envoi au robot pendant le Run (pas-à-pas, T + synchro Q) — connectez d'abord la carte (USB)"
+              : boundCount === 0
+                ? "Aucun servo câblé — affectez les canaux dans l'onglet Électronique"
+                : robotStepping
+                  ? "Le Run pilotera le robot réel (pas-à-pas, synchro Q). Cliquer pour désactiver."
+                  : "Activer l'envoi au robot pendant le Run (pas-à-pas, transition T, synchro Q)"
+          }
+        >
+          🤖 Robot{robotStepping ? (robotReady ? " ✓" : " (hors ligne)") : ""}
+        </button>
         <button
           type="button"
           className={`btn btn-sm ${isRunning ? "btn-danger" : "btn-primary"}`}
