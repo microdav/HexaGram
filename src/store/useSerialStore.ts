@@ -190,6 +190,17 @@ const QUERY_POLL_MS = 50;
 // haute fréquence de la synchronisation pas-à-pas.
 let rxSilent = false;
 
+// Soft-start (P4) : au 1er envoi de pose après une (re)connexion, on rejoint la
+// pose en douceur (transition longue) au lieu d'un saut brutal — les servos
+// peuvent être loin de la cible. Armé à la connexion, consommé au 1er envoi.
+const SOFT_START_MS = 1500;
+let softStartArmed = false;
+function softStartTime(requestedMs: number): number {
+  if (!softStartArmed) return requestedMs;
+  softStartArmed = false;
+  return Math.max(requestedMs, SOFT_START_MS);
+}
+
 const BAUD_KEY = "hexagram.serial.baud";
 function readBaud(): number | null {
   try {
@@ -511,6 +522,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     try {
       const label = await link.connect(get().baudRate);
       set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
+      softStartArmed = true; // 1er envoi en douceur (soft-start)
       pushLog(set, "info", `Connecté à ${label} @ ${get().baudRate} bauds`);
       // Démarre l'écoute des réponses de la carte (← rx). On journalise les
       // octets bruts pour ne jamais perdre une réponse (même non imprimable).
@@ -535,6 +547,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     try {
       const label = await link.reconnect(get().baudRate);
       set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
+      softStartArmed = true; // 1er envoi en douceur (soft-start)
       link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
       pushLog(set, "info", `Reconnecté à ${label} @ ${get().baudRate} bauds`);
       useToastStore.getState().show(`Carte reconnectée (${label})`);
@@ -602,7 +615,8 @@ export const useSerialStore = create<SerialState>((set, get) => ({
     if (get().status !== "connected") return;
     // Transition douce par défaut (réglage partagé) : supprime les à-coups des
     // envois ponctuels. Un appelant peut forcer une durée précise (0 = instantané).
-    const t = timeMs ?? get().transitionMs;
+    // Le 1er envoi après (re)connexion est rallongé (soft-start).
+    const t = softStartTime(timeMs ?? get().transitionMs);
     const { protocol, servo, controller, electronics } = hardwareContext();
     if (!electronics) return;
     let count = 0;
@@ -642,7 +656,9 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       nextTest[id] = deg;
     }
     if (channels.length === 0) return;
-    const cmd = protocol.moveGroup(channels, 0);
+    // Le 1er envoi live après (re)connexion est rallongé (soft-start) ; les
+    // suivants restent à T=0 (stream temps réel).
+    const cmd = protocol.moveGroup(channels, softStartTime(0));
     try {
       await link.writeString(cmd);
       // Auto-rétablissement : un envoi qui repasse après une erreur transitoire
@@ -675,7 +691,7 @@ export const useSerialStore = create<SerialState>((set, get) => ({
       nextTest[id] = deg;
     }
     if (channels.length === 0) return false;
-    const cmd = protocol.moveGroup(channels, Math.max(0, Math.round(timeMs)));
+    const cmd = protocol.moveGroup(channels, softStartTime(Math.max(0, Math.round(timeMs))));
     try {
       await link.writeString(cmd);
       pushLog(set, "tx", cmd);

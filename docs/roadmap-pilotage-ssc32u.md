@@ -27,6 +27,9 @@ tard »). La numérotation `#n` rappelle le regroupement d'origine.
   banc — à corriger**) : toggle « 🤖 Robot » du Run envoie les keyframes au robot (`sendPoseTimed`
   groupé + `T`), synchronisées par `Q` (`waitUntilIdle`, poll silencieux), miroir live suspendu pendant
   le Run ; « Séquence → carte » consolidé (synchro `Q`).
+- **P4 — Sécurité & fidélité** (cf. ci-dessous, ✅ fait) : butées calibrées visibles en 3D (marques sur
+  l'arc + pointeur rouge + segment orange hors butée, mode « indiquer ») et soft-start (1er envoi après
+  (re)connexion en transition longue de 1,5 s).
 
 ---
 
@@ -103,16 +106,20 @@ Implémenté (à valider/corriger) :
 - ⚠️ Suite identifiée au banc : la **qualité des poses de démarche** dépend d'une **pose de base** ; la
   génération doit pouvoir partir d'une pose de base choisie (cf. travaux hors-roadmap en cours).
 
-## P4 — Sécurité & fidélité _(#3)_ — ⬅ prochaine étape
+## P4 — Sécurité & fidélité _(#3)_ — ✅ FAIT
 
 Objectif : que la 3D ne « mente » pas sur ce que le robot peut faire.
 
-- **Butées visibles en 3D** : aujourd'hui le clamp n'est qu'à l'envoi ; indiquer (ou limiter) dans la
-  Conception 3D quand une pose dépasse les butées calibrées, pour ne pas « perdre » du mouvement
-  silencieusement. Lien arcs servo / IK ↔ `minDeg/maxDeg` du binding.
-- **Soft-start** : au premier envoi après connexion, rejoindre la pose courante en douceur (rampe /
-  `T` long) plutôt qu'un saut brutal.
-- Fichiers : [Leg.tsx](../src/three/Leg.tsx) / [ServoArc.tsx](../src/three/ServoArc.tsx),
+Livré (mode **« indiquer »**, pas de limitation de la conception) :
+
+- **Butées calibrées visibles en 3D** : [Leg.tsx](../src/three/Leg.tsx) lit `electronics.bindings[id].minDeg/maxDeg`
+  (repli plage modèle) et les passe à [ServoArc](../src/three/ServoArc.tsx) → **marque orange** à chaque butée
+  réellement plus serrée que le modèle + **pointeur d'arc rouge** quand la pose dépasse la butée ; en plus, le
+  **segment** est teinté **orange** (sous le rouge de collision) — indicateur passif, en Conception seulement.
+  On peut toujours poser au-delà : c'est signalé, plus de perte silencieuse à l'envoi.
+- **Soft-start** : à la (re)connexion, le **1er envoi de pose** (`sendPose`/`sendPoseTimed`/`sendPoseLive`)
+  force une transition longue (`SOFT_START_MS` = 1,5 s) pour rejoindre la pose en douceur, puis se désarme.
+- Fichiers : [Leg.tsx](../src/three/Leg.tsx), [ServoArc.tsx](../src/three/ServoArc.tsx),
   [useSerialStore.ts](../src/store/useSerialStore.ts).
 
 ---

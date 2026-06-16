@@ -14,6 +14,10 @@ interface ServoArcProps {
   onEnter: () => void;
   onLeave: () => void;
   onAngle: (deg: number) => void;
+  /** Butées CALIBRÉES (deg, repère servo) : matérialisées sur l'arc ; le pointeur
+   *  passe au rouge quand `currentDeg` les dépasse (P4 — fidélité au robot). */
+  limitMinDeg?: number;
+  limitMaxDeg?: number;
 }
 
 const ACTIVE_COLOR = "#7ab8ff";
@@ -22,6 +26,8 @@ const TICK_COLOR = "#9bc7ff";
 const TICK_INACTIVE_COLOR = "#4a4f5a";
 const TICK_MAJOR_COLOR = "#ffffff";
 const POINTER_COLOR = "#f5c518";
+const LIMIT_COLOR = "#f59e0b"; // marque de butée calibrée
+const POINTER_OOB_COLOR = "#ef4444"; // pointeur hors butée
 
 function buildArcPoints(
   startDeg: number,
@@ -51,6 +57,8 @@ export function ServoArc({
   onEnter,
   onLeave,
   onAngle,
+  limitMinDeg,
+  limitMaxDeg,
 }: ServoArcProps) {
   const dragging = useRef(false);
 
@@ -113,6 +121,32 @@ export function ServoArc({
     const rad = degToRad(currentDeg);
     return [Math.cos(rad) * radius * 1.08, Math.sin(rad) * radius * 1.08, 0];
   }, [currentDeg, radius]);
+
+  // Butées calibrées : pointeur rouge si la pose les dépasse, marques radiales.
+  const hasLimit = limitMinDeg != null && limitMaxDeg != null;
+  const outOfLimit =
+    hasLimit && (currentDeg < (limitMinDeg as number) - 1e-6 || currentDeg > (limitMaxDeg as number) + 1e-6);
+  const pointerColor = outOfLimit ? POINTER_OOB_COLOR : POINTER_COLOR;
+
+  const limitMarks = useMemo(() => {
+    const out: { a: [number, number, number]; b: [number, number, number] }[] = [];
+    if (limitMinDeg == null || limitMaxDeg == null) return out;
+    // Seules les butées RÉELLEMENT plus serrées que la plage modèle sont tracées
+    // (sinon des marques s'afficheraient toujours aux extrémités, sans utilité).
+    const degs: number[] = [];
+    if (limitMinDeg > minDeg + 1e-6) degs.push(limitMinDeg);
+    if (limitMaxDeg < maxDeg - 1e-6) degs.push(limitMaxDeg);
+    for (const deg of degs) {
+      if (deg < visualStart - 1e-6 || deg > visualEnd + 1e-6) continue;
+      const rad = degToRad(deg);
+      const c = Math.cos(rad), s = Math.sin(rad);
+      out.push({
+        a: [c * radius * 0.72, s * radius * 0.72, 0],
+        b: [c * radius * 1.22, s * radius * 1.22, 0],
+      });
+    }
+    return out;
+  }, [limitMinDeg, limitMaxDeg, minDeg, maxDeg, visualStart, visualEnd, radius]);
 
   const ringInner = radius * 0.78;
   const ringOuter = radius * 1.18;
@@ -259,17 +293,29 @@ export function ServoArc({
             />
           ))}
 
-          {/* Current angle pointer */}
+          {/* Butées calibrées (binding) — marques radiales orange */}
+          {limitMarks.map((m, i) => (
+            <Line
+              key={`lim-${i}`}
+              points={[m.a, m.b]}
+              color={LIMIT_COLOR}
+              lineWidth={2.5}
+              transparent
+              opacity={0.9}
+            />
+          ))}
+
+          {/* Current angle pointer — rouge si hors butée calibrée */}
           <Line
             points={[[0, 0, 0], pointerEnd]}
-            color={POINTER_COLOR}
+            color={pointerColor}
             lineWidth={2.5}
             transparent
             opacity={0.95}
           />
           <mesh position={pointerEnd}>
             <sphereGeometry args={[Math.max(0.005, radius * 0.07), 12, 12]} />
-            <meshBasicMaterial color={POINTER_COLOR} />
+            <meshBasicMaterial color={pointerColor} />
           </mesh>
         </>
       )}

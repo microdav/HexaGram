@@ -29,6 +29,7 @@ interface LegProps {
 
 const HEXAPOD_YELLOW = "#f5c518";
 const COLLISION_RED = "#ef4444";
+const OUT_OF_LIMIT_ORANGE = "#f59e0b"; // pose hors butées calibrées (P4)
 const JOINT_COLOR = "#222";
 const JOINT_HOVER_COLOR = "#7ab8ff";
 const SERVO_CASE = "#1b1b1b";
@@ -103,6 +104,9 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const chassisH = useHexapodStore((s) => s.geometry.chassis.height);
   const servoTypeId = useProjectStore((s) => s.activeProject?.hardware.servoTypeId);
   const customServoTypes = useProjectStore((s) => s.activeProject?.hardware.customServoTypes);
+  // Butées CALIBRÉES par servo (P4) : matérialisées sur les arcs + teinte du
+  // segment quand la pose les dépasse (sinon perte silencieuse à l'envoi).
+  const electronicsBindings = useProjectStore((s) => s.activeProject?.hardware?.electronics?.bindings);
   const segH = useMemo(() => {
     const sh = segmentHeightsOf({ segmentHeights } as HexapodGeometry, mount.index);
     const spec = findServoType(servoTypeId, customServoTypes ?? []);
@@ -159,6 +163,24 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const coxaDef = SERVOS[coxaId];
   const femurDef = SERVOS[femurId];
   const tibiaDef = SERVOS[tibiaId];
+
+  // Butées calibrées (binding) par articulation, repli sur la plage du modèle.
+  const coxaLim = {
+    min: electronicsBindings?.[coxaId]?.minDeg ?? coxaDef.minDeg,
+    max: electronicsBindings?.[coxaId]?.maxDeg ?? coxaDef.maxDeg,
+  };
+  const femurLim = {
+    min: electronicsBindings?.[femurId]?.minDeg ?? femurDef.minDeg,
+    max: electronicsBindings?.[femurId]?.maxDeg ?? femurDef.maxDeg,
+  };
+  const tibiaLim = {
+    min: electronicsBindings?.[tibiaId]?.minDeg ?? tibiaDef.minDeg,
+    max: electronicsBindings?.[tibiaId]?.maxDeg ?? tibiaDef.maxDeg,
+  };
+  // Hors-butée (uniquement en Conception, pas dans la salle décorative `clean`).
+  const coxaOob = !clean && (coxaDeg < coxaLim.min || coxaDeg > coxaLim.max);
+  const femurOob = !clean && (femurDeg < femurLim.min || femurDeg > femurLim.max);
+  const tibiaOob = !clean && (tibiaDeg < tibiaLim.min || tibiaDeg > tibiaLim.max);
 
   // ── Joint arc hover/pin state ────────────────────────────────────────────
   const counts = useRef<Record<JointKey, number>>({ coxa: 0, femur: 0, tibia: 0 });
@@ -386,9 +408,9 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
     footState === "hover" ? FOOT_HOVER :
     FOOT_NORMAL;
 
-  const coxaColor  = collidingSegs?.has(0) ? COLLISION_RED : HEXAPOD_YELLOW;
-  const femurColor = collidingSegs?.has(1) ? COLLISION_RED : HEXAPOD_YELLOW;
-  const tibiaColor = collidingSegs?.has(2) ? COLLISION_RED : HEXAPOD_YELLOW;
+  const coxaColor  = collidingSegs?.has(0) ? COLLISION_RED : coxaOob ? OUT_OF_LIMIT_ORANGE : HEXAPOD_YELLOW;
+  const femurColor = collidingSegs?.has(1) ? COLLISION_RED : femurOob ? OUT_OF_LIMIT_ORANGE : HEXAPOD_YELLOW;
+  const tibiaColor = collidingSegs?.has(2) ? COLLISION_RED : tibiaOob ? OUT_OF_LIMIT_ORANGE : HEXAPOD_YELLOW;
 
   // En vue salle (`clean`), la patte est purement décorative : pas de handlers
   // (sinon mutation de l'état d'arcs global) ni d'arcs de servo.
@@ -424,6 +446,8 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
             axis="Y"
             minDeg={coxaDef.minDeg}
             maxDeg={coxaDef.maxDeg}
+            limitMinDeg={coxaLim.min}
+            limitMaxDeg={coxaLim.max}
             currentDeg={coxaDeg}
             radius={coxaArcR}
             visible={showCoxa}
@@ -454,6 +478,8 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
                 axis="Z"
                 minDeg={femurDef.minDeg}
                 maxDeg={femurDef.maxDeg}
+                limitMinDeg={femurLim.min}
+                limitMaxDeg={femurLim.max}
                 currentDeg={femurDeg}
                 radius={femurArcR}
                 visible={showFemur}
@@ -484,6 +510,8 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
                     axis="Z"
                     minDeg={tibiaDef.minDeg}
                     maxDeg={tibiaDef.maxDeg}
+                    limitMinDeg={tibiaLim.min}
+                    limitMaxDeg={tibiaLim.max}
                     currentDeg={tibiaDeg}
                     radius={tibiaArcR}
                     visible={showTibia}
