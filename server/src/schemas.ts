@@ -245,6 +245,7 @@ const ProgramDataSchema = z.object({
   initPoseName: z.string(),
   steps: z.array(ProgramStepSchema),
   loop: LoopTargetSchema,
+  releaseOnEnd: z.boolean().optional(),
 });
 
 export const CreateProgramSchema = z.object({
@@ -254,6 +255,7 @@ export const CreateProgramSchema = z.object({
   initPoseName: z.string(),
   steps: z.array(ProgramStepSchema),
   loop: LoopTargetSchema,
+  releaseOnEnd: z.boolean().optional(),
 });
 
 export const UpdateProgramSchema = z.object({
@@ -263,6 +265,7 @@ export const UpdateProgramSchema = z.object({
   initPoseName: z.string().optional(),
   steps: z.array(ProgramStepSchema).optional(),
   loop: LoopTargetSchema.optional(),
+  releaseOnEnd: z.boolean().optional(),
 });
 
 export type ProgramData = z.infer<typeof ProgramDataSchema>;

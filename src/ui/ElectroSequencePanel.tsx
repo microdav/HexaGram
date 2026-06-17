@@ -35,6 +35,7 @@ export function ElectroSequencePanel() {
   const status = useSerialStore((s) => s.status);
   const sendRaw = useSerialStore((s) => s.sendRaw);
   const waitUntilIdle = useSerialStore((s) => s.waitUntilIdle);
+  const releaseAll = useSerialStore((s) => s.releaseAll);
   const showToast = useToastStore((s) => s.show);
 
   const connected = status === "connected";
@@ -56,6 +57,9 @@ export function ElectroSequencePanel() {
   const [moveTimeMs, setMoveTimeMs] = useState(1500);
   // Synchro Q : enchaîner sur la fin réelle du mouvement plutôt qu'un délai aveugle.
   const [syncQ, setSyncQ] = useState(true);
+  // Couper le couple en fin d'envoi (séquence « couché » qui se pose au sol).
+  // Désactivé par défaut pour éviter une chute (couple coupé en l'air).
+  const [releaseOnEnd, setReleaseOnEnd] = useState(false);
 
   // ── Script généré (éditable) ────────────────────────────────────────────────
   const [text, setText] = useState("");
@@ -194,7 +198,16 @@ export function ElectroSequencePanel() {
           await sleep(wait);
         }
       }
-      if (!abortRef.current) showToast("Séquence transmise à la carte");
+      if (!abortRef.current) {
+        // Option « couché » : la dernière pose est déjà atteinte (chaque ligne
+        // ci-dessus attend la fin de son mouvement) → on peut couper le couple.
+        if (releaseOnEnd) await releaseAll();
+        showToast(
+          releaseOnEnd
+            ? "Séquence transmise — servos relâchés (couple coupé)"
+            : "Séquence transmise à la carte"
+        );
+      }
     } finally {
       setSending(false);
     }
@@ -259,6 +272,17 @@ export function ElectroSequencePanel() {
             onChange={(e) => setSyncQ(e.target.checked)}
           />
           Synchroniser sur Q
+        </label>
+        <label
+          className="electro-seq-opt"
+          title="Coupe le couple de tous les servos en fin d'envoi (séquence « couché » qui se pose au sol). Désactivé par défaut pour éviter une chute."
+        >
+          <input
+            type="checkbox"
+            checked={releaseOnEnd}
+            onChange={(e) => setReleaseOnEnd(e.target.checked)}
+          />
+          Relâcher en fin (couple coupé)
         </label>
         <label className="electro-baud electro-seq-time">
           Durée T (ms)

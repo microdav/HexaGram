@@ -25,6 +25,7 @@ function makeDraft(profileId: string): Draft {
     initPoseName: "",
     steps: [],
     loop: { type: 'none' },
+    releaseOnEnd: false,
   };
 }
 
@@ -476,6 +477,19 @@ export function ProgramPage() {
                       </select>
                     )}
                   </div>
+                  {draft.loop.type === 'none' && (
+                    <label
+                      className="flow-loop-opt flow-loop-release"
+                      title="En fin de lecture, coupe le couple de tous les servos une fois la pose finale atteinte (locomotion réelle uniquement). Pour une séquence « couché » qui se pose au sol. Désactivé par défaut : sinon le robot s'effondre au lieu de rester posé."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!draft.releaseOnEnd}
+                        onChange={(e) => patch({ releaseOnEnd: e.target.checked })}
+                      />
+                      Relâcher les servos en fin (couple coupé)
+                    </label>
+                  )}
                 </div>
               </div>
 

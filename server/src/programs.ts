@@ -20,6 +20,7 @@ function parseProgram(row: Record<string, unknown>) {
     initPoseName: data.initPoseName ?? "",
     steps: data.steps ?? [],
     loop: data.loop ?? { type: 'none' },
+    releaseOnEnd: data.releaseOnEnd ?? false,
   };
 }
 
@@ -73,10 +74,10 @@ router.post("/", (req: AuthRequest, res: Response): void => {
     res.status(400).json({ error: "Données invalides", details: parsed.error.flatten() });
     return;
   }
-  const { name, profileId, initPose, initPoseName, steps, loop } = parsed.data;
+  const { name, profileId, initPose, initPoseName, steps, loop, releaseOnEnd } = parsed.data;
   const id = uuidv4();
   const now = Date.now();
-  const data = JSON.stringify({ initPose, initPoseName, steps, loop });
+  const data = JSON.stringify({ initPose, initPoseName, steps, loop, releaseOnEnd });
   db.prepare(
     "INSERT INTO programs (id, user_id, project_id, profile_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(id, req.userId, projectId, profileId, name, data, now, now);
@@ -122,6 +123,7 @@ router.put("/:id", (req: AuthRequest, res: Response): void => {
     initPoseName: patch.initPoseName ?? existingData.initPoseName,
     steps: patch.steps ?? existingData.steps,
     loop: patch.loop ?? existingData.loop,
+    releaseOnEnd: patch.releaseOnEnd ?? existingData.releaseOnEnd ?? false,
   });
 
   db.prepare(

@@ -37,4 +37,11 @@ export interface Program extends ProgramSummary {
   initPoseName: string;
   steps: ProgramStep[];
   loop: LoopTarget;
+  /**
+   * En fin de lecture « Fin » (loop = none), et uniquement quand le programme
+   * pilote réellement le robot (locomotion réelle), relâche le couple de tous les
+   * servos une fois la pose finale atteinte. Pensé pour une séquence « couché »
+   * qui se pose au sol. Désactivé par défaut (sinon coupure brutale = chute).
+   */
+  releaseOnEnd?: boolean;
 }

@@ -10,7 +10,7 @@ import { resolveProgramKeyframes, type ProgramKeyframe } from "../model/programP
 import { SpeedWheel } from "./SpeedWheel";
 import type { Program } from "../model/program";
 
-type RunnableProgram = Pick<Program, "initPose" | "steps" | "loop">;
+type RunnableProgram = Pick<Program, "initPose" | "steps" | "loop" | "releaseOnEnd">;
 
 interface ProgramRoomPanelProps {
   /** Brouillon courant à exécuter (avec ses modifications non enregistrées). */

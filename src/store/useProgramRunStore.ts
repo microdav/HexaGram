@@ -74,6 +74,11 @@ interface ProgramRunState {
   currentFrameIndex: number;
   /** Configuration de bouclage active pour la lecture en cours. */
   loop: LoopTarget;
+  /**
+   * Relâcher le couple en fin de lecture « Fin » (loop = none) quand le robot est
+   * réellement piloté (cf. Program.releaseOnEnd). Renseigné à chaque `run`.
+   */
+  releaseOnEnd: boolean;
   /** stepIndex → index de la 1re image (keyframe) de cette étape. */
   stepStartFrame: Record<number, number>;
   /** Largeur du panneau salle (persistée) et son ouverture. */
@@ -98,7 +103,7 @@ interface ProgramRunState {
    */
   restPose: Pose | null;
 
-  run: (program: Pick<Program, "initPose" | "steps" | "loop">) => Promise<void>;
+  run: (program: Pick<Program, "initPose" | "steps" | "loop" | "releaseOnEnd">) => Promise<void>;
   stop: () => void;
   setPanelWidth: (w: number) => void;
   setPanelOpen: (open: boolean) => void;
@@ -137,6 +142,15 @@ async function _scheduleNext(nextIdx: number) {
         break;
       case "none":
       default:
+        // Fin (pas de boucle) : si le programme pilote réellement le robot et que
+        // l'option « relâcher en fin » est active, on attend l'arrivée à la pose
+        // finale (séquence « couché » au sol) PUIS on coupe le couple — jamais en
+        // plein mouvement, sinon le robot s'effondre au lieu de se poser.
+        if (s.releaseOnEnd && robotActive()) {
+          const serial = useSerialStore.getState();
+          await serial.waitUntilIdle(Math.max(1500, frameIntervalMs() * 2));
+          await serial.releaseAll();
+        }
         useProgramRunStore.getState().stop();
         return;
     }
@@ -174,6 +188,7 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
       frames: [],
       currentFrameIndex: -1,
       loop: { type: "none" },
+      releaseOnEnd: false,
       stepStartFrame: {},
       loopTargetFrame: -1,
       panelWidth: ROOM_PANEL_DEFAULT_W,
@@ -233,6 +248,7 @@ export const useProgramRunStore = create<ProgramRunInternal>()(
             frames,
             stepStartFrame,
             loop: program.loop,
+            releaseOnEnd: !!program.releaseOnEnd,
             loopTargetFrame,
             isPreparing: false,
             isRunning: true,
