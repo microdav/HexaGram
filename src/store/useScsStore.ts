@@ -22,6 +22,27 @@ let _abort = false;
 // Compteur d'ids pour les lignes ajoutées manuellement (unique, sans Math.random).
 let _newRowSeq = 0;
 
+// Dock bas (ouverture + hauteur) persisté localement comme le séquenceur.
+export const SCS_PANEL_MIN_H = 120;
+export const SCS_PANEL_MAX_H = 700;
+const OPEN_KEY = "hexagram.scs.open";
+const HEIGHT_KEY = "hexagram.scs.height";
+function readOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function readHeight(): number {
+  try {
+    const v = Number(localStorage.getItem(HEIGHT_KEY));
+    return Number.isFinite(v) && v >= SCS_PANEL_MIN_H ? Math.min(SCS_PANEL_MAX_H, v) : 320;
+  } catch {
+    return 320;
+  }
+}
+
 interface ScsState {
   /** Lignes = trames envoyées à la carte, dans l'ordre. */
   rows: ScsRow[];
@@ -31,6 +52,11 @@ interface ScsState {
   currentRow: number;
   /** Nom du programme source de la dernière conversion (info affichée). */
   sourceName: string | null;
+  /** Dock bas : ouvert ? + hauteur (px), persistés localement. */
+  panelOpen: boolean;
+  panelHeight: number;
+  setPanelOpen: (v: boolean) => void;
+  setPanelHeight: (h: number) => void;
 
   /** Convertit un programme (graphique) en lignes SCS (sens unique). */
   loadFromProgram: (
@@ -60,6 +86,27 @@ export const useScsStore = create<ScsState>((set, get) => ({
   playing: false,
   currentRow: -1,
   sourceName: null,
+  panelOpen: readOpen(),
+  panelHeight: readHeight(),
+
+  setPanelOpen: (v) => {
+    try {
+      localStorage.setItem(OPEN_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    set({ panelOpen: v });
+  },
+
+  setPanelHeight: (h) => {
+    const clamped = Math.max(SCS_PANEL_MIN_H, Math.min(SCS_PANEL_MAX_H, Math.round(h)));
+    try {
+      localStorage.setItem(HEIGHT_KEY, String(clamped));
+    } catch {
+      /* ignore */
+    }
+    set({ panelHeight: clamped });
+  },
 
   loadFromProgram: async (program, name, getSequence, hw) => {
     const keyframes = await resolveProgramKeyframes(program, getSequence);

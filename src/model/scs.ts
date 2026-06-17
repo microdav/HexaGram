@@ -58,6 +58,8 @@ export interface ScsServoMeta {
   joint: "coxa" | "femur" | "tibia";
   label: string;
   short: string;
+  /** Initiale de l'articulation : C (coxa), F (fémur), T (tibia). */
+  letter: "C" | "F" | "T";
 }
 
 /** Colonnes du SCS, dans l'ordre des servos (S0…S17), groupées par patte. */
@@ -67,6 +69,7 @@ export const SCS_SERVOS: ScsServoMeta[] = SERVOS.map((s) => ({
   joint: s.joint,
   label: `${LEG_NAMES[s.legIndex]} - ${s.joint} (S${s.id})`,
   short: `S${s.id}`,
+  letter: s.joint === "coxa" ? "C" : s.joint === "femur" ? "F" : "T",
 }));
 
 /** Résout le matériel SCS depuis le `hardware` du projet (bindings, specs, protocole). */

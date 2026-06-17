@@ -3344,7 +3344,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 20px 24px 16px;
+  padding: 20px 24px 15px;
   background: var(--bg);
 }
 
@@ -3880,6 +3880,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   align-items: center;
   gap: 8px;
   margin-top: 14px;
+  margin-bottom: 20px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
@@ -7836,9 +7837,16 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .r2d-history-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex: none; }
 .r2d-history-item.current .r2d-history-dot { background: var(--accent); }
 
-/* ── SCS — SSC-32 ServoControlleur Séquenceur ───────────────────────────────── */
-.scs-modal { width: 96vw; max-width: 1500px; }
-.scs-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+/* ── SCS — SSC-32 ServoControlleur Séquenceur (dock bas) ─────────────────────── */
+/* Déborde le padding de .program-page pour occuper toute la largeur, comme le
+   séquenceur de Conception. Réutilise les classes .sequencer-panel/.seq-*. */
+.scs-panel { margin: 0 -24px 0; }
+.scs-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  padding: 8px 12px; gap: 6px; overflow: hidden;
+}
+.scs-title { font-size: 13px; color: var(--text); margin-right: 4px; }
+.scs-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .scs-status { color: var(--text-dim); font-size: 12px; }
 .scs-hint { color: var(--text-dim); font-size: 12px; margin: 0 0 10px; line-height: 1.4; }
 .scs-empty {
@@ -7846,7 +7854,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   border: 1px dashed var(--border); border-radius: 8px;
 }
 .scs-grid-scroll {
-  overflow: auto; max-height: 64vh;
+  flex: 1; min-height: 0; overflow: auto;
   border: 1px solid var(--border); border-radius: 8px;
 }
 .scs-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; }
@@ -7863,6 +7871,7 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .scs-jh.scs-j-coxa { color: #7fb3ff; }
 .scs-jh.scs-j-femur { color: #8fd18f; }
 .scs-jh.scs-j-tibia { color: #e7a977; }
+.scs-jl { margin-left: 3px; font-weight: 800; }
 .scs-sticky-l {
   position: sticky; left: 0; z-index: 3;
   background: var(--bg-panel-2); text-align: center;
@@ -7872,8 +7881,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .scs-cell { text-align: center; }
 .scs-cell.scs-cell-on { background: rgba(245, 197, 24, 0.08); }
 .scs-cell input[type="checkbox"] { vertical-align: middle; margin: 0 2px 0 0; }
-.scs-deg { width: 46px; }
-.scs-t { width: 66px; }
+.scs-deg { width: 56px; }
+.scs-t { width: 96px; }
 .scs-grid input[type="number"], .scs-grid input[type="text"] {
   background: var(--bg); color: var(--text); border: 1px solid var(--border);
   border-radius: 4px; padding: 2px 4px; font-size: 12px;
