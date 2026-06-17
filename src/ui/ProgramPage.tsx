@@ -11,6 +11,7 @@ import { confirmTri } from "../store/useConfirmStore";
 import { registerProgramGuard } from "../store/programEditGuard";
 import { PoseThumbnail } from "./PoseThumbnail";
 import { ProgramRoomPanel } from "./ProgramRoomPanel";
+import { ScsModal } from "./ScsModal";
 import type { Pose } from "../model/pose";
 import type { Program, ProgramStep, LoopTarget } from "../model/program";
 import type { SequencerStep } from "../store/useSequencerStore";
@@ -77,6 +78,7 @@ export function ProgramPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAddOptions, setShowAddOptions] = useState(false);
+  const [showScs, setShowScs] = useState(false);
 
   type PickerTarget = 'init' | 'add-step';
   type InitPickerMode = 'pose' | 'step';
@@ -495,6 +497,14 @@ export function ProgramPage() {
 
               {/* Actions */}
               <div className="program-actions-row">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowScs(true)}
+                  title="SCS — vue tabulaire des commandes réellement envoyées à la carte (SSC-32)"
+                >
+                  🔢 SCS (séquenceur carte)
+                </button>
                 {draft.id && (
                   confirmDelete ? (
                     <>
@@ -610,6 +620,13 @@ export function ProgramPage() {
           <button type="button" className="btn" onClick={() => setShowSeqPicker(false)}>Annuler</button>
         </div>
       </Modal>
+
+      <ScsModal
+        open={showScs}
+        onClose={() => setShowScs(false)}
+        program={draft}
+        programName={draft?.name}
+      />
     </div>
   );
 }
