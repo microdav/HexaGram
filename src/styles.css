@@ -2021,6 +2021,15 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .seq-ctrl-btn--play  { background: #22c55e; color: #fff; }
 .seq-ctrl-btn--pause { background: #d97706; color: #fff; }
 .seq-ctrl-btn--stop  { background: #ea580c; color: #fff; }
+/* Bascule « lecture en boucle » : grisé = une seule fois, bleu très foncé = en
+   boucle (contour bleu pour bien marquer l'état actif, icône bien lisible). */
+.seq-ctrl-btn--loop        { background: #2a2f3a; color: #9aa3b2; opacity: 0.85; }
+.seq-ctrl-btn--loop.is-on  {
+  background: #0c1f47;
+  color: #cfe0ff;
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px #3b6fd0, 0 0 7px rgba(59, 111, 208, 0.55);
+}
 .seq-ctrl-btn:disabled {
   opacity: 0.32;
   cursor: not-allowed;

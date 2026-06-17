@@ -68,10 +68,25 @@ function _clearTimer() {
   if (_timer !== null) { clearTimeout(_timer); _timer = null; }
 }
 
+/** Indice de la dernière étape DÉFINIE (les images de bouclage sont après elle). */
+function _lastDefinedIndex(steps: SequencerStep[]): number {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (!steps[i].type || steps[i].type === 'defined') return i;
+  }
+  return steps.length - 1;
+}
+
 function _scheduleStep(idx: number) {
   const s = useSequencerStore.getState();
   if (!s.isPlaying || s.steps.length === 0) return;
-  const stepIdx = idx % s.steps.length;
+  const n = s.steps.length;
+  // En boucle : modulo (lecture continue, via les images de retour). Sans boucle :
+  // index direct, on s'arrêtera après la dernière étape définie.
+  const stepIdx = s.loop ? ((idx % n) + n) % n : idx;
+  if (stepIdx >= n) {
+    useSequencerStore.setState({ isPlaying: false, isPaused: false, currentStepIndex: -1 });
+    return;
+  }
   s.setCurrentStepIndex(stepIdx);
   const frame = s.steps[stepIdx];
   useHexapodStore.getState().applyPose(frame.pose);
@@ -82,7 +97,16 @@ function _scheduleStep(idx: number) {
   // l'ancienne formule globale pour les images sans timing dérivé.
   const sliceMs = frame.frameMs ?? transitionSpeed * 1000;
   const holdMs = frame.type !== 'interpolated' ? stepDelay * 1000 : 0;
-  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), (sliceMs + holdMs) / speed);
+  const waitMs = (sliceMs + holdMs) / speed;
+  // Sans boucle : une fois la dernière étape définie affichée (et maintenue son
+  // délai), la lecture s'arrête — les images de retour vers la 1re ne sont pas jouées.
+  if (!s.loop && stepIdx >= _lastDefinedIndex(s.steps)) {
+    _timer = setTimeout(() => {
+      useSequencerStore.setState({ isPlaying: false, isPaused: false, currentStepIndex: -1 });
+    }, waitMs);
+    return;
+  }
+  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), waitMs);
 }
 
 interface SequencerState {
@@ -91,6 +115,8 @@ interface SequencerState {
   transitionSpeed: number;
   stepDelay: number;
   playbackSpeed: number;
+  /** Lecture en boucle (true) ou une seule fois (false). Persisté. */
+  loop: boolean;
   currentStepIndex: number;
   selectedStepIndex: number;
   isPlaying: boolean;
@@ -118,6 +144,7 @@ interface SequencerState {
   setTransitionSpeed: (v: number) => void;
   setStepDelay: (v: number) => void;
   setPlaybackSpeed: (v: number) => void;
+  setLoop: (v: boolean) => void;
   setCurrentStepIndex: (i: number) => void;
   setSelectedStepIndex: (i: number) => void;
   setIsPlaying: (v: boolean) => void;
@@ -225,6 +252,7 @@ export const useSequencerStore = create<SequencerState>()(
       transitionSpeed: 0.5,
       stepDelay: 0.3,
       playbackSpeed: 1,
+      loop: true,
       currentStepIndex: -1,
       selectedStepIndex: -1,
       isPlaying: false,
@@ -348,6 +376,7 @@ export const useSequencerStore = create<SequencerState>()(
       // n'influe plus sur le nombre d'images, donc aucun recalcul nécessaire.
       setStepDelay: (v) => set({ stepDelay: v }),
       setPlaybackSpeed: (v) => set({ playbackSpeed: v }),
+      setLoop: (v) => set({ loop: v }),
       setCurrentStepIndex: (i) => set({ currentStepIndex: i }),
       setSelectedStepIndex: (i) => set({ selectedStepIndex: i }),
       setIsPlaying: (v) => set({ isPlaying: v }),
@@ -586,6 +615,7 @@ export const useSequencerStore = create<SequencerState>()(
         transitionSpeed: s.transitionSpeed,
         stepDelay: s.stepDelay,
         playbackSpeed: s.playbackSpeed,
+        loop: s.loop,
         panelHeight: s.panelHeight,
         sequenceName: s.sequenceName,
         showInterpolated: s.showInterpolated,

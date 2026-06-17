@@ -7,6 +7,7 @@ export function SequencerControlsContent() {
   const isPaused = useSequencerStore((s) => s.isPaused);
   const playError = useSequencerStore((s) => s.playError);
   const playbackSpeed = useSequencerStore((s) => s.playbackSpeed);
+  const loop = useSequencerStore((s) => s.loop);
 
   const hasSequence = steps.length > 0;
 
@@ -44,6 +45,14 @@ export function SequencerControlsContent() {
         onChange={(v) => useSequencerStore.getState().setPlaybackSpeed(v)}
         title="Vitesse de lecture"
       />
+      <button
+        type="button"
+        className={`seq-ctrl-btn seq-ctrl-btn--loop${loop ? " is-on" : ""}`}
+        onClick={() => useSequencerStore.getState().setLoop(!loop)}
+        title={loop ? "Lecture en boucle (cliquer pour jouer une seule fois)" : "Lecture une seule fois (cliquer pour boucler)"}
+      >
+        🔁
+      </button>
       {playError && (
         <div
           className="seq-ctrl-error"
