@@ -6,6 +6,14 @@ import { useHexapodStore } from './useHexapodStore';
 
 export type StepType = 'defined' | 'interpolated';
 
+/**
+ * Type de transition menant À une étape définie (segment depuis l'étape
+ * précédente). « linear » = interpolation linéaire (défaut historique),
+ * « ease » = adouci en entrée/sortie (smoothstep), « instant » = saut direct
+ * sans images interpolées.
+ */
+export type TransitionKind = 'linear' | 'ease' | 'instant';
+
 export interface SequencerStep {
   id: string;
   name: string;
@@ -19,6 +27,20 @@ export interface SequencerStep {
    * "rompre le lien".
    */
   sourcePoseId?: string | null;
+  /**
+   * Durée (s) de la transition menant À cette étape définie depuis la
+   * précédente. Absent ⇒ on retombe sur la durée globale (`transitionSpeed`).
+   * Gouverne le nombre d'images interpolées du segment + son timing de lecture.
+   */
+  durationS?: number;
+  /** Type de transition du segment menant à cette étape (cf. TransitionKind). */
+  transition?: TransitionKind;
+  /**
+   * Durée (ms) d'affichage de cette image avant de passer à la suivante.
+   * Dérivée (jamais persistée) : recalculée par `buildInterpolated`. Pilote
+   * le minutage de la lecture (`_scheduleStep`).
+   */
+  frameMs?: number;
   /**
    * Vignette PNG (dataURL) persistée avec la séquence. Hydrate le cache de
    * vignettes à l'ouverture, évitant un re-rendu offscreen systématique.
@@ -51,10 +73,16 @@ function _scheduleStep(idx: number) {
   if (!s.isPlaying || s.steps.length === 0) return;
   const stepIdx = idx % s.steps.length;
   s.setCurrentStepIndex(stepIdx);
-  useHexapodStore.getState().applyPose(s.steps[stepIdx].pose);
+  const frame = s.steps[stepIdx];
+  useHexapodStore.getState().applyPose(frame.pose);
   const { transitionSpeed, stepDelay, playbackSpeed } = useSequencerStore.getState();
   const speed = playbackSpeed > 0 ? playbackSpeed : 1;
-  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), ((transitionSpeed + stepDelay) * 1000) / speed);
+  // Minutage par image : `frameMs` (tranche de transition, dérivée par
+  // buildInterpolated) + le délai d'arrêt à chaque étape DÉFINIE. Repli sur
+  // l'ancienne formule globale pour les images sans timing dérivé.
+  const sliceMs = frame.frameMs ?? transitionSpeed * 1000;
+  const holdMs = frame.type !== 'interpolated' ? stepDelay * 1000 : 0;
+  _timer = setTimeout(() => _scheduleStep(stepIdx + 1), (sliceMs + holdMs) / speed);
 }
 
 interface SequencerState {
@@ -103,6 +131,10 @@ interface SequencerState {
   setAutoApply: (v: boolean) => void;
   updateStepName: (id: string, name: string) => void;
   updateStepPose: (id: string, pose: Pose) => void;
+  /** Durée (s) de transition menant à cette étape (null = revient au défaut global). */
+  setStepDuration: (id: string, durationS: number | null) => void;
+  /** Type de transition menant à cette étape (linear / ease / instant). */
+  setStepTransition: (id: string, transition: TransitionKind) => void;
   /**
    * Demande la mise à jour de la pose d'un step. Si le step est lié à une
    * pose source, un PendingPoseConflict est levé au lieu d'appliquer
@@ -129,41 +161,55 @@ function pushHistory(history: SequencerStep[][], steps: SequencerStep[]): Sequen
   return [...history.slice(-MAX_HISTORY + 1), steps];
 }
 
-// Reconstruit la liste complète (définies + interpolées avec bouclage) à partir des seules étapes définies.
-// Exporté pour permettre à d'autres écrans (ex. génération du script série dans
-// l'onglet Électronique) de reproduire à l'identique les images jouées.
-export function buildInterpolated(defined: SequencerStep[], stepDelay: number): SequencerStep[] {
+/** Adoucissement (smoothstep) pour la transition « ease ». */
+function easeT(t: number, kind: TransitionKind): number {
+  return kind === 'ease' ? t * t * (3 - 2 * t) : t;
+}
+
+// Reconstruit la liste complète (définies + interpolées avec bouclage) à partir
+// des seules étapes définies. Chaque segment menant à l'étape `b` adopte SA
+// durée (`b.durationS`, repli sur `defaultDurationS`) et SON type de transition
+// (`b.transition`) : nombre d'images interpolées, courbe et minutage de lecture
+// (`frameMs`). Exporté pour que d'autres écrans (génération du script série dans
+// l'onglet Électronique) reproduisent à l'identique les images jouées.
+export function buildInterpolated(defined: SequencerStep[], defaultDurationS: number): SequencerStep[] {
   if (defined.length < 2) return defined.slice();
-  const insertCount = Math.max(0, Math.round(stepDelay * MAX_FPS) - 1);
   const result: SequencerStep[] = [];
   const stamp = Date.now();
-  for (let i = 0; i < defined.length - 1; i++) {
-    result.push(defined[i]);
-    const from = defined[i].pose;
-    const to = defined[i + 1].pose;
+
+  // Construit le segment from→to gouverné par les réglages de `to`. Pousse
+  // d'abord l'image de départ (taguée du `frameMs` du segment sortant), puis
+  // les images interpolées. L'étape d'arrivée est poussée par le segment suivant.
+  const pushSegment = (
+    from: SequencerStep,
+    to: SequencerStep,
+    label: (f: number) => string,
+    idTag: string,
+  ) => {
+    const kind = to.transition ?? 'linear';
+    const durS = Math.max(0, to.durationS ?? defaultDurationS);
+    const insertCount = kind === 'instant' ? 0 : Math.max(0, Math.round(durS * MAX_FPS) - 1);
+    const sliceMs = kind === 'instant' ? 0 : (durS * 1000) / (insertCount + 1);
+    // Image de départ : on la rejoue avec le timing du segment sortant.
+    result.push({ ...from, frameMs: sliceMs });
     for (let f = 1; f <= insertCount; f++) {
-      const t = f / (insertCount + 1);
+      const t = easeT(f / (insertCount + 1), kind);
       result.push({
-        id: `interp-${stamp}-${i}-${f}-${Math.random().toString(36).slice(2, 5)}`,
-        name: `↔ ${i + 1}.${f}`,
+        id: `interp-${stamp}-${idTag}-${f}-${Math.random().toString(36).slice(2, 5)}`,
+        name: label(f),
         type: 'interpolated',
-        pose: from.map((angle, k) => angle + (to[k] - angle) * t),
+        frameMs: sliceMs,
+        pose: from.pose.map((angle, k) => angle + (to.pose[k] - angle) * t),
       });
     }
+  };
+
+  for (let i = 0; i < defined.length - 1; i++) {
+    pushSegment(defined[i], defined[i + 1], (f) => `↔ ${i + 1}.${f}`, String(i));
   }
-  result.push(defined[defined.length - 1]);
-  // Bouclage : interpolation entre la dernière et la première (la lecture revient à 0 via modulo)
-  const fromLast = defined[defined.length - 1].pose;
-  const toFirst = defined[0].pose;
-  for (let f = 1; f <= insertCount; f++) {
-    const t = f / (insertCount + 1);
-    result.push({
-      id: `interp-${stamp}-loop-${f}-${Math.random().toString(36).slice(2, 5)}`,
-      name: `↔ ${defined.length}.${f}`,
-      type: 'interpolated',
-      pose: fromLast.map((angle, k) => angle + (toFirst[k] - angle) * t),
-    });
-  }
+  // Bouclage : segment dernière → première (la lecture revient à 0 via modulo),
+  // gouverné par les réglages de la première étape.
+  pushSegment(defined[defined.length - 1], defined[0], (f) => `↔ ${defined.length}.${f}`, 'loop');
   return result;
 }
 
@@ -203,7 +249,7 @@ export const useSequencerStore = create<SequencerState>()(
             sourcePoseId: sourcePoseId ?? null,
           };
           const newDefined = [...defined, newStep];
-          const newSteps = buildInterpolated(newDefined, s.stepDelay);
+          const newSteps = buildInterpolated(newDefined, s.transitionSpeed);
           return {
             steps: newSteps,
             selectedStepIndex: newSteps.findIndex((st) => st.id === newStep.id),
@@ -225,7 +271,7 @@ export const useSequencerStore = create<SequencerState>()(
           };
           const newDefined = defined.slice();
           newDefined.splice(at, 0, newStep);
-          const newSteps = buildInterpolated(newDefined, s.stepDelay);
+          const newSteps = buildInterpolated(newDefined, s.transitionSpeed);
           return {
             steps: newSteps,
             selectedStepIndex: newSteps.findIndex((st) => st.id === newStep.id),
@@ -249,7 +295,7 @@ export const useSequencerStore = create<SequencerState>()(
           };
           const newDefined = defined.slice();
           newDefined.splice(idx + 1, 0, copy);
-          const newSteps = buildInterpolated(newDefined, s.stepDelay);
+          const newSteps = buildInterpolated(newDefined, s.transitionSpeed);
           return {
             steps: newSteps,
             selectedStepIndex: newSteps.findIndex((st) => st.id === copy.id),
@@ -262,7 +308,7 @@ export const useSequencerStore = create<SequencerState>()(
         set((s) => {
           const newDefined = onlyDefined(s.steps).filter((st) => st.id !== id);
           return {
-            steps: buildInterpolated(newDefined, s.stepDelay),
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
             history: pushHistory(s.history, s.steps),
             future: [],
             selectedStepIndex: -1,
@@ -283,7 +329,7 @@ export const useSequencerStore = create<SequencerState>()(
           if (fromDef < to) to -= 1; // le retrait décale les indices au-delà de fromDef
           newDefined.splice(to, 0, moved);
           return {
-            steps: buildInterpolated(newDefined, s.stepDelay),
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
             history: pushHistory(s.history, s.steps),
             future: [],
           };
@@ -291,12 +337,16 @@ export const useSequencerStore = create<SequencerState>()(
 
       reorderServos: (order) => set({ servoOrder: order }),
 
-      setTransitionSpeed: (v) => set({ transitionSpeed: v }),
-      setStepDelay: (v) =>
+      // `transitionSpeed` est la durée de transition par défaut (segments sans
+      // durée propre) : la changer recalcule les images + leur minutage.
+      setTransitionSpeed: (v) =>
         set((s) => ({
-          stepDelay: v,
+          transitionSpeed: v,
           steps: buildInterpolated(onlyDefined(s.steps), v),
         })),
+      // `stepDelay` = délai d'arrêt à chaque étape (appliqué à la lecture) : il
+      // n'influe plus sur le nombre d'images, donc aucun recalcul nécessaire.
+      setStepDelay: (v) => set({ stepDelay: v }),
       setPlaybackSpeed: (v) => set({ playbackSpeed: v }),
       setCurrentStepIndex: (i) => set({ currentStepIndex: i }),
       setSelectedStepIndex: (i) => set({ selectedStepIndex: i }),
@@ -360,7 +410,33 @@ export const useSequencerStore = create<SequencerState>()(
             st.id === id ? { ...st, pose: pose.slice() } : st
           );
           return {
-            steps: buildInterpolated(newDefined, s.stepDelay),
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+          };
+        }),
+
+      setStepDuration: (id, durationS) =>
+        set((s) => {
+          const newDefined = onlyDefined(s.steps).map((st) =>
+            st.id === id
+              ? { ...st, durationS: durationS == null ? undefined : Math.max(0, durationS) }
+              : st
+          );
+          return {
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
+            history: pushHistory(s.history, s.steps),
+            future: [],
+          };
+        }),
+
+      setStepTransition: (id, transition) =>
+        set((s) => {
+          const newDefined = onlyDefined(s.steps).map((st) =>
+            st.id === id ? { ...st, transition } : st
+          );
+          return {
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
             history: pushHistory(s.history, s.steps),
             future: [],
           };
@@ -397,7 +473,7 @@ export const useSequencerStore = create<SequencerState>()(
             st.sourcePoseId === sourcePoseId ? { ...st, pose: angles.slice() } : st
           );
           return {
-            steps: buildInterpolated(newDefined, s.stepDelay),
+            steps: buildInterpolated(newDefined, s.transitionSpeed),
           };
         }),
 
@@ -405,7 +481,7 @@ export const useSequencerStore = create<SequencerState>()(
 
       generateInterpolations: () =>
         set((s) => ({
-          steps: buildInterpolated(onlyDefined(s.steps), s.stepDelay),
+          steps: buildInterpolated(onlyDefined(s.steps), s.transitionSpeed),
           history: pushHistory(s.history, s.steps),
           future: [],
           selectedStepIndex: -1,
@@ -417,7 +493,7 @@ export const useSequencerStore = create<SequencerState>()(
             st.id === id ? { ...st, type: 'defined' as StepType } : st
           );
           return {
-            steps: buildInterpolated(onlyDefined(converted), s.stepDelay),
+            steps: buildInterpolated(onlyDefined(converted), s.transitionSpeed),
             history: pushHistory(s.history, s.steps),
             future: [],
           };
@@ -448,7 +524,7 @@ export const useSequencerStore = create<SequencerState>()(
         set((s) => {
           const normalized = steps.map((st) => ({ ...st, type: st.type ?? 'defined' }));
           return {
-            steps: buildInterpolated(onlyDefined(normalized), s.stepDelay),
+            steps: buildInterpolated(onlyDefined(normalized), s.transitionSpeed),
             sequenceName: name ?? s.sequenceName,
             history: pushHistory(s.history, s.steps),
             future: [],
@@ -472,6 +548,8 @@ export const useSequencerStore = create<SequencerState>()(
               id: st.id,
               name: st.name,
               type: st.type ?? 'defined',
+              durationS: st.durationS,
+              transition: st.transition ?? 'linear',
               pose: Object.fromEntries(
                 SERVOS.map((servo) => [
                   `${LEG_NAMES[servo.legIndex]} - ${servo.joint} (S${servo.id})`,

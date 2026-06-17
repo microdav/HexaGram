@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { DragEvent } from 'react';
-import { useSequencerStore } from '../store/useSequencerStore';
+import { useSequencerStore, type TransitionKind } from '../store/useSequencerStore';
 import { useHexapodStore } from '../store/useHexapodStore';
 import { useToolboxStore } from '../store/useToolboxStore';
 import { useSavedSequencesStore } from '../store/useSavedSequencesStore';
@@ -13,12 +13,20 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePoseThumbnailStore } from '../store/usePoseThumbnailStore';
 import { SERVOS } from '../model/hexapod';
+import { defaultPose } from '../model/pose';
 import { ToolboxSlot } from './ToolboxSlot';
 import { PoseThumbnail } from './PoseThumbnail';
 import { POSE_DRAG_MIME } from './PosesPanel';
 import { SequenceAddStepModal } from './SequenceAddStepModal';
 
 const JOINT_FR: Record<string, string> = { coxa: 'Coxa', femur: 'Fém.', tibia: 'Tib.' };
+
+const TRANSITION_ICON: Record<TransitionKind, string> = { linear: '⟶', ease: '⤳', instant: '⇥' };
+const TRANSITION_LABEL: Record<TransitionKind, string> = {
+  linear: 'Linéaire',
+  ease: 'Adoucie',
+  instant: 'Instantanée (saut)',
+};
 
 function servoLabel(id: number): string {
   const s = SERVOS[id];
@@ -32,8 +40,6 @@ const MAX_PANEL_H = 700;
 export function SequencerPanel() {
   const seqOpen = useToolboxStore((s) => s.uiPrefs.sequencerOpen);
   const setSequencerOpen = useToolboxStore((s) => s.setSequencerOpen);
-  const setActiveTab = useToolboxStore((s) => s.setActiveTab);
-  const seqCtrlDocked = useToolboxStore((s) => s.configs['seq-ctrl']?.panel === 'sequencer');
   const tabletMode = useToolboxStore((s) => s.tabletMode);
   const isDraggingToSeq = useToolboxStore((s) => s.draggingId !== null && s.hoveredPanel === 'sequencer');
   const [isResizing, setIsResizing] = useState(false);
@@ -75,6 +81,7 @@ export function SequencerPanel() {
 
   // Modal d'ajout d'étape (neutre / dupliquer / importer d'une autre séquence)
   const [showAddStepModal, setShowAddStepModal] = useState(false);
+  const [addStepInitialView, setAddStepInitialView] = useState<'menu' | 'sequences'>('menu');
 
   const steps = useSequencerStore((s) => s.steps);
   const servoOrder = useSequencerStore((s) => s.servoOrder);
@@ -82,8 +89,6 @@ export function SequencerPanel() {
   const stepDelay = useSequencerStore((s) => s.stepDelay);
   const currentStepIndex = useSequencerStore((s) => s.currentStepIndex);
   const selectedStepIndex = useSequencerStore((s) => s.selectedStepIndex);
-  const isPlaying = useSequencerStore((s) => s.isPlaying);
-  const isPaused = useSequencerStore((s) => s.isPaused);
   const playError = useSequencerStore((s) => s.playError);
   const history = useSequencerStore((s) => s.history);
   const panelHeight = useSequencerStore((s) => s.panelHeight);
@@ -91,7 +96,9 @@ export function SequencerPanel() {
   const showInterpolated = useSequencerStore((s) => s.showInterpolated);
 
   const displayedSteps = showInterpolated ? steps : steps.filter((s) => s.type !== 'interpolated');
-  const definedCount = steps.filter((s) => !s.type || s.type === 'defined').length;
+  const definedSteps = steps.filter((s) => !s.type || s.type === 'defined');
+  const definedCount = definedSteps.length;
+  const lastDefinedStep = definedSteps[definedSteps.length - 1];
   // Gap où afficher la barre d'insertion (drop de pose ou déplacement d'étape).
   // Pour un déplacement, on masque les gaps qui n'auraient aucun effet (avant/après soi-même).
   const activeInsertGap =
@@ -131,6 +138,53 @@ export function SequencerPanel() {
       if (!liveIds.has(id)) usePoseThumbnailStore.getState().remove(id);
     }
   }, [steps, savedPoses]);
+
+  // ── Auto-enregistrement de la séquence active ──────────────────────────────
+  // Toute modification (ajout/suppression/réordonnancement d'étape, pose, durée,
+  // transition…) est persistée automatiquement (debounce 700 ms). On compare une
+  // signature des étapes DÉFINIES pour ne sauvegarder qu'aux vrais changements ;
+  // au chargement d'une séquence (changement d'id actif) la signature devient la
+  // référence afin de ne pas réécrire le contenu fraîchement chargé.
+  const stepsSignature = useMemo(() => {
+    const defined = steps.filter((s) => !s.type || s.type === 'defined');
+    return JSON.stringify(
+      defined.map((s) => [s.id, s.name, s.pose, s.sourcePoseId ?? null, s.durationS ?? null, s.transition ?? null])
+    );
+  }, [steps]);
+  const lastSavedSigRef = useRef<string | null>(null);
+  const lastSeqIdRef = useRef<string | null>(activeSequenceId);
+  useEffect(() => {
+    // Premier passage (référence nulle) ou changement de séquence active
+    // (chargement) : on fixe la référence sans réécrire le contenu courant.
+    if (lastSavedSigRef.current === null || lastSeqIdRef.current !== activeSequenceId) {
+      lastSeqIdRef.current = activeSequenceId;
+      lastSavedSigRef.current = stepsSignature;
+      return;
+    }
+    if (!user || !activeSequenceId) return;
+    if (lastSavedSigRef.current === stepsSignature) return;
+    const t = setTimeout(() => {
+      lastSavedSigRef.current = stepsSignature;
+      const defined = useSequencerStore.getState().steps.filter((s) => s.type !== 'interpolated');
+      useSavedSequencesStore.getState().updateSteps(activeSequenceId, defined).catch(() => {});
+    }, 700);
+    return () => clearTimeout(t);
+  }, [stepsSignature, activeSequenceId, user]);
+
+  // Ancre par défaut la boîte « Lecture » (seq-ctrl) dans l'emplacement de la
+  // barre d'outils, une seule fois par appareil : les profils existants la
+  // gardaient flottante. L'utilisateur peut ensuite la dés-épingler librement.
+  useEffect(() => {
+    const KEY = 'hexagram.seqctrl-docked-default-v2';
+    try {
+      if (localStorage.getItem(KEY)) return;
+      localStorage.setItem(KEY, '1');
+    } catch { /* ignore */ }
+    const cfg = useToolboxStore.getState().configs['seq-ctrl'];
+    if (cfg && cfg.panel === null) {
+      useToolboxStore.getState().dock('seq-ctrl', 'sequencer', 0);
+    }
+  }, []);
 
   // Close options dropdown on outside click (menu is a portal)
   useEffect(() => {
@@ -189,20 +243,6 @@ export function SequencerPanel() {
     } catch (err) {
       setSaveModalError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
     }
-  };
-
-  // Direct save (overwrite active sequence without asking for name)
-  const handleDirectSave = async () => {
-    const { activeSequenceId } = useSavedSequencesStore.getState();
-    if (!activeSequenceId) {
-      setIsNewSequence(false);
-      setShowSaveModal(true);
-      return;
-    }
-    const definedSteps = useSequencerStore.getState().steps.filter((s) => s.type !== 'interpolated');
-    try {
-      await useSavedSequencesStore.getState().updateSteps(activeSequenceId, definedSteps);
-    } catch { /* ignore — no steps to save */ }
   };
 
   // Load sequence from select
@@ -388,6 +428,17 @@ export function SequencerPanel() {
     useSequencerStore.getState().insertStep(sp.angles, targetIndex ?? definedCount, sp.name, sp.id);
   };
 
+  // Ajout d'étape depuis la barre d'outils : désélectionne d'abord l'étape
+  // active (en arbitrant ses modifications non enregistrées), puis exécute
+  // l'action d'ajout.
+  const addStepInline = async (action: () => void) => {
+    if (selectedStepIndex !== -1) {
+      if (!(await guardStepEdit())) return;
+      useSequencerStore.getState().setSelectedStepIndex(-1);
+    }
+    action();
+  };
+
   const handleStepClick = async (colIdx: number) => {
     const step = steps[colIdx];
     if (!step) return;
@@ -431,7 +482,7 @@ export function SequencerPanel() {
       )}
 
       {/* ── Add-step modal (neutre / dupliquer / importer) ─── */}
-      <SequenceAddStepModal open={showAddStepModal} onClose={() => setShowAddStepModal(false)} />
+      <SequenceAddStepModal open={showAddStepModal} initialView={addStepInitialView} onClose={() => setShowAddStepModal(false)} />
 
       {/* ── Rename modal ────────────────────────────────── */}
       {showRenameModal && (
@@ -482,43 +533,17 @@ export function SequencerPanel() {
           {/* Bord de redimensionnement */}
           <div className="seq-resize-handle" onPointerDown={handleResizeStart} />
 
-          {/* Toolbar */}
+          {/* Toolbar — une seule zone agrandie */}
           <div className="seq-toolbar">
-            {/* Gauche : contrôles lecture/édition */}
+            {/* Gauche : réglages globaux */}
             <div className="seq-toolbar-left">
-              {seqCtrlDocked ? (
-                <ToolboxSlot panel="sequencer" />
-              ) : (
-                <button
-                  type="button"
-                  className={`seq-btn${isPlaying ? ' seq-btn-active' : ''}${isPaused ? ' seq-btn-paused' : ''}`}
-                  onClick={isPlaying ? () => useSequencerStore.getState().stop() : () => useSequencerStore.getState().play()}
-                  disabled={steps.length === 0}
-                  title={isPlaying ? 'Arrêter' : isPaused ? 'Reprendre la séquence' : 'Lancer la séquence'}
-                >
-                  {isPlaying ? '■' : isPaused ? '▷' : '▶'}
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="seq-btn"
-                onClick={() => useSequencerStore.getState().undo()}
-                disabled={history.length === 0}
-                title={`Annuler (${history.length} disponible${history.length > 1 ? 's' : ''})`}
-              >
-                ↩
-              </button>
-
-              <div className="seq-sep" />
-
               <label className="seq-ctrl">
                 <span className="seq-ctrl-label">Trans.</span>
                 <input
                   type="range" min="0.1" max="1.5" step="0.1"
                   value={transitionSpeed}
                   onChange={(e) => useSequencerStore.getState().setTransitionSpeed(Number(e.target.value))}
-                  title={`Durée de transition : ${transitionSpeed.toFixed(1)} s`}
+                  title={`Durée de transition par défaut : ${transitionSpeed.toFixed(1)} s`}
                 />
                 <span className="seq-ctrl-val">{transitionSpeed.toFixed(1)}s</span>
               </label>
@@ -534,8 +559,6 @@ export function SequencerPanel() {
                 <span className="seq-ctrl-val">{stepDelay.toFixed(1)}s</span>
               </label>
 
-              <div className="seq-sep" />
-
               <label className="seq-interp-toggle" title="Afficher / masquer les étapes interpolées dans le tableau">
                 <input
                   type="checkbox"
@@ -546,31 +569,88 @@ export function SequencerPanel() {
               </label>
             </div>
 
-            {/* Programmes */}
-            {user && (
+            {/* Centre : ajout d'étape (pleine hauteur) · Annuler · boîte ancrée */}
+            <div className="seq-addstep-bar">
               <button
                 type="button"
-                className="seq-btn seq-btn-programs"
-                onClick={async () => { if (await guardStepEdit()) setActiveTab('programmation'); }}
-                title="Programmes graphiques"
+                className="seq-add-inline"
+                onClick={() => addStepInline(() => useSequencerStore.getState().addStep(useHexapodStore.getState().pose, undefined, null))}
+                title="Ajouter une étape capturant la pose 3D actuelle"
               >
-                ▶ Prog.
+                <span className="seq-add-inline-ic">◉</span>
+                <span>État courant</span>
               </button>
-            )}
+              <button
+                type="button"
+                className="seq-add-inline"
+                onClick={() => addStepInline(() => useSequencerStore.getState().addStep(defaultPose(), undefined, null))}
+                title="Ajouter une étape neutre (pose par défaut)"
+              >
+                <span className="seq-add-inline-ic">⊕</span>
+                <span>Neutre</span>
+              </button>
+              <button
+                type="button"
+                className="seq-add-inline"
+                disabled={!lastDefinedStep}
+                onClick={() => addStepInline(() => { if (lastDefinedStep) useSequencerStore.getState().duplicateStep(lastDefinedStep.id); })}
+                title={lastDefinedStep ? 'Dupliquer la dernière étape' : 'Aucune étape à dupliquer'}
+              >
+                <span className="seq-add-inline-ic">⧉</span>
+                <span>Dupliquer</span>
+              </button>
+              <button
+                type="button"
+                className="seq-add-inline"
+                onClick={() => addStepInline(() => { setAddStepInitialView('sequences'); setShowAddStepModal(true); })}
+                title="Importer une étape d'une autre séquence"
+              >
+                <span className="seq-add-inline-ic">↧</span>
+                <span>Importer</span>
+              </button>
+
+              <button
+                type="button"
+                className="seq-btn seq-undo-btn"
+                onClick={() => useSequencerStore.getState().undo()}
+                disabled={history.length === 0}
+                title={`Annuler (${history.length} disponible${history.length > 1 ? 's' : ''})`}
+              >
+                ↩
+              </button>
+
+              {/* Emplacement d'accueil d'une boîte d'outils (Lecture par défaut) */}
+              <div className="seq-dock-slot" data-dock-panel="sequencer">
+                <ToolboxSlot panel="sequencer" />
+              </div>
+            </div>
 
             {/* Droite : gestion de la séquence */}
             <div className="seq-toolbar-right">
               {user ? (
                 <>
+                  {/* Nouvelle séquence — bouton mis en avant, à gauche du sélecteur */}
                   <button
                     type="button"
-                    className="seq-btn seq-btn-save"
-                    onClick={handleDirectSave}
-                    disabled={steps.length === 0}
-                    title={activeSequenceId ? `Enregistrer dans « ${sequenceName} »` : 'Enregistrer la séquence (nouveau nom)'}
+                    className="seq-btn-newseq"
+                    onClick={() => { setIsNewSequence(true); setShowSaveModal(true); }}
+                    title="Nouvelle séquence (vide le séquenceur)"
                   >
-                    💾
+                    <span className="seq-btn-newseq-ic">＋</span>
+                    <span>Nouvelle séquence</span>
                   </button>
+
+                  <select
+                    className="seq-name-select"
+                    value={activeSequenceId ?? ''}
+                    onChange={(e) => handleSelectSequence(e.target.value)}
+                    title="Séquence active"
+                  >
+                    <option value="">—</option>
+                    {sequences.map((sq) => (
+                      <option key={sq.id} value={sq.id}>{sq.name}</option>
+                    ))}
+                  </select>
 
                   {/* Options dropdown — portal pour échapper au stacking context */}
                   <div className="seq-options-wrap">
@@ -627,29 +707,6 @@ export function SequencerPanel() {
                     </div>,
                     document.body
                   )}
-
-                  <div className="seq-sep" />
-
-                  <select
-                    className="seq-name-select"
-                    value={activeSequenceId ?? ''}
-                    onChange={(e) => handleSelectSequence(e.target.value)}
-                    title="Séquence active"
-                  >
-                    <option value="">—</option>
-                    {sequences.map((sq) => (
-                      <option key={sq.id} value={sq.id}>{sq.name}</option>
-                    ))}
-                  </select>
-
-                  <button
-                    type="button"
-                    className="seq-btn"
-                    onClick={() => { setIsNewSequence(true); setShowSaveModal(true); }}
-                    title="Nouvelle séquence (vide le séquenceur)"
-                  >
-                    +
-                  </button>
                 </>
               ) : (
                 <span className="seq-demo-name">{sequenceName}</span>
@@ -804,6 +861,39 @@ export function SequencerPanel() {
                             '--scm-left': `${stepMenuRect.left}px`,
                           } as React.CSSProperties}
                         >
+                          {!isInterp && (
+                            <div className="seq-step-ctx-fields" onMouseDown={(e) => e.stopPropagation()}>
+                              <label className="seq-step-ctx-field">
+                                <span>Durée transition (s)</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  step="0.1"
+                                  value={step.durationS ?? ''}
+                                  placeholder={`défaut ${transitionSpeed.toFixed(1)}`}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    useSequencerStore.getState().setStepDuration(step.id, v === '' ? null : Number(v));
+                                  }}
+                                />
+                              </label>
+                              <label className="seq-step-ctx-field">
+                                <span>Transition</span>
+                                <select
+                                  value={step.transition ?? 'linear'}
+                                  onChange={(e) =>
+                                    useSequencerStore.getState().setStepTransition(step.id, e.target.value as TransitionKind)
+                                  }
+                                >
+                                  <option value="linear">Linéaire</option>
+                                  <option value="ease">Adoucie</option>
+                                  <option value="instant">Instantanée (saut)</option>
+                                </select>
+                              </label>
+                              <div className="seq-options-sep" />
+                            </div>
+                          )}
                           {isInterp && (
                             <button
                               type="button"
@@ -836,6 +926,22 @@ export function SequencerPanel() {
                         document.body
                       )}
                     </div>
+                    {!isInterp && (
+                      <button
+                        type="button"
+                        className={`seq-step-trans${(step.durationS !== undefined || (step.transition ?? 'linear') !== 'linear') ? ' custom' : ''}`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setStepMenuId(stepMenuId === step.id ? null : step.id);
+                          setStepMenuRect(rect);
+                        }}
+                        title={`Durée ${(step.durationS ?? transitionSpeed).toFixed(1)} s · transition ${TRANSITION_LABEL[step.transition ?? 'linear']} — cliquer pour régler`}
+                      >
+                        {(step.durationS ?? transitionSpeed).toFixed(1)}s {TRANSITION_ICON[step.transition ?? 'linear']}
+                      </button>
+                    )}
                     {servoOrder.map((servoId) => (
                       <div key={servoId} className="seq-cell">
                         {step.pose[servoId] !== undefined ? `${step.pose[servoId].toFixed(1)}°` : '—'}
@@ -872,6 +978,7 @@ export function SequencerPanel() {
                         if (!(await guardStepEdit())) return;
                         useSequencerStore.getState().setSelectedStepIndex(-1);
                       }
+                      setAddStepInitialView('menu');
                       setShowAddStepModal(true);
                     }}
                     title="Ajouter une étape (neutre, copie, ou import d'une autre séquence)"

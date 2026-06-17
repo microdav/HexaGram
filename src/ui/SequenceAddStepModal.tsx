@@ -5,15 +5,17 @@ import { useHexapodStore } from '../store/useHexapodStore';
 import { defaultPose } from '../model/pose';
 import { PoseThumbnail } from './PoseThumbnail';
 
+type View = 'menu' | 'sequences' | 'steps';
+
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Vue d'ouverture (défaut « menu ») : « sequences » ouvre directement l'import. */
+  initialView?: View;
 }
 
-type View = 'menu' | 'sequences' | 'steps';
-
-export function SequenceAddStepModal({ open, onClose }: Props) {
-  const [view, setView] = useState<View>('menu');
+export function SequenceAddStepModal({ open, onClose, initialView = 'menu' }: Props) {
+  const [view, setView] = useState<View>(initialView);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [pickedSteps, setPickedSteps] = useState<SequencerStep[]>([]);
@@ -30,13 +32,13 @@ export function SequenceAddStepModal({ open, onClose }: Props) {
   // Réinitialise sur (ré)ouverture.
   useEffect(() => {
     if (open) {
-      setView('menu');
+      setView(initialView);
       setError('');
       setPickedSteps([]);
       setPickedName('');
       setLoading(false);
     }
-  }, [open]);
+  }, [open, initialView]);
 
   if (!open) return null;
 

@@ -162,9 +162,20 @@ export function StepInfoPanel() {
 
   return (
     <div className={`step-info-panel${dirty ? " step-info-panel--dirty" : ""}`}>
-      <div className="step-info-kind">
-        Étape sélectionnée
-        {dirty && <span className="step-info-dirty"> · ● modifié</span>}
+      <div className="step-info-head">
+        <div className="step-info-kind">
+          Étape sélectionnée
+          {dirty && <span className="step-info-dirty"> · ● modifié</span>}
+        </div>
+        <button
+          type="button"
+          className="step-info-close"
+          onClick={handleDeselect}
+          title="Revenir à la pose enregistrée de l'étape et désélectionner"
+          aria-label="Fermer la sélection"
+        >
+          ✕
+        </button>
       </div>
       <input
         className="step-info-name"
@@ -215,14 +226,6 @@ export function StepInfoPanel() {
         />
         <span>Enregistrer automatiquement</span>
       </label>
-      <button
-        type="button"
-        className="step-info-deselect"
-        onClick={handleDeselect}
-        title="Revenir à la pose enregistrée de l'étape et désélectionner"
-      >
-        Annuler la sélection
-      </button>
     </div>
   );
 }

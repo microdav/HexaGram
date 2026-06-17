@@ -2,6 +2,7 @@ import { useMemo, type CSSProperties } from "react";
 import { SERVOS, LEG_NAMES } from "../model/hexapod";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useBodyTransform } from "../store/useBodyTransform";
+import { useAffectedServoIds } from "../store/servoSelection";
 
 const JOINT_LABEL: Record<string, string> = {
   coxa: "Coxa (Y)",
@@ -16,6 +17,9 @@ export function ServoGroupContent({ side }: { side: 'left' | 'right' }) {
   const resetPose = useHexapodStore((s) => s.resetPose);
   const gravityEnabled = useHexapodStore((s) => s.gravityEnabled);
   const transform = useBodyTransform();
+  // Servos impactés par la sélection 3D (servo cliqué + miroir + groupe lié) :
+  // leur ligne est éclaircie pour repérer ce qu'un mouvement va affecter.
+  const affected = useAffectedServoIds();
 
   const contactLegSet = useMemo(
     () => new Set(transform.contacts.map((c) => c.legIndex)),
@@ -46,7 +50,7 @@ export function ServoGroupContent({ side }: { side: 'left' | 'right' }) {
                 : undefined;
 
               return (
-                <div className="servo-row" key={s.id}>
+                <div className={`servo-row${affected.has(s.id) ? " servo-row--selected" : ""}`} key={s.id}>
                   <label className="servo-label">
                     <span>
                       {JOINT_LABEL[s.joint]}

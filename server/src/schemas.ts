@@ -84,7 +84,8 @@ const KeyframeSchema = z.object({
 });
 
 const ToolboxConfigSchema = z.object({
-  panel: z.enum(["left", "right"]).nullable(),
+  // "sequencer" : boîte ancrée dans la barre d'outils du séquenceur (ex. Lecture).
+  panel: z.enum(["left", "right", "sequencer"]).nullable(),
   order: z.number(),
   minimized: z.boolean(),
   floatPos: z.object({ x: z.number(), y: z.number() }),
@@ -147,6 +148,10 @@ const SequencerStepSchema = z.object({
   pose: z.array(z.number()),
   type: z.string().optional(),
   sourcePoseId: z.string().nullable().optional(),
+  /** Durée (s) de la transition menant à cette étape (override du défaut global). */
+  durationS: z.number().optional(),
+  /** Type de transition menant à cette étape (linear / ease / instant). */
+  transition: z.enum(['linear', 'ease', 'instant']).optional(),
   /** Vignette PNG pré-générée (dataURL). Optionnelle. */
   thumbnail: z.string().nullable().optional(),
   /** Empreinte du contexte de rendu utilisé pour générer la vignette. */

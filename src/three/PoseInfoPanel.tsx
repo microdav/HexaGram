@@ -103,9 +103,20 @@ export function PoseInfoPanel() {
 
   return (
     <div className={`step-info-panel${dirty ? ' step-info-panel--dirty' : ''}`}>
-      <div className="step-info-kind">
-        Pose sélectionnée
-        {dirty && <span className="step-info-dirty"> · ● modifié</span>}
+      <div className="step-info-head">
+        <div className="step-info-kind">
+          Pose sélectionnée
+          {dirty && <span className="step-info-dirty"> · ● modifié</span>}
+        </div>
+        <button
+          type="button"
+          className="step-info-close"
+          onClick={handleDeselect}
+          title="Revenir aux angles enregistrés et désélectionner"
+          aria-label="Fermer la sélection"
+        >
+          ✕
+        </button>
       </div>
       <input
         className="step-info-name"
@@ -127,14 +138,6 @@ export function PoseInfoPanel() {
           {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
-      <button
-        type="button"
-        className="step-info-deselect"
-        onClick={handleDeselect}
-        title="Revenir aux angles enregistrés et désélectionner"
-      >
-        Annuler la sélection
-      </button>
     </div>
   );
 }

@@ -1902,13 +1902,67 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 
 /* ── Toolbar ─────────────────────────────────────────────── */
 .seq-toolbar {
-  flex: 0 0 38px;
+  flex: 0 0 58px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 10px;
+  gap: 8px;
+  padding: 5px 10px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
+}
+
+/* Barre d'ajout d'étape (centre) : boutons pleine hauteur · Annuler · dock */
+.seq-addstep-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.seq-add-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 46px;
+  min-width: 68px;
+  padding: 4px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.seq-add-inline:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(245, 197, 24, 0.06); }
+.seq-add-inline:disabled { opacity: 0.4; cursor: not-allowed; }
+.seq-add-inline-ic { color: var(--accent); font-size: 18px; line-height: 1; }
+.seq-undo-btn { flex-shrink: 0; margin-left: 4px; }
+/* Emplacement d'accueil d'une boîte d'outils (compacte) dans la barre */
+.seq-dock-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 42px;
+  min-height: 30px;
+  margin-left: 6px;
+  padding: 2px 5px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.seq-dock-slot:empty::after {
+  content: "Boîte d'outils";
+  font-size: 9px;
+  color: var(--text-dim);
+  opacity: 0.5;
+  padding: 0 4px;
 }
 .seq-btn {
   width: 26px;
@@ -2319,8 +2373,8 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 .seq-add-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── Toolbar : séparation gauche / droite ────────────────── */
-.seq-toolbar-left  { display: flex; align-items: center; gap: 5px; flex: 1; flex-wrap: nowrap; }
-.seq-toolbar-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.seq-toolbar-left  { display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.seq-toolbar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .seq-interp-toggle {
   display: flex;
@@ -2360,6 +2414,67 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
 }
 .seq-name-select:hover { border-color: var(--accent); }
 .seq-name-select:focus { border-color: var(--accent); }
+
+/* Nouvelle séquence — bouton mis en avant, à gauche du sélecteur */
+.seq-btn-newseq {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 14px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: #1a1d23;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(245, 197, 24, 0.35);
+  transition: filter 0.12s, box-shadow 0.12s;
+}
+.seq-btn-newseq:hover { filter: brightness(1.12); box-shadow: 0 2px 8px rgba(245, 197, 24, 0.5); }
+.seq-btn-newseq-ic { font-size: 16px; font-weight: 700; line-height: 1; }
+
+/* Chip durée + transition sous l'en-tête d'étape (cliquable → menu d'actions) */
+.seq-step-trans {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(42, 47, 58, 0.5);
+  color: var(--text-dim);
+  font-size: 8px;
+  line-height: 1.5;
+  padding: 1px 3px;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.seq-step-trans:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.seq-step-trans.custom { color: var(--accent); font-weight: 700; }
+
+/* Champs durée/transition dans le menu contextuel d'étape */
+.seq-step-ctx-fields { padding: 6px 8px 2px; display: flex; flex-direction: column; gap: 6px; }
+.seq-step-ctx-field { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--text-dim); }
+.seq-step-ctx-field input,
+.seq-step-ctx-field select {
+  height: 22px;
+  background: var(--bg-panel-2, #15171c);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 6px;
+  outline: none;
+}
+.seq-step-ctx-field input:focus,
+.seq-step-ctx-field select:focus { border-color: var(--accent); }
 
 .seq-demo-name {
   font-size: 12px;
@@ -2758,6 +2873,28 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   color: var(--text-dim);
 }
 .step-info-dirty { color: var(--accent); text-transform: none; letter-spacing: 0; }
+.step-info-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.step-info-close {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.step-info-close:hover { color: var(--text); border-color: var(--text-dim); }
 .step-info-deselect {
   width: 100%;
   height: 24px;
@@ -2771,6 +2908,68 @@ html { scrollbar-color: var(--bg-panel-2) var(--bg); }
   transition: color 0.15s, border-color 0.15s;
 }
 .step-info-deselect:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* ── Servo sélectionné en 3D : surbrillance dans les boîtes gauche/droite ── */
+.servo-row--selected {
+  background: rgba(122, 184, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(122, 184, 255, 0.45);
+  border-radius: 5px;
+  padding: 3px 5px;
+  margin: 0 -5px 6px;
+}
+
+/* ── Boîte de réglage du servo sélectionné — overlay 3D bas-centre ───────── */
+.servo-detail-panel {
+  position: absolute;
+  bottom: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  max-width: calc(100% - 24px);
+  background: rgba(21, 23, 28, 0.92);
+  border: 1px solid rgba(122, 184, 255, 0.5);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  z-index: 21;
+}
+.servo-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.servo-detail-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: #7ab8ff;
+}
+.servo-detail-close {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.servo-detail-close:hover { color: var(--text); border-color: var(--text-dim); }
+.servo-detail-row { margin-bottom: 0; }
+.servo-detail-row .servo-label { font-size: 11px; }
+.servo-detail-note { font-size: 10px; color: var(--text-dim); font-style: italic; }
 
 /* ── Règle graduée de hauteur du châssis (bord droit, encadrée jaune) ─────── */
 .height-ruler {

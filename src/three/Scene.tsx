@@ -6,6 +6,7 @@ import { Hexapod } from "./Hexapod";
 import { Compass } from "./Compass";
 import { StepInfoPanel } from "./StepInfoPanel";
 import { PoseInfoPanel } from "./PoseInfoPanel";
+import { ServoDetailPanel } from "./ServoDetailPanel";
 import { HeightRuler } from "../ui/HeightRuler";
 import { useHexapodStore } from "../store/useHexapodStore";
 import { useCollisions } from "../store/useCollisions";
@@ -280,6 +281,9 @@ export function Scene() {
       <StepInfoPanel />
 
       <PoseInfoPanel />
+
+      {/* Boîte de réglage du servo sélectionné (bas-centre) */}
+      <ServoDetailPanel />
 
       {/* Règle graduée de hauteur du châssis (visible quand le châssis est
           sélectionné, comme la poignée 3D). */}

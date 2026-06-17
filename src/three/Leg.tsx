@@ -182,53 +182,33 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
   const femurOob = !clean && (femurDeg < femurLim.min || femurDeg > femurLim.max);
   const tibiaOob = !clean && (tibiaDeg < tibiaLim.min || tibiaDeg > tibiaLim.max);
 
-  // ── Joint arc hover/pin state ────────────────────────────────────────────
-  const counts = useRef<Record<JointKey, number>>({ coxa: 0, femur: 0, tibia: 0 });
-  const timers = useRef<Record<JointKey, number | null>>({
-    coxa: null,
-    femur: null,
-    tibia: null,
-  });
-  const pinnedJoints = useRef<Set<JointKey>>(new Set());
-  const lastPointerType = useRef<string>("mouse");
+  // ── Survol / sélection des articulations ──────────────────────────────────
+  // Le survol éclaire l'articulation (jaune accent) et passe le curseur en
+  // « pointer » ; le clic SÉLECTIONNE le servo (bascule l'arc de réglage + la
+  // boîte de détail bas-centre). `arcShownMask` est l'unique source de vérité
+  // de la sélection : aucun épinglage local, donc la boîte/le bouton de
+  // fermeture peuvent désélectionner sans risque de désynchronisation.
+  const [hoveredJoint, setHoveredJoint] = useState<JointKey | null>(null);
   const servoIdOf = (k: JointKey): number => servoIndex(mount.index, k);
 
   const onEnter = (k: JointKey) => {
-    // Le survol ne révèle PLUS l'arc : l'affichage se fait au clic (toggle), cf.
-    // onJointClick/onTap. On garde le suivi des compteurs/timers pour que le
-    // masquage d'un arc épinglé ne se déclenche pas par erreur.
     const st = useHexapodStore.getState();
     if (st.footDragging || st.cogDragging) return;
-    counts.current[k] += 1;
-    const t = timers.current[k];
-    if (t != null) {
-      window.clearTimeout(t);
-      timers.current[k] = null;
-    }
+    setHoveredJoint(k);
+    gl.domElement.style.cursor = "pointer";
   };
 
   const onLeave = (k: JointKey) => {
-    counts.current[k] = Math.max(0, counts.current[k] - 1);
-    if (counts.current[k] === 0 && !pinnedJoints.current.has(k)) {
-      const t = timers.current[k];
-      if (t != null) window.clearTimeout(t);
-      timers.current[k] = window.setTimeout(() => {
-        if (counts.current[k] === 0 && !pinnedJoints.current.has(k)) {
-          setArcShown(servoIdOf(k), false);
-        }
-        timers.current[k] = null;
-      }, 200);
-    }
+    setHoveredJoint((cur) => (cur === k ? null : cur));
+    gl.domElement.style.cursor = "";
   };
 
-  // Mode tablette : la « sélection » d'une articulation = le popover ouvert
-  // pour ce servo (cf. visibleFor, qui allume l'arc tant qu'il est ouvert).
-  // Taper le même joint, ou fermer le popover, le désélectionne — pas
-  // d'épinglage persistant ici.
   const onJointClick = (k: JointKey, e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
+    const id = servoIdOf(k);
     if (tabletMode) {
-      const id = servoIdOf(k);
+      // Mode tablette : la sélection = le popover ouvert (cf. visibleFor) ;
+      // on n'allume pas le bit d'arc pour ne pas dédoubler avec la boîte PC.
       const cur = useToolboxStore.getState().tabletServoEdit;
       if (cur?.servoId === id) {
         setTabletServoEdit(null);
@@ -236,38 +216,18 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
       } else {
         setTabletServoEdit({ servoId: id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
       }
-    } else {
-      // PC (et tactile hors mode tablette) : le clic bascule l'affichage de l'arc.
-      onTap(k);
+      return;
     }
+    // PC : bascule la sélection du servo (arc 3D + boîte de détail bas-centre).
+    const shown = (useHexapodStore.getState().arcShownMask >>> id) & 1;
+    setArcShown(id, !shown);
   };
 
-  const onTap = (k: JointKey) => {
-    const id = servoIdOf(k);
-    const t = timers.current[k];
-    if (pinnedJoints.current.has(k)) {
-      pinnedJoints.current.delete(k);
-      if (counts.current[k] === 0) {
-        if (t != null) { window.clearTimeout(t); timers.current[k] = null; }
-        setArcShown(id, false);
-      }
-    } else {
-      pinnedJoints.current.add(k);
-      if (t != null) { window.clearTimeout(t); timers.current[k] = null; }
-      setArcShown(id, true);
-    }
-  };
-
+  // Au démontage (sortie de l'onglet Conception), on éteint la sélection de
+  // cette patte pour ne pas laisser d'arcs ou de boîte de détail fantômes.
   useEffect(() => {
-    const localTimers = timers.current;
-    const localPinned = pinnedJoints.current;
     const myServoIds = JOINT_KEYS.map((k) => servoIndex(mount.index, k));
     return () => {
-      JOINT_KEYS.forEach((k) => {
-        const t = localTimers[k];
-        if (t != null) window.clearTimeout(t);
-      });
-      localPinned.clear();
       myServoIds.forEach((id) => setArcShown(id, false));
     };
   }, [mount.index, setArcShown]);
@@ -420,7 +380,6 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
       : {
           onPointerOver: (e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); onEnter(k); },
           onPointerOut: (e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); onLeave(k); },
-          onPointerDown: (e: ThreeEvent<PointerEvent>) => { lastPointerType.current = e.pointerType; },
           onClick: (e: ThreeEvent<MouseEvent>) => onJointClick(k, e),
         };
   const footHandlers = clean
@@ -430,15 +389,22 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
         onPointerOut: onFootPointerOut,
         onPointerDown: onFootPointerDown,
       };
-  const jointColor = (show: boolean) => (!clean && show ? JOINT_HOVER_COLOR : JOINT_COLOR);
+  // Couleur de l'articulation : bleu = sélectionnée (arc affiché), jaune accent
+  // = survolée (feedback « interactif »), sinon neutre.
+  const jointColor = (k: JointKey, show: boolean) => {
+    if (clean) return JOINT_COLOR;
+    if (show) return JOINT_HOVER_COLOR;
+    if (hoveredJoint === k) return HEXAPOD_YELLOW;
+    return JOINT_COLOR;
+  };
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <group position={mount.position} rotation={[0, degToRad(mount.yawDeg), 0]}>
       {/* Coxa joint + arc (rotation around Y) */}
-      <mesh {...jointHandlers("coxa")}>
+      <mesh {...jointHandlers("coxa")} scale={hoveredJoint === "coxa" || showCoxa ? 1.4 : 1}>
         <sphereGeometry args={[jointR, 16, 16]} />
-        <meshStandardMaterial color={jointColor(showCoxa)} />
+        <meshStandardMaterial color={jointColor("coxa", showCoxa)} />
       </mesh>
       {!clean && (
         <group rotation={[0, degToRad(coxaOff), 0]}>
@@ -468,9 +434,9 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
         </mesh>
         <group position={[segs.coxa, 0, 0]}>
           {/* Femur joint + arc (rotation around Z) */}
-          <mesh {...jointHandlers("femur")}>
+          <mesh {...jointHandlers("femur")} scale={hoveredJoint === "femur" || showFemur ? 1.4 : 1}>
             <sphereGeometry args={[jointR, 16, 16]} />
-            <meshStandardMaterial color={jointColor(showFemur)} />
+            <meshStandardMaterial color={jointColor("femur", showFemur)} />
           </mesh>
           {!clean && (
             <group rotation={[0, 0, degToRad(femurOff)]}>
@@ -500,9 +466,9 @@ export function Leg({ mount, collidingSegs, clean = false, pose: poseOverride = 
             </mesh>
             <group position={[segs.femur, 0, 0]}>
               {/* Tibia joint + arc (knee, rotation around Z) */}
-              <mesh {...jointHandlers("tibia")}>
+              <mesh {...jointHandlers("tibia")} scale={hoveredJoint === "tibia" || showTibia ? 1.4 : 1}>
                 <sphereGeometry args={[jointR, 16, 16]} />
-                <meshStandardMaterial color={jointColor(showTibia)} />
+                <meshStandardMaterial color={jointColor("tibia", showTibia)} />
               </mesh>
               {!clean && (
                 <group rotation={[0, 0, degToRad(tibiaOff)]}>

@@ -187,6 +187,8 @@ interface HexapodState {
   setCameraDirection: (dir: [number, number, number]) => void;
   toggleCompassLocked: () => void;
   setArcShown: (servoId: number, shown: boolean) => void;
+  /** Désélectionne tous les servos (referme les arcs + la boîte de détail). */
+  clearArcs: () => void;
   setCogDragging: (v: boolean) => void;
   setFootDragging: (v: boolean) => void;
   setChassisSelected: (v: boolean) => void;
@@ -525,6 +527,8 @@ export const useHexapodStore = create<HexapodState>((set, get) => ({
       const next = shown ? s.arcShownMask | bit : s.arcShownMask & ~bit;
       return next === s.arcShownMask ? s : { arcShownMask: next };
     }),
+
+  clearArcs: () => set((s) => (s.arcShownMask === 0 ? s : { arcShownMask: 0 })),
 
   serializeProfile: (): RobotProfileData => {
     const s = get();
