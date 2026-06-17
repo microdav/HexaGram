@@ -215,7 +215,7 @@ export function RobotLinkBar() {
 
           <div className="rlb-pop-actions">
             {connected ? (
-              <button type="button" className="btn" onClick={() => void disconnect()}>
+              <button type="button" className="btn" onClick={() => { setMenuOpen(false); void disconnect(); }}>
                 Déconnecter
               </button>
             ) : status === "error" ? (
@@ -243,7 +243,7 @@ export function RobotLinkBar() {
                 type="button"
                 className="btn btn-primary"
                 disabled={unsupported || busy}
-                onClick={() => void connect()}
+                onClick={() => { setMenuOpen(false); void connect(); }}
               >
                 {busy ? "Connexion…" : "Connecter (USB)"}
               </button>

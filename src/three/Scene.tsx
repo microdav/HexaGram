@@ -16,101 +16,137 @@ import { computeLegMounts } from "../model/hexapod";
 
 const CAM_KEY = "hexagram.camera";
 
+const GRID_SECTION = 0.1; // période de la grille (m) — pour le wrap sans couture
+
 /**
- * Grid that scrolls during sequencer playback to give the illusion of locomotion.
- * Motion is derived from how contact foot positions shift between consecutive steps:
- * a stance foot appearing to move backward in body-local space means the body moved forward.
+ * Sol qui réagit pendant la lecture du séquenceur pour donner l'illusion du
+ * déplacement RÉEL — y compris les **virages et rotations**. Le mouvement est
+ * dérivé de l'évolution des appuis (pieds plantés) entre deux IMAGES : un
+ * ajustement rigide 2D (Procrustes) des positions prev→curr fournit à la fois
+ * la translation ET la rotation apparentes du sol, composées dans le repère du sol.
+ *
+ * Piloté IMAGE PAR IMAGE (à chaque changement d'image du séquenceur), donc
+ * naturellement synchronisé avec la VITESSE de lecture : à ×5 le sol va 5× plus
+ * vite, et le déplacement total reste identique quelle que soit la vitesse.
+ *
+ * Deux groupes imbriqués : le groupe externe porte la **rotation** (autour du
+ * robot), l'interne la **translation** (exprimée dans le repère tourné du sol,
+ * d'où un wrap au pas de grille sans couture). À l'arrêt, tout est remis à zéro.
  */
 function GridWithScroll() {
-  const scrollRef = useRef<Group>(null);
+  const rotRef = useRef<Group>(null);     // rotation du sol (virages / rotations)
+  const scrollRef = useRef<Group>(null);  // translation du sol (locomotion)
   const prevStepIdx = useRef(-1);
   const prevContacts = useRef<Map<number, { x: number; z: number }> | null>(null);
-  const velocity = useRef({ x: 0, z: 0 });
-  const stepEndTime = useRef(0);
-  // True accumulated offset kept in memory; only the modulo is applied to the mesh
-  // so the Grid never drifts far from origin and avoids frustum culling on camera rotate.
-  const totalOffset = useRef({ x: 0, z: 0 });
+  // Transformation rigide accumulée du sol : rotation (yaw, rad) + translation
+  // monde (offset). Seul le modulo (dans le repère tourné) est appliqué au mesh
+  // pour qu'il reste près de l'origine (évite le frustum culling).
+  const yaw = useRef(0);
+  const offset = useRef({ x: 0, z: 0 });
 
-  useFrame((_, delta) => {
-    const { isPlaying, currentStepIndex, transitionSpeed, stepDelay } =
-      useSequencerStore.getState();
+  const applyToMesh = () => {
+    // Translation dans le repère TOURNÉ du sol : L = R(−yaw)·offset, wrappée au
+    // pas de grille → mesh près de l'origine, défilement sans couture.
+    const cy = Math.cos(yaw.current), sy = Math.sin(yaw.current);
+    const lx = offset.current.x * cy - offset.current.z * sy;
+    const lz = offset.current.x * sy + offset.current.z * cy;
+    const mod = (v: number) => ((v % GRID_SECTION) + GRID_SECTION) % GRID_SECTION;
+    if (scrollRef.current) {
+      scrollRef.current.position.x = mod(lx);
+      scrollRef.current.position.z = mod(lz);
+    }
+    if (rotRef.current) rotRef.current.rotation.y = yaw.current;
+  };
+
+  useFrame(() => {
+    const { isPlaying, currentStepIndex } = useSequencerStore.getState();
 
     if (!isPlaying) {
       prevStepIdx.current = -1;
       prevContacts.current = null;
-      velocity.current = { x: 0, z: 0 };
-      totalOffset.current = { x: 0, z: 0 };
+      offset.current = { x: 0, z: 0 };
+      yaw.current = 0;
       if (scrollRef.current) {
         scrollRef.current.position.x = 0;
         scrollRef.current.position.z = 0;
       }
+      if (rotRef.current) rotRef.current.rotation.y = 0;
       return;
     }
 
-    const now = performance.now() / 1000;
+    // Rien à faire tant que l'image jouée n'a pas changé : le sol n'avance qu'au
+    // rythme réel des images (donc à la vitesse de lecture).
+    if (currentStepIndex === prevStepIdx.current) return;
+    prevStepIdx.current = currentStepIndex;
 
-    if (currentStepIndex !== prevStepIdx.current) {
-      prevStepIdx.current = currentStepIndex;
+    const { pose, geometry, gravityEnabled } = useHexapodStore.getState();
+    const mounts = computeLegMounts(geometry);
+    const bt = computeBodyTransform(pose, geometry, mounts, gravityEnabled);
 
-      const { pose, geometry, gravityEnabled } = useHexapodStore.getState();
-      const mounts = computeLegMounts(geometry);
-      const bt = computeBodyTransform(pose, geometry, mounts, gravityEnabled);
-
-      // Build contact map for this step: legIndex → XZ position
-      const currentMap = new Map<number, { x: number; z: number }>();
-      for (const c of bt.contacts) {
-        currentMap.set(c.legIndex, { x: c.position.x, z: c.position.z });
-      }
-
-      if (prevContacts.current !== null) {
-        // Persistent contacts (same leg in both steps) reveal body displacement:
-        // if a stance foot appears to drift backward, the robot moved forward.
-        let sumDx = 0, sumDz = 0, count = 0;
-        for (const [leg, curr] of currentMap) {
-          const prev = prevContacts.current.get(leg);
-          if (prev) {
-            sumDx += curr.x - prev.x;
-            sumDz += curr.z - prev.z;
-            count++;
-          }
-        }
-        if (count > 0) {
-          const dur = Math.max(0.05, transitionSpeed + stepDelay);
-          velocity.current = { x: sumDx / count / dur, z: sumDz / count / dur };
-          stepEndTime.current = now + dur;
-        }
-      }
-
-      prevContacts.current = currentMap;
+    // Build contact map for this frame: legIndex → XZ position
+    const currentMap = new Map<number, { x: number; z: number }>();
+    for (const c of bt.contacts) {
+      currentMap.set(c.legIndex, { x: c.position.x, z: c.position.z });
     }
 
-    if (scrollRef.current && now < stepEndTime.current) {
-      totalOffset.current.x += velocity.current.x * delta;
-      totalOffset.current.z += velocity.current.z * delta;
-      // Wrap to [0, sectionSize) so the mesh stays near origin — grid is periodic
-      // at sectionSize intervals so the visual appearance is seamless.
-      const s = 0.1;
-      const mod = (v: number) => ((v % s) + s) % s;
-      scrollRef.current.position.x = mod(totalOffset.current.x);
-      scrollRef.current.position.z = mod(totalOffset.current.z);
+    if (prevContacts.current !== null) {
+      // Appuis persistants → ajustement rigide 2D (Procrustes) prev→curr : donne
+      // la rotation (θ, sens rotation.y de Three) et la translation (d) apparentes
+      // du sol pour CETTE image. ≥2 appuis requis pour estimer une rotation.
+      const prev: { x: number; z: number }[] = [];
+      const curr: { x: number; z: number }[] = [];
+      for (const [leg, q] of currentMap) {
+        const p = prevContacts.current.get(leg);
+        if (p) { prev.push(p); curr.push(q); }
+      }
+      const n = prev.length;
+      if (n > 0) {
+        let pbx = 0, pbz = 0, qbx = 0, qbz = 0;
+        for (let i = 0; i < n; i++) { pbx += prev[i].x; pbz += prev[i].z; qbx += curr[i].x; qbz += curr[i].z; }
+        pbx /= n; pbz /= n; qbx /= n; qbz /= n;
+        let cdot = 0, ccross = 0;
+        for (let i = 0; i < n; i++) {
+          const ax = prev[i].x - pbx, az = prev[i].z - pbz;
+          const bx = curr[i].x - qbx, bz = curr[i].z - qbz;
+          cdot += ax * bx + az * bz;
+          ccross += az * bx - ax * bz; // rotation au sens rotation.y de Three
+        }
+        // Garde-fou : rotation par image bornée (évite les sauts si les appuis changent).
+        let dth = n >= 2 ? Math.atan2(ccross, cdot) : 0;
+        dth = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, dth));
+        // Translation monde : d = currbar − R(θ)·prevbar (R = rotation.y de Three).
+        const c = Math.cos(dth), s = Math.sin(dth);
+        const dx = qbx - (pbx * c + pbz * s);
+        const dz = qbz - (-pbx * s + pbz * c);
+        // Compose la transformation rigide : yaw += δθ ; offset = R(δθ)·offset + δd.
+        const nx = offset.current.x * c + offset.current.z * s + dx;
+        const nz = -offset.current.x * s + offset.current.z * c + dz;
+        offset.current = { x: nx, z: nz };
+        yaw.current += dth;
+        applyToMesh();
+      }
     }
+
+    prevContacts.current = currentMap;
   });
 
   return (
     <group position={[0, -0.001, 0]}>
-      <group ref={scrollRef}>
-        <Grid
-          args={[2, 2]}
-          cellSize={0.01}
-          cellThickness={0.8}
-          cellColor="#39414f"
-          sectionSize={0.1}
-          sectionThickness={1.4}
-          sectionColor="#5b6679"
-          fadeDistance={1.6}
-          fadeStrength={1}
-          infiniteGrid
-        />
+      <group ref={rotRef}>
+        <group ref={scrollRef}>
+          <Grid
+            args={[2, 2]}
+            cellSize={0.01}
+            cellThickness={0.8}
+            cellColor="#39414f"
+            sectionSize={0.1}
+            sectionThickness={1.4}
+            sectionColor="#5b6679"
+            fadeDistance={1.6}
+            fadeStrength={1}
+            infiniteGrid
+          />
+        </group>
       </group>
     </group>
   );

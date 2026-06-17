@@ -612,23 +612,46 @@ export const useSerialStore = create<SerialState>((set, get) => ({
   autoReconnect: async () => {
     const st = get().status;
     if (st === "unsupported" || st === "connected" || st === "connecting") return;
+    // Ouvre silencieusement le port déjà autorisé (sans geste). ATTENTION : ouvrir
+    // le port ne prouve PAS que la carte est là — l'adaptateur USB-série (ex. FTDI
+    // du SSC-32U) s'ouvre dès qu'il est branché, même si la carte derrière est
+    // éteinte/absente. On afficherait alors « connecté » à tort.
+    let label: string | null = null;
     try {
-      const label = await link.reopenAuthorized(get().baudRate);
-      if (!label) return; // aucun port autorisé → on reste déconnecté, sans bruit
-      // Sécurité (reconnexion silencieuse après reload) : on n'envoie AUCUNE pose
-      // et on désactive le Mode Live, pour que le robot ne bouge jamais tout seul.
-      if (get().liveMirror) {
-        writeLiveMirror(false);
-        set({ liveMirror: false });
-      }
-      softStartArmed = true; // si l'utilisateur envoie ensuite une pose, ce sera en douceur
-      set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
-      link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
-      pushLog(set, "info", `Reconnexion auto à ${label} @ ${get().baudRate} bauds (silencieuse, Mode Live désactivé)`);
-      useToastStore.getState().show(`Carte reconnectée (${label})`);
+      label = await link.reopenAuthorized(get().baudRate);
     } catch {
-      /* échec silencieux : on reste déconnecté, l'utilisateur connectera manuellement */
+      return; // ouverture impossible (adaptateur absent) → on reste déconnecté
     }
+    if (!label) return; // aucun port autorisé
+
+    // VÉRIFICATION de présence réelle : on ping la carte (VER) et on n'affiche
+    // « connecté » que si elle RÉPOND. Sans réponse, on referme et on reste
+    // déconnecté — l'utilisateur connectera explicitement (sélection du port via
+    // le navigateur), ce qui reflète l'état réel de la liaison.
+    link.startReader((bytes) => pushRx(set, bytes, link.decode(bytes)));
+    let alive = false;
+    try {
+      await link.requestBytes("VER\r", 1, 800);
+      alive = true;
+    } catch {
+      alive = false;
+    }
+    if (!alive) {
+      await link.disconnect().catch(() => {});
+      pushLog(set, "info", "Reconnexion auto ignorée : port ouvert mais la carte ne répond pas (carte éteinte / non branchée ?).");
+      return;
+    }
+
+    // Sécurité (reconnexion silencieuse après reload) : on n'envoie AUCUNE pose
+    // et on désactive le Mode Live, pour que le robot ne bouge jamais tout seul.
+    if (get().liveMirror) {
+      writeLiveMirror(false);
+      set({ liveMirror: false });
+    }
+    softStartArmed = true; // si l'utilisateur envoie ensuite une pose, ce sera en douceur
+    set({ status: "connected", portLabel: label, rxByteCount: 0, errorMsg: null, errorKind: null });
+    pushLog(set, "info", `Reconnexion auto à ${label} @ ${get().baudRate} bauds (carte vérifiée, Mode Live désactivé)`);
+    useToastStore.getState().show(`Carte reconnectée (${label})`);
   },
 
   disconnect: async () => {

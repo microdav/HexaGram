@@ -45,7 +45,10 @@ conclure « c'est fait ».
   **Arrêt d'urgence**, et la **console** ([src/ui/ElectronicConsolePanel.tsx](src/ui/ElectronicConsolePanel.tsx),
   épinglée en déroulé sous le bandeau ou flottante). Affiché partout sauf l'onglet Projet (sauf si connecté).
   Au chargement, `autoReconnect` rouvre **silencieusement** le port déjà autorisé (`getPorts()`, sans
-  geste), sans envoi de pose et **Mode Live forcé OFF**. Les pages (Électronique, boîte « Liaison robot »
+  geste), sans envoi de pose et **Mode Live forcé OFF** — mais n'affiche **connecté** que si la carte
+  **répond** à un ping `VER` (sinon le port est refermé : ouvrir le port USB-série ne prouve pas que la
+  carte est là — l'adaptateur FTDI s'ouvre même carte éteinte, d'où un faux « connecté » sans cette
+  vérification). Les pages (Électronique, boîte « Liaison robot »
   de Conception) ne portent plus les contrôles de connexion (centralisés dans le bandeau).
 - **Écran lié** ([docs/ecran-lie.md](docs/ecran-lie.md)) : pilotage temps réel du robot entre plusieurs PC
   d'un **même compte** via WebSocket `/api/ws` (hub serveur [server/src/realtime.ts](server/src/realtime.ts),
