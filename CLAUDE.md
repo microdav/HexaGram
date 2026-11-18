@@ -114,7 +114,9 @@ Sous-système central documenté en détail : **[docs/robot-2d-base-mecanique.md
 
 - **Langue** : tout en **français** (UI, commits, docs, réponses à l'utilisateur).
 - **Aucune attribution IA** dans les artefacts du repo (README, commits, docs, code).
-- **Déploiement uniquement sur ordre explicite** (« déploie ») via `deploy/deploy.ps1` sur la VM
-  freebox (Caddy → <https://hexagram.davidlardy.com>). Ne jamais déployer spontanément.
+- **Déploiement uniquement sur ordre explicite** (« déploie ») via `deploy/deploy.ps1` sur le **VPS OVH**
+  `debian@57.128.67.38` (Debian 13 x86_64, Caddy → <https://hexagram.davidlardy.com>). Ne jamais déployer
+  spontanément. L'ancienne VM Freebox (192.168.1.141, ARM64) est abandonnée. Jamais de `node_modules` copiés
+  depuis le PC : `npm ci --omit=dev` tourne sur le VPS. Détails : [deploy/README.md](deploy/README.md).
 - **Références de fichiers** : liens markdown relatifs `[texte](chemin)`.
 - Respecter le style du code environnant (densité de commentaires, nommage, idiomes).

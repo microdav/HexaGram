@@ -1,8 +1,8 @@
-# HexaGram — bloc à fusionner dans /etc/caddy/Caddyfile sur la VM.
+# HexaGram — bloc à fusionner dans /etc/caddy/Caddyfile sur le VPS OVH.
 #
 # Préalables :
-#   • DNS A record `hexagram.davidlardy.com` -> IP publique Freebox
-#   • Ports 80 et 443 forwardés sur la VM (déjà en place pour micromoney)
+#   • DNS A record `hexagram.davidlardy.com` -> 57.128.67.38 (VPS OVH)
+#   • Ports 80 et 443 ouverts par ufw sur le VPS (déjà en place)
 #   • Caddy provisionne le cert Let's Encrypt automatiquement (HTTP-01)
 #
 # IMPORTANT : tous les blocs doivent utiliser handle{} pour que
@@ -12,7 +12,7 @@ hexagram.davidlardy.com {
     encode zstd gzip
 
     handle /api/* {
-        reverse_proxy localhost:3001
+        reverse_proxy 127.0.0.1:3001
     }
 
     handle {

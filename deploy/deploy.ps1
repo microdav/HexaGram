@@ -1,10 +1,14 @@
-# HexaGram - deploiement build Vite + backend Node sur la VM Freebox Ultra (LAN, :6503).
+# HexaGram - deploiement build Vite + backend Node sur le VPS OVH (Debian 13, x86_64).
+#
+# Les node_modules ne sont JAMAIS copies depuis le PC (Windows) : seuls dist/,
+# package.json et package-lock.json partent ; `npm ci --omit=dev` est lance sur
+# le VPS (utilisateur freebox) par sync-server.sh.
 #
 # Usage : pwsh -File D:\_Perso\HexaGram\deploy\deploy.ps1
 
 $ErrorActionPreference = "Stop"
 
-$Remote        = "freebox@192.168.1.141"
+$Remote        = "debian@57.128.67.38"
 $ScriptDir     = $PSScriptRoot
 $ProjectRoot   = Split-Path $ScriptDir -Parent
 $DistDir       = Join-Path $ProjectRoot "dist"
@@ -77,28 +81,16 @@ else { tar --force-local -czf $TarballApp -C $DistDir . }
 if ($LASTEXITCODE -ne 0) { throw "tar frontend echoue" }
 Write-Ok "$([math]::Round((Get-Item $TarballApp).Length/1KB,1)) KB" $sw
 
-# ── 4. Tar serveur (dist + node_modules prod) ─────────────────────────────────
-Write-Step "Tar serveur (dist + node_modules prod bundlés localement)" 4
+# ── 4. Tar serveur (dist + package.json + lock, SANS node_modules) ───────────
+Write-Step "Tar serveur (dist + package.json + package-lock.json)" 4
 $sw.Restart()
 
-# npm ci --omit=dev dans un dossier temporaire propre
 $TmpPkg = Join-Path $env:TEMP "hexagram-server-pkg"
 if (Test-Path $TmpPkg) { Remove-Item $TmpPkg -Recurse -Force }
 New-Item -ItemType Directory $TmpPkg | Out-Null
-Copy-Item (Join-Path $ServerDir "dist")         "$TmpPkg\dist"   -Recurse
-Copy-Item (Join-Path $ServerDir "package.json") "$TmpPkg\"
-# Copie package-lock.json s'il existe
-$lockFile = Join-Path $ServerDir "package-lock.json"
-if (Test-Path $lockFile) { Copy-Item $lockFile "$TmpPkg\" }
-
-Push-Location $TmpPkg
-try {
-    npm ci --omit=dev --silent 2>&1 | ForEach-Object {
-        $l = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_.ToString() }
-        if ($l.Trim()) { Write-Host "[$((Get-Date).ToString('HH:mm:ss'))]   | $l" }
-    }
-    if ($LASTEXITCODE -ne 0) { throw "npm ci local echoue" }
-} finally { Pop-Location }
+Copy-Item (Join-Path $ServerDir "dist")              "$TmpPkg\dist" -Recurse
+Copy-Item (Join-Path $ServerDir "package.json")      "$TmpPkg\"
+Copy-Item (Join-Path $ServerDir "package-lock.json") "$TmpPkg\"
 
 if (Test-Path $TarballServer) { Remove-Item $TarballServer -Force }
 if ($tarVer -match 'bsdtar') { tar -czf $TarballServer -C $TmpPkg . }
@@ -125,7 +117,7 @@ Stream-Ssh "sed -i 's/\r$//' /tmp/hexagram-sync-app.sh && sudo bash /tmp/hexagra
 Write-Ok "frontend OK" $sw
 
 # ── 7. Sync backend ───────────────────────────────────────────────────────────
-Write-Step "Sync backend (extract + restart service)" 7
+Write-Step "Sync backend (extract + npm ci sur le VPS + restart service)" 7
 $sw.Restart()
 Stream-Ssh "sed -i 's/\r$//' /tmp/hexagram-sync-server.sh && sudo bash /tmp/hexagram-sync-server.sh"
 Write-Ok "backend OK" $sw
