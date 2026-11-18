@@ -198,7 +198,7 @@ par défaut.
 | 3D | Three.js via [`@react-three/fiber`](https://github.com/pmndrs/react-three-fiber) et [`@react-three/drei`](https://github.com/pmndrs/drei) |
 | State | [Zustand](https://github.com/pmndrs/zustand) |
 | Backend | Node.js + Express + SQLite (JWT, profils robot) |
-| Déploiement | VM Freebox Ultra — Caddy (static + reverse-proxy API), HTTPS <https://hexagram.davidlardy.com> |
+| Déploiement | VPS OVH (Debian 13, x86_64) — Caddy (static + reverse-proxy API), HTTPS <https://hexagram.davidlardy.com> |
 | Packaging desktop futur | Tauri (binaire Windows léger) |
 | Packaging tablette futur | PWA installable |
 | Comm robot future | Web Serial API (Chrome/Edge desktop), Web Bluetooth ou WebSocket (tablette) |
@@ -275,14 +275,15 @@ npm run build      # type-check + build production
 npm run preview    # serveur statique pour tester la build
 ```
 
-### Déploiement (LAN)
+### Déploiement
 
 ```powershell
 pwsh -File deploy/deploy.ps1
 ```
 
-Build Vite + backend, tar, SCP vers la VM Freebox, reload Caddy + redémarrage du service
-`hexagram-api` — disponible sur <https://hexagram.davidlardy.com> (LAN + public via SNI).
+Build Vite + backend, tar (sans `node_modules`), SCP vers le VPS OVH (`debian@57.128.67.38`),
+`npm ci --omit=dev` sur le VPS, reload Caddy + redémarrage du service `hexagram-api` — disponible sur
+<https://hexagram.davidlardy.com>. Détails : [deploy/README.md](deploy/README.md).
 
 ---
 

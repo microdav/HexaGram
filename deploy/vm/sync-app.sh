@@ -1,5 +1,5 @@
 #!/bin/bash
-# HexaGram - sync de la build Vite (statique) sur la VM Freebox Ultra.
+# HexaGram - sync de la build Vite (statique) sur le VPS OVH (Debian 13, x86_64).
 # Idempotent. Lance via : sudo bash /tmp/hexagram-sync-app.sh
 #
 # Pre-requis : /tmp/hexagram-dist.tar.gz transfere prealablement par scp,
